@@ -3,15 +3,15 @@
 > [PRD.md](PRD.md) §10 마일스톤 기준. 각 단계가 끝날 때마다 "혼자 쓰기에 유용한 상태"를 유지한다.
 
 ## 시작 전 결정
-- [ ] 기술 스택 선택 (Tauri / Electron / Swift 네이티브) — PRD Q1
+- [x] 기술 스택 선택 (Tauri / Electron / Swift 네이티브) — PRD Q1 → **Tauri v2 + React/TS 확정** (2026-08-06)
 - [ ] 토큰 보관 방식 확정 (macOS Keychain 권장) — PRD Q2
 - [ ] 기존 Notion DB 스키마 확인: 상태 속성(완료/일부/미완/기타) 유무, 기존 데이터 호환 — PRD R3
 
 ## M1 — 앱 골격 + 뽀모도로
-- [ ] macOS 메뉴바 상주 앱 골격 (펭귄 아이콘 `penguin-icon.png`)
-- [ ] 카드형 팝오버 UI 기본 레이아웃
-- [ ] 뽀모도로 타이머 (25/5 기본, 시간 커스터마이즈)
-- [ ] macOS 알림 권한 + 타이머 종료 알림
+- [x] macOS 메뉴바 상주 앱 골격 (펭귄 아이콘 `penguin-icon.png`)
+- [x] 카드형 팝오버 UI 기본 레이아웃
+- [x] 뽀모도로 타이머 (25/5 기본, 시간 커스터마이즈)
+- [x] macOS 알림 권한 + 타이머 종료 알림
 
 ## M2 — Notion TODO
 - [ ] Notion Integration 연결 및 대상 Database 지정

@@ -3,3 +3,11 @@
 # 로컬 시크릿 (토큰·자격증명은 절대 커밋하지 않는다)
 *.local
 .env*
+
+# Node
+node_modules/
+dist/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/

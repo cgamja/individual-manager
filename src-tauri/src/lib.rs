@@ -30,9 +30,11 @@ fn show_popover(app: &AppHandle, window: &WebviewWindow) {
     let _ = window.set_focus();
 }
 
-fn hide_popover(app: &AppHandle, window: &WebviewWindow) {
+fn hide_popover(_app: &AppHandle, window: &WebviewWindow) {
+    // app.hide()는 쓰지 않는다 — macOS 26(Tahoe)에서 상태바 아이템 창까지 함께 숨겨져
+    // 메뉴바 펭귄 아이콘이 사라진다. blur로 닫힐 때는 포커스가 이미 다른 앱으로
+    // 넘어간 뒤라 창만 숨겨도 충분하다.
     let _ = window.hide();
-    let _ = app.hide();
 }
 
 fn toggle_popover(app: &AppHandle) {

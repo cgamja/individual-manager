@@ -1,116 +1,159 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
-}
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  font-size: 14px;
+  color: #1d1d1f;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+  user-select: none;
+  cursor: default;
 }
 
-.container {
+html,
+body,
+#root {
   margin: 0;
-  padding-top: 10vh;
+  padding: 0;
+  background: transparent;
+}
+
+.popover {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  box-sizing: border-box;
+  min-height: 100vh;
+}
+
+.card {
+  background: rgba(246, 246, 248, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.timer-card {
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
+.timer-phase {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6e6e73;
 }
 
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
+.timer-time {
+  margin: 0 0 12px;
+  font-size: 44px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
 }
 
-.row {
+.timer-actions {
   display: flex;
+  gap: 8px;
   justify-content: center;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
 button {
+  font: inherit;
+  padding: 6px 14px;
   border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #ffffff;
   cursor: pointer;
 }
 
 button:hover {
-  border-color: #396cd8;
+  background: #f0f0f2;
 }
+
 button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+  background: #e4e4e8;
 }
 
-input,
-button {
-  outline: none;
+.settings-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6e6e73;
 }
 
-#greet-input {
-  margin-right: 5px;
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.settings-row label {
+  color: #3a3a3c;
+}
+
+.settings-row input {
+  width: 64px;
+  font: inherit;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  text-align: right;
+  background: #ffffff;
+}
+
+.settings-row input:disabled {
+  background: #ececee;
+  color: #98989d;
+}
+
+.settings-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #98989d;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+    color: #f5f5f7;
   }
 
-  a:hover {
-    color: #24c8db;
+  .card {
+    background: rgba(40, 40, 44, 0.96);
+    border-color: rgba(255, 255, 255, 0.1);
   }
 
-  input,
+  .timer-phase,
+  .settings-title {
+    color: #a1a1a6;
+  }
+
+  .settings-row label {
+    color: #d1d1d6;
+  }
+
   button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+    background: #3a3a3e;
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #f5f5f7;
   }
+
+  button:hover {
+    background: #47474b;
+  }
+
   button:active {
-    background-color: #0f0f0f69;
+    background: #525257;
+  }
+
+  .settings-row input {
+    background: #3a3a3e;
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #f5f5f7;
+  }
+
+  .settings-row input:disabled {
+    background: #2c2c30;
+    color: #7c7c81;
   }
 }

@@ -1,4 +1,5 @@
 pub mod pomodoro;
+pub mod timer_bridge;
 
 use std::sync::Mutex;
 use std::time::Instant;
@@ -67,12 +68,16 @@ pub fn run() {
             app.manage(ShellState {
                 hidden_at: Mutex::new(None),
             });
+            app.manage(timer_bridge::TimerState(Mutex::new(
+                pomodoro::Pomodoro::new(pomodoro::Config::default()),
+            )));
+            timer_bridge::spawn_tick_thread(app.handle().clone());
 
             let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit])?;
 
             // 트레이는 setup()에서 동기 생성해야 마우스 이벤트를 받는다 (KTD3, tauri#11462)
-            TrayIconBuilder::with_id("main-tray")
+            TrayIconBuilder::with_id(timer_bridge::TRAY_ID)
                 .icon(Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .icon_as_template(false)
                 .menu(&menu)
@@ -109,7 +114,15 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![])
+        .invoke_handler(tauri::generate_handler![
+            timer_bridge::timer_start,
+            timer_bridge::timer_pause,
+            timer_bridge::timer_resume,
+            timer_bridge::timer_reset,
+            timer_bridge::timer_get_state,
+            timer_bridge::timer_get_config,
+            timer_bridge::timer_set_config,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -30,6 +30,7 @@ describe("설정 입력 검증", () => {
     await userEvent.tab();
 
     expect(onChange).not.toHaveBeenCalled();
+    expect(focus).toHaveValue("25");
   });
 
   it("비숫자_입력은_거부되어_onChange가_호출되지_않는다", async () => {
@@ -42,6 +43,32 @@ describe("설정 입력 검증", () => {
     await userEvent.tab();
 
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("거부된_입력은_되돌려진다", async () => {
+    const onChange = vi.fn();
+    render(<SettingsCard config={CONFIG} disabled={false} onChange={onChange} />);
+
+    const focus = screen.getByLabelText("집중(분)");
+    await userEvent.clear(focus);
+    await userEvent.type(focus, "0");
+    await userEvent.tab();
+
+    expect(focus).toHaveValue("25");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("상한_초과_입력은_거부되어_되돌려진다", async () => {
+    const onChange = vi.fn();
+    render(<SettingsCard config={CONFIG} disabled={false} onChange={onChange} />);
+
+    const focus = screen.getByLabelText("집중(분)");
+    await userEvent.clear(focus);
+    await userEvent.type(focus, "1000");
+    await userEvent.tab();
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(focus).toHaveValue("25");
   });
 });
 

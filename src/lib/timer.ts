@@ -15,7 +15,6 @@ export interface TimerConfig {
 }
 
 export const EVENT_TICK = "pomodoro://tick";
-export const EVENT_FINISHED = "pomodoro://finished";
 
 export const startTimer = (phase: Phase): Promise<TimerSnapshot> =>
   invoke("timer_start", { phase });
@@ -27,8 +26,6 @@ export const resumeTimer = (): Promise<TimerSnapshot> => invoke("timer_resume");
 export const resetTimer = (): Promise<TimerSnapshot> => invoke("timer_reset");
 
 export const getTimerState = (): Promise<TimerSnapshot> => invoke("timer_get_state");
-
-export const getTimerConfig = (): Promise<TimerConfig> => invoke("timer_get_config");
 
 export const setTimerConfig = (config: TimerConfig): Promise<TimerConfig> =>
   invoke("timer_set_config", {
@@ -50,6 +47,3 @@ export const formatMmss = (ms: number): string => {
 
 export const onTick = (cb: (snapshot: TimerSnapshot) => void): Promise<UnlistenFn> =>
   listen<TimerSnapshot>(EVENT_TICK, (event) => cb(event.payload));
-
-export const onFinished = (cb: (phase: Phase) => void): Promise<UnlistenFn> =>
-  listen<Phase>(EVENT_FINISHED, (event) => cb(event.payload));

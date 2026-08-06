@@ -69,13 +69,34 @@ pub fn timer_start(phase: Phase, state: State<'_, TimerState>, app: AppHandle) -
 
 #[tauri::command]
 pub fn timer_pause(state: State<'_, TimerState>, app: AppHandle) -> Snapshot {
-    state.0.lock().unwrap().pause(now_ms());
+    // 틱(1Hz) 사이에 만료된 세션을 먼저 정산한다 — 정산 없이 pause하면
+    // "Paused 00:00"으로 얼어붙고 finished 이벤트/알림이 영영 나가지 않는다.
+    let now = now_ms();
+    let finished = {
+        let mut pomodoro = state.0.lock().unwrap();
+        let finished = pomodoro.poll(now);
+        if finished.is_none() {
+            pomodoro.pause(now);
+        }
+        finished
+    };
+    settle_finished(&app, finished);
     after_command(&app)
 }
 
 #[tauri::command]
 pub fn timer_resume(state: State<'_, TimerState>, app: AppHandle) -> Snapshot {
-    state.0.lock().unwrap().resume(now_ms());
+    // pause와 동일하게 만료를 먼저 정산한다 (코어는 Finished에서 resume을 무시한다).
+    let now = now_ms();
+    let finished = {
+        let mut pomodoro = state.0.lock().unwrap();
+        let finished = pomodoro.poll(now);
+        if finished.is_none() {
+            pomodoro.resume(now);
+        }
+        finished
+    };
+    settle_finished(&app, finished);
     after_command(&app)
 }
 
@@ -124,12 +145,18 @@ fn tick(app: &AppHandle) {
         let mut pomodoro = state.0.lock().unwrap();
         pomodoro.poll(now)
     };
+    settle_finished(app, finished);
+    let _ = app.emit(EVENT_TICK, current_snapshot(app));
+    refresh_tray(app);
+}
+
+/// 만료 정산 공통 경로 — poll이 방금 Finished로 전이시켰다면 finished 이벤트 + 알림.
+/// 틱 스레드와 pause/resume 커맨드가 공유한다.
+fn settle_finished(app: &AppHandle, finished: Option<Phase>) {
     if let Some(phase) = finished {
         let _ = app.emit(EVENT_FINISHED, phase);
         notify_finished(app, phase);
     }
-    let _ = app.emit(EVENT_TICK, current_snapshot(app));
-    refresh_tray(app);
 }
 
 /// 세션 종료 알림 — 웹뷰가 숨겨져 있어도 발송되도록 Rust에서 보낸다 (R8).

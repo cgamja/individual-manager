@@ -8,13 +8,13 @@ interface SettingsCardProps {
   onChange: (config: TimerConfig) => void;
 }
 
-/** 분 단위 입력 검증: 1 이상의 정수만 허용한다. */
+/** 분 단위 입력 검증: 1~999 사이의 정수만 허용한다 (999분 상한 — 개인용 타이머에 충분하다는 가정). */
 function parseMinutes(raw: string): number | null {
   if (!/^\d+$/.test(raw.trim())) {
     return null;
   }
   const value = Number(raw.trim());
-  return value >= 1 ? value : null;
+  return value >= 1 && value <= 999 ? value : null;
 }
 
 /** 타이머 시간 설정 카드. */
@@ -31,6 +31,9 @@ export function SettingsCard({ config, disabled, onChange }: SettingsCardProps) 
     const focus = parseMinutes(focusValue);
     const brk = parseMinutes(breakValue);
     if (focus === null || brk === null) {
+      // 검증 실패 시 입력값을 원래 설정값으로 되돌린다 — 화면과 실제 설정이 어긋나지 않게 한다
+      setFocusRaw(String(config.focus_minutes));
+      setBreakRaw(String(config.break_minutes));
       return;
     }
     if (focus !== config.focus_minutes || brk !== config.break_minutes) {

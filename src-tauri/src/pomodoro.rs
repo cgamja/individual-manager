@@ -305,6 +305,20 @@ mod tests {
     }
 
     #[test]
+    fn 만료_시각_이후에는_poll이_먼저_finished로_전이하고_pause는_무시된다() {
+        // 브릿지는 pause/resume 전에 poll로 만료를 정산한다 — 그 순서 계약을 문서화한다.
+        // (poll 없이 pause하면 Paused{remaining_ms: 0}으로 얼어붙는 상황을 막는 근거)
+        let mut p = 기본_타이머();
+        p.start(Phase::Focus, T0);
+        assert_eq!(p.poll(T0 + 25 * MIN), Some(Phase::Focus));
+        p.pause(T0 + 25 * MIN);
+        assert!(matches!(
+            p.snapshot(T0 + 25 * MIN),
+            Snapshot::Finished { phase: Phase::Focus }
+        ));
+    }
+
+    #[test]
     fn running_중_설정_변경은_현재_세션의_end_time을_바꾸지_않는다() {
         let mut p = 기본_타이머();
         p.start(Phase::Focus, T0);

@@ -22,6 +22,7 @@ function App() {
   const [snapshot, setSnapshot] = useState<TimerSnapshot>({ state: "idle" });
   const [config, setConfig] = useState<TimerConfig>(DEFAULT_SETTINGS);
   const [notifGranted, setNotifGranted] = useState(true);
+  const [saveFailed, setSaveFailed] = useState(false);
 
   useEffect(() => {
     let unlistenTick: UnlistenFn | undefined;
@@ -69,12 +70,21 @@ function App() {
   }, []);
 
   const handleConfigChange = useCallback(async (next: TimerConfig) => {
+    let applied: TimerConfig;
     try {
-      const applied = await setTimerConfig(next);
-      setConfig(applied);
-      await saveSettings(applied);
+      applied = await setTimerConfig(next);
     } catch {
       // 검증 실패(0분 등)는 무시 — 입력단에서 이미 걸러진다
+      return;
+    }
+    setConfig(applied);
+    try {
+      await saveSettings(applied);
+      setSaveFailed(false);
+    } catch (err) {
+      // 저장 실패는 Rust 코어 상태와 별개 — 사용자에게 알리고 이번 실행에서만 유지됨을 알린다
+      console.error("설정 저장 실패:", err);
+      setSaveFailed(true);
     }
   }, []);
 
@@ -95,6 +105,11 @@ function App() {
       {!notifGranted && (
         <p className="notif-hint" role="status">
           알림 권한이 꺼져 있어요 — 세션 종료는 이 카드에서 확인돼요
+        </p>
+      )}
+      {saveFailed && (
+        <p className="notif-hint" role="status">
+          설정 저장에 실패했어요 — 변경은 이번 실행에만 적용돼요
         </p>
       )}
     </main>

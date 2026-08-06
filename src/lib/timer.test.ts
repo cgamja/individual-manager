@@ -1,12 +1,6 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  formatMmss,
-  nextPhase,
-  onFinished,
-  setTimerConfig,
-  startTimer,
-} from "./timer";
+import { afterEach, describe, expect, it } from "vitest";
+import { formatMmss, nextPhase, setTimerConfig, startTimer } from "./timer";
 
 afterEach(() => {
   clearMocks();
@@ -43,41 +37,6 @@ describe("타이머 커맨드 래퍼", () => {
 
     expect(calls[0].cmd).toBe("timer_set_config");
     expect(calls[0].args).toMatchObject({ focusMinutes: 50, breakMinutes: 10 });
-  });
-});
-
-describe("finished 이벤트 구독", () => {
-  it("finished_이벤트를_구독하면_이벤트_수신_시_콜백이_호출된다", async () => {
-    // listen은 transformCallback으로 만든 콜백 ID(number)를 handler로 넘긴다.
-    // 등록된 실제 함수는 window[`_${id}`]에 있다.
-    let handlerId: number | undefined;
-    let listenedEvent: string | undefined;
-    mockIPC((cmd, args) => {
-      if (cmd === "plugin:event|listen") {
-        const a = args as { event: string; handler: number };
-        listenedEvent = a.event;
-        handlerId = a.handler;
-        return 1;
-      }
-      return undefined;
-    });
-
-    const cb = vi.fn();
-    await onFinished(cb);
-
-    expect(listenedEvent).toBe("pomodoro://finished");
-    expect(handlerId).toBeDefined();
-    const internals = (
-      window as unknown as {
-        __TAURI_INTERNALS__: { runCallback: (id: number, payload: unknown) => void };
-      }
-    ).__TAURI_INTERNALS__;
-    internals.runCallback(handlerId!, {
-      event: "pomodoro://finished",
-      id: 1,
-      payload: "focus",
-    });
-    expect(cb).toHaveBeenCalledWith("focus");
   });
 });
 

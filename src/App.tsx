@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { SettingsCard } from "./components/SettingsCard";
 import { TimerCard } from "./components/TimerCard";
+import { ensureNotificationPermission } from "./lib/notification";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settings";
 import {
   getTimerState,
@@ -20,6 +21,7 @@ import "./App.css";
 function App() {
   const [snapshot, setSnapshot] = useState<TimerSnapshot>({ state: "idle" });
   const [config, setConfig] = useState<TimerConfig>(DEFAULT_SETTINGS);
+  const [notifGranted, setNotifGranted] = useState(true);
 
   useEffect(() => {
     let unlistenTick: UnlistenFn | undefined;
@@ -33,6 +35,9 @@ function App() {
       setConfig(applied);
       setSnapshot(await getTimerState());
       unlistenTick = await onTick((s) => setSnapshot(s));
+      // 알림 권한: 거부돼도 앱은 계속 동작하고 카드 내 표시로 대체한다 (R8)
+      const granted = await ensureNotificationPermission();
+      if (!cancelled) setNotifGranted(granted);
     })();
 
     // 팝오버가 다시 보일 때 즉시 재동기화 (틱 대기 없이)
@@ -87,6 +92,11 @@ function App() {
         disabled={snapshot.state !== "idle"}
         onChange={handleConfigChange}
       />
+      {!notifGranted && (
+        <p className="notif-hint" role="status">
+          알림 권한이 꺼져 있어요 — 세션 종료는 이 카드에서 확인돼요
+        </p>
+      )}
     </main>
   );
 }

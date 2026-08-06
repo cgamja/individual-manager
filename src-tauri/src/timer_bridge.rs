@@ -126,9 +126,21 @@ fn tick(app: &AppHandle) {
     };
     if let Some(phase) = finished {
         let _ = app.emit(EVENT_FINISHED, phase);
+        notify_finished(app, phase);
     }
     let _ = app.emit(EVENT_TICK, current_snapshot(app));
     refresh_tray(app);
+}
+
+/// 세션 종료 알림 — 웹뷰가 숨겨져 있어도 발송되도록 Rust에서 보낸다 (R8).
+/// dev 모드에서는 번들 ID 문제로 도착하지 않는 것이 정상이다 (KTD6).
+fn notify_finished(app: &AppHandle, phase: Phase) {
+    use tauri_plugin_notification::NotificationExt;
+    let (title, body) = match phase {
+        Phase::Focus => ("집중 세션 종료", "수고했어요! 휴식할 시간이에요 🐧"),
+        Phase::Break => ("휴식 세션 종료", "다시 집중해 볼까요? 🐧"),
+    };
+    let _ = app.notification().builder().title(title).body(body).show();
 }
 
 #[cfg(test)]

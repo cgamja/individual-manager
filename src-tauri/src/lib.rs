@@ -1,3 +1,4 @@
+pub mod notion;
 pub mod pomodoro;
 pub mod timer_bridge;
 

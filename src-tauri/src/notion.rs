@@ -2039,6 +2039,30 @@ mod http_tests {
     }
 
     #[tokio::test]
+    async fn 지연되는_응답은_5초_캡에서_None으로_수렴한다() {
+        // 5초 캡이 이 diff의 핵심 신뢰성 장치 — 지연 응답을 기다리지 않고 아이콘 없이 진행함을 증명
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(쿼리_응답(vec![아이콘_행(
+                        serde_json::json!({ "type": "emoji", "emoji": "🌊" }),
+                    )]))
+                    .set_delay(std::time::Duration::from_secs(6)),
+            )
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let 시작 = std::time::Instant::now();
+        let icon = client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await;
+        // 6초 지연 응답이 오기 전에 캡이 발동해야 한다 — 응답을 기다렸다면 Some이 됐을 것
+        assert_eq!(icon, None);
+        assert!(시작.elapsed() < std::time::Duration::from_secs(6));
+    }
+
+    #[tokio::test]
     async fn 아이콘이_있으면_생성_body에_icon이_포함되고_없으면_생략된다() {
         let 생성_body_공통 = json!({
             "parent": { "type": "data_source_id", "data_source_id": 가짜_DS_ID },

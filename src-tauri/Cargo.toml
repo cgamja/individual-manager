@@ -29,6 +29,8 @@ tauri-plugin-notification = "2.3.3"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 # macOS Keychain 토큰 보관 (기본 feature = apple-native store)
 keyring = "4"
+# "오늘" 판정은 Rust가 소유한다 (KTD3) — 로컬 날짜 YYYY-MM-DD 생성 전용
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["time"] }
 
 [dev-dependencies]

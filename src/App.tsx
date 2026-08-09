@@ -51,12 +51,13 @@ function App() {
       setConfig(applied);
       setSnapshot(await getTimerState());
       unlistenTick = await onTick((s) => setSnapshot(s));
+      // Notion 연결 상태 로드 (네트워크 없이 저장된 설정만 본다) —
+      // 첫 실행의 알림 권한 프롬프트 대기에 막히지 않게 먼저 로드한다
+      const notion = await getNotionStatus().catch(() => null);
+      if (!cancelled && notion) setNotionStatus(notion);
       // 알림 권한: 거부돼도 앱은 계속 동작하고 카드 내 표시로 대체한다 (R8)
       const granted = await ensureNotificationPermission();
       if (!cancelled) setNotifGranted(granted);
-      // Notion 연결 상태 로드 (네트워크 없이 저장된 설정만 본다)
-      const notion = await getNotionStatus().catch(() => null);
-      if (!cancelled && notion) setNotionStatus(notion);
     })();
 
     // 팝오버가 다시 보일 때 즉시 재동기화 (틱 대기 없이)

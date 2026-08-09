@@ -54,6 +54,11 @@ function mockAppIPC(handlers: Record<string, (args: unknown) => unknown> = {}) {
         return { state: "idle" };
       case "notion_get_status":
         return NOT_CONFIGURED_BOTH;
+      case "notion_todo_list":
+        return {
+          state: "not_connected",
+          missing: ["token", "database", "data_source"],
+        };
       default:
         return undefined;
     }

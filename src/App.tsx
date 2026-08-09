@@ -3,14 +3,22 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { NotionCard } from "./components/NotionCard";
 import { SettingsCard } from "./components/SettingsCard";
 import { TimerCard } from "./components/TimerCard";
+import { TodoCard } from "./components/TodoCard";
 import { ensureNotificationPermission } from "./lib/notification";
 import {
+  addTodo,
+  createTodoPage,
   deleteNotionToken,
+  editTodo,
   getNotionStatus,
+  getTodoList,
   saveNotionToken,
   setNotionDatabase,
   testNotionConnection,
+  toggleTodo,
   type ConnectionState,
+  type TodoOutcome,
+  type TodoSnapshot,
 } from "./lib/notion";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settings";
 import {
@@ -27,6 +35,15 @@ import {
 } from "./lib/timer";
 import "./App.css";
 
+/** IPC 계층은 Error 객체로 reject할 수 있어 방어적으로 메시지를 추출한다. */
+function errorMessage(err: unknown): string {
+  return err instanceof Error
+    ? err.message
+    : typeof err === "string"
+      ? err
+      : String(err);
+}
+
 function App() {
   const [snapshot, setSnapshot] = useState<TimerSnapshot>({ state: "idle" });
   const [config, setConfig] = useState<TimerConfig>(DEFAULT_SETTINGS);
@@ -38,6 +55,23 @@ function App() {
   });
   const [notionVerifying, setNotionVerifying] = useState(false);
   const [notionError, setNotionError] = useState<string | null>(null);
+  const [todoSnapshot, setTodoSnapshot] = useState<TodoSnapshot | null>(null);
+  const [todoBusy, setTodoBusy] = useState(false);
+  // 오류와 성공 응답의 notice가 같은 배너 슬롯을 공유한다
+  const [todoError, setTodoError] = useState<string | null>(null);
+
+  /** 목록 재조회 — 스냅샷이 이미 있으면 목록을 유지한 채 busy만 건다 (R2). */
+  const refreshTodos = useCallback(async () => {
+    setTodoBusy(true);
+    setTodoError(null);
+    try {
+      setTodoSnapshot(await getTodoList());
+    } catch (err) {
+      setTodoError(errorMessage(err));
+    } finally {
+      setTodoBusy(false);
+    }
+  }, []);
 
   useEffect(() => {
     let unlistenTick: UnlistenFn | undefined;
@@ -55,15 +89,25 @@ function App() {
       // 첫 실행의 알림 권한 프롬프트 대기에 막히지 않게 먼저 로드한다
       const notion = await getNotionStatus().catch(() => null);
       if (!cancelled && notion) setNotionStatus(notion);
+      // 오늘 할 일 로드 — Notion 상태 로드 뒤에 시작하되, 네트워크 대기가
+      // 알림 권한 확인을 막지 않게 결과만 비동기로 반영한다
+      getTodoList()
+        .then((todos) => {
+          if (!cancelled) setTodoSnapshot(todos);
+        })
+        .catch((err) => {
+          if (!cancelled) setTodoError(errorMessage(err));
+        });
       // 알림 권한: 거부돼도 앱은 계속 동작하고 카드 내 표시로 대체한다 (R8)
       const granted = await ensureNotificationPermission();
       if (!cancelled) setNotifGranted(granted);
     })();
 
-    // 팝오버가 다시 보일 때 즉시 재동기화 (틱 대기 없이)
+    // 팝오버가 다시 보일 때 즉시 재동기화 (틱 대기 없이, 주기 폴링 없음)
     const onVisibility = () => {
       if (!document.hidden) {
         getTimerState().then(setSnapshot).catch(() => {});
+        void refreshTodos();
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -73,7 +117,7 @@ function App() {
       unlistenTick?.();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [refreshTodos]);
 
   const handleStart = useCallback((phase: Phase) => {
     startTimer(phase).then(setSnapshot).catch(() => {});
@@ -121,13 +165,7 @@ function App() {
         // 커맨드 reject 시 실제 상태를 재조회해 파생 UI(저장됨 배지 등)가
         // 어긋나지 않게 하고, 오류 메시지는 별도 배너로 알린다.
         // 카드에는 failed를 돌려줘 입력값 유지(실패 시 비우지 않음)를 지킨다.
-        // IPC 계층은 Error 객체로 reject할 수 있어 방어적으로 추출한다.
-        const message =
-          err instanceof Error
-            ? err.message
-            : typeof err === "string"
-              ? err
-              : String(err);
+        const message = errorMessage(err);
         const failed: ConnectionState = { state: "failed", message };
         const actual = await getNotionStatus().catch(() => null);
         setNotionStatus(actual ?? failed);
@@ -157,6 +195,68 @@ function App() {
     void runNotionCommand(testNotionConnection);
   }, [runNotionCommand]);
 
+  /**
+   * todo 쓰기 커맨드 공통 실행 (runNotionCommand 전례) — busy 플래그 관리,
+   * 성공 시 재조회 스냅샷 반영. notice(블록 소실·충돌)는 쓰기가 반영되지 않은
+   * 것이므로 배너로 알리고 false를 돌려줘 입력을 유지시킨다 (R8).
+   * reject 시 배너 표시 + 목록 1회 재조회로 실제 반영 여부를 보여준다.
+   */
+  const runTodoCommand = useCallback(
+    async (command: () => Promise<TodoOutcome>): Promise<boolean> => {
+      setTodoBusy(true);
+      setTodoError(null);
+      try {
+        const outcome = await command();
+        setTodoSnapshot(outcome.snapshot);
+        if (outcome.notice) {
+          setTodoError(outcome.notice);
+          return false;
+        }
+        return true;
+      } catch (err) {
+        setTodoError(errorMessage(err));
+        // 실패 시에도 목록을 1회 재조회한다 — 입력값은 카드가 유지한다 (R8)
+        const actual = await getTodoList().catch(() => null);
+        if (actual) setTodoSnapshot(actual);
+        return false;
+      } finally {
+        setTodoBusy(false);
+      }
+    },
+    [],
+  );
+
+  const handleTodoRefresh = useCallback(() => {
+    void refreshTodos();
+  }, [refreshTodos]);
+  const handleTodoCreatePage = useCallback(() => {
+    void runTodoCommand(createTodoPage);
+  }, [runTodoCommand]);
+  const handleTodoAdd = useCallback(
+    (text: string): Promise<boolean> => {
+      if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
+      const { page_id, title } = todoSnapshot;
+      return runTodoCommand(() => addTodo(page_id, text, title));
+    },
+    [todoSnapshot, runTodoCommand],
+  );
+  const handleTodoToggle = useCallback(
+    (blockId: string, checked: boolean) => {
+      if (todoSnapshot?.state !== "loaded") return;
+      const { page_id, title } = todoSnapshot;
+      void runTodoCommand(() => toggleTodo(page_id, blockId, checked, title));
+    },
+    [todoSnapshot, runTodoCommand],
+  );
+  const handleTodoEdit = useCallback(
+    (blockId: string, text: string): Promise<boolean> => {
+      if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
+      const { page_id, title } = todoSnapshot;
+      return runTodoCommand(() => editTodo(page_id, blockId, text, title));
+    },
+    [todoSnapshot, runTodoCommand],
+  );
+
   return (
     <main className="popover">
       <TimerCard
@@ -165,6 +265,15 @@ function App() {
         onPause={handlePause}
         onResume={handleResume}
         onReset={handleReset}
+      />
+      <TodoCard
+        snapshot={todoSnapshot}
+        isBusy={todoBusy}
+        onRefresh={handleTodoRefresh}
+        onCreatePage={handleTodoCreatePage}
+        onAdd={handleTodoAdd}
+        onToggle={handleTodoToggle}
+        onEdit={handleTodoEdit}
       />
       <SettingsCard
         config={config}
@@ -192,6 +301,11 @@ function App() {
       {notionError && (
         <p className="notif-hint" role="status">
           {notionError}
+        </p>
+      )}
+      {todoError && (
+        <p className="notif-hint" role="status">
+          {todoError}
         </p>
       )}
     </main>

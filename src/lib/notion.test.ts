@@ -1,12 +1,18 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  addTodo,
+  createTodoPage,
   deleteNotionToken,
+  editTodo,
   getNotionStatus,
+  getTodoList,
   saveNotionToken,
   setNotionDatabase,
   testNotionConnection,
-  type ConnectionState,
+  toggleTodo,
+  type TodoOutcome,
+  type TodoSnapshot,
 } from "./notion";
 
 afterEach(() => {
@@ -14,7 +20,7 @@ afterEach(() => {
 });
 
 /** IPC 호출을 기록하고 고정 응답을 돌려준다. */
-function captureIPC(response: ConnectionState) {
+function captureIPC<T>(response: T) {
   const calls: Array<{ cmd: string; args: unknown }> = [];
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
@@ -73,5 +79,75 @@ describe("Notion 커맨드 래퍼", () => {
 
     expect(calls[0].cmd).toBe("notion_test_connection");
     expect(result).toEqual({ state: "failed", message: "인증에 실패했어요" });
+  });
+});
+
+describe("Todo 커맨드 래퍼", () => {
+  const SNAPSHOT: TodoSnapshot = {
+    state: "loaded",
+    date: "2026-08-09",
+    page_id: "page-1",
+    title: "[TODO]",
+    items: [{ id: "b1", text: "가짜 항목", checked: false }],
+  };
+  const OUTCOME: TodoOutcome = { snapshot: SNAPSHOT, notice: null };
+
+  it("todo_list는_notion_todo_list를_invoke하고_스냅샷을_반환한다", async () => {
+    const calls = captureIPC(SNAPSHOT);
+
+    const result = await getTodoList();
+
+    expect(calls[0].cmd).toBe("notion_todo_list");
+    expect(result).toEqual(SNAPSHOT);
+  });
+
+  it("create_page는_notion_todo_create_page를_invoke하고_결과를_반환한다", async () => {
+    const calls = captureIPC(OUTCOME);
+
+    const result = await createTodoPage();
+
+    expect(calls[0].cmd).toBe("notion_todo_create_page");
+    expect(result).toEqual(OUTCOME);
+  });
+
+  it("add는_notion_todo_add에_camelCase_인자를_전달한다", async () => {
+    const calls = captureIPC(OUTCOME);
+
+    await addTodo("page-1", "새 할 일", "[TODO]");
+
+    expect(calls[0].cmd).toBe("notion_todo_add");
+    expect(calls[0].args).toMatchObject({
+      pageId: "page-1",
+      text: "새 할 일",
+      pageTitle: "[TODO]",
+    });
+  });
+
+  it("toggle은_notion_todo_toggle에_blockId와_checked를_전달한다", async () => {
+    const calls = captureIPC(OUTCOME);
+
+    await toggleTodo("page-1", "b1", true, "[TODO]");
+
+    expect(calls[0].cmd).toBe("notion_todo_toggle");
+    expect(calls[0].args).toMatchObject({
+      pageId: "page-1",
+      blockId: "b1",
+      checked: true,
+      pageTitle: "[TODO]",
+    });
+  });
+
+  it("edit은_notion_todo_edit에_blockId와_text를_전달한다", async () => {
+    const calls = captureIPC(OUTCOME);
+
+    await editTodo("page-1", "b1", "수정된 텍스트", "[TODO]");
+
+    expect(calls[0].cmd).toBe("notion_todo_edit");
+    expect(calls[0].args).toMatchObject({
+      pageId: "page-1",
+      blockId: "b1",
+      text: "수정된 텍스트",
+      pageTitle: "[TODO]",
+    });
   });
 });

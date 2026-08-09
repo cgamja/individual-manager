@@ -110,6 +110,7 @@ export function TodoCard({
                         type="text"
                         autoComplete="off"
                         aria-label="할 일 편집"
+                        disabled={isBusy}
                         value={editRaw}
                         autoFocus
                         onChange={(e) => setEditRaw(e.target.value)}
@@ -156,6 +157,7 @@ export function TodoCard({
               type="text"
               autoComplete="off"
               aria-label="새 할 일"
+              disabled={isBusy}
               value={addRaw}
               onChange={(e) => setAddRaw(e.target.value)}
               onKeyDown={(e) => {

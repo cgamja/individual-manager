@@ -290,6 +290,8 @@ describe("busy·새로고침", () => {
 
     expect(screen.getByRole("button", { name: "새로고침" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "추가" })).toBeDisabled();
+    // 텍스트 입력도 잠근다 — 진행 중 타이핑이 성공 시 setAddRaw("")/cancelEdit()로 유실되는 것 방지
+    expect(screen.getByRole("textbox", { name: "새 할 일" })).toBeDisabled();
     for (const box of screen.getAllByRole("checkbox")) {
       expect(box).toBeDisabled();
     }

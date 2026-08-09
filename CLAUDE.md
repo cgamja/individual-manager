@@ -25,7 +25,7 @@
 
 ## 구조
 
-```
+```text
 src/                  React 19 + TS 프론트 (팝오버 웹뷰)
   components/         카드 UI (TimerCard, SettingsCard) + *.test.tsx
   lib/                Rust invoke·이벤트 래퍼 (timer, settings, notification) + *.test.ts

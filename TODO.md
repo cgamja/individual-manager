@@ -4,7 +4,7 @@
 
 ## 시작 전 결정
 - [x] 기술 스택 선택 (Tauri / Electron / Swift 네이티브) — PRD Q1 → **Tauri v2 + React/TS 확정** (2026-08-06)
-- [ ] 토큰 보관 방식 확정 (macOS Keychain 권장) — PRD Q2
+- [x] 토큰 보관 방식 확정 — macOS Keychain (`keyring` crate, Rust 전용) — PRD Q2 (2026-08-09)
 - [ ] 기존 Notion DB 스키마 확인: 상태 속성(완료/일부/미완/기타) 유무, 기존 데이터 호환 — PRD R3
 
 ## 개발 환경

@@ -34,13 +34,14 @@ export type TodoSnapshot =
       state: "not_connected";
       missing: Array<"token" | "database" | "data_source">;
     }
-  | { state: "no_page"; date: string }
+  | { state: "no_page"; date: string; is_today: boolean }
   | {
       state: "loaded";
       date: string;
       page_id: string;
       title: string;
       items: TodoItem[];
+      is_today: boolean;
     };
 
 /** 쓰기 커맨드의 반환 — 재조회 스냅샷(R6)과 블록 소실·충돌 안내 문구(R8).
@@ -50,30 +51,55 @@ export interface TodoOutcome {
   notice: string | null;
 }
 
+/** Rust CreateRowOutcome(serde tagged)을 그대로 미러링 — 생성 성공(created)과
+ * 같은 제목 행이 기간과 겹쳐 생성하지 않은 경우(exists)를 state로 구분한다. */
+export type CreateRowOutcome =
+  | { state: "created"; snapshot: TodoSnapshot | null; notice: string | null }
+  | { state: "exists"; page_id: string; title: string; date: string };
+
 export const getTodoList = (): Promise<TodoSnapshot> =>
   invoke("notion_todo_list");
 
 export const createTodoPage = (): Promise<TodoOutcome> =>
   invoke("notion_todo_create_page");
 
+export const createTodoRow = (params: {
+  title: string;
+  start: string;
+  end?: string;
+  icon?: string;
+  performance?: string;
+}): Promise<CreateRowOutcome> => invoke("notion_todo_create_row", { ...params });
+
+export const openTodoPage = (
+  pageId: string,
+  pageTitle: string,
+  date: string,
+): Promise<TodoOutcome> =>
+  invoke("notion_todo_open_page", { pageId, pageTitle, date });
+
 export const addTodo = (
   pageId: string,
   text: string,
   pageTitle: string,
-): Promise<TodoOutcome> => invoke("notion_todo_add", { pageId, text, pageTitle });
+  date?: string,
+): Promise<TodoOutcome> =>
+  invoke("notion_todo_add", { pageId, text, pageTitle, date });
 
 export const toggleTodo = (
   pageId: string,
   blockId: string,
   checked: boolean,
   pageTitle: string,
+  date?: string,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_toggle", { pageId, blockId, checked, pageTitle });
+  invoke("notion_todo_toggle", { pageId, blockId, checked, pageTitle, date });
 
 export const editTodo = (
   pageId: string,
   blockId: string,
   text: string,
   pageTitle: string,
+  date?: string,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_edit", { pageId, blockId, text, pageTitle });
+  invoke("notion_todo_edit", { pageId, blockId, text, pageTitle, date });

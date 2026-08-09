@@ -22,8 +22,13 @@ const LOADED: TodoSnapshot = {
     { id: "b2", text: "보고서 작성", checked: false },
     { id: "b3", text: "이메일 정리", checked: false },
   ],
+  is_today: true,
 };
-const NO_PAGE: TodoSnapshot = { state: "no_page", date: "2026-08-09" };
+const NO_PAGE: TodoSnapshot = {
+  state: "no_page",
+  date: "2026-08-09",
+  is_today: true,
+};
 const NOT_CONNECTED: TodoSnapshot = {
   state: "not_connected",
   missing: ["token", "database", "data_source"],

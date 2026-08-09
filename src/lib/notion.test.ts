@@ -3,14 +3,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   addTodo,
   createTodoPage,
+  createTodoRow,
   deleteNotionToken,
   editTodo,
   getNotionStatus,
   getTodoList,
+  openTodoPage,
   saveNotionToken,
   setNotionDatabase,
   testNotionConnection,
   toggleTodo,
+  type CreateRowOutcome,
   type TodoOutcome,
   type TodoSnapshot,
 } from "./notion";
@@ -89,6 +92,7 @@ describe("Todo 커맨드 래퍼", () => {
     page_id: "page-1",
     title: "[TODO]",
     items: [{ id: "b1", text: "가짜 항목", checked: false }],
+    is_today: true,
   };
   const OUTCOME: TodoOutcome = { snapshot: SNAPSHOT, notice: null };
 
@@ -149,5 +153,77 @@ describe("Todo 커맨드 래퍼", () => {
       text: "수정된 텍스트",
       pageTitle: "[TODO]",
     });
+  });
+
+  it("create_row_인자가_커맨드에_그대로_전달된다", async () => {
+    const CREATED: CreateRowOutcome = {
+      state: "created",
+      snapshot: SNAPSHOT,
+      notice: null,
+    };
+    const calls = captureIPC(CREATED);
+
+    // 전체 인자 케이스 — end·icon·performance 포함
+    const result = await createTodoRow({
+      title: "휴가",
+      start: "2026-08-10",
+      end: "2026-08-12",
+      icon: "🌴",
+      performance: "완료",
+    });
+
+    expect(calls[0].cmd).toBe("notion_todo_create_row");
+    expect(calls[0].args).toMatchObject({
+      title: "휴가",
+      start: "2026-08-10",
+      end: "2026-08-12",
+      icon: "🌴",
+      performance: "완료",
+    });
+    expect(result).toEqual(CREATED);
+
+    // 생략 케이스 — end·icon·performance 키 자체가 실리지 않는다
+    await createTodoRow({ title: "[TODO]", start: "2026-08-10" });
+
+    expect(calls[1].cmd).toBe("notion_todo_create_row");
+    expect(calls[1].args).toMatchObject({
+      title: "[TODO]",
+      start: "2026-08-10",
+    });
+    expect(calls[1].args).not.toHaveProperty("end");
+    expect(calls[1].args).not.toHaveProperty("icon");
+    expect(calls[1].args).not.toHaveProperty("performance");
+  });
+
+  it("open_page_인자가_커맨드에_그대로_전달된다", async () => {
+    const calls = captureIPC(OUTCOME);
+
+    const result = await openTodoPage("page-9", "휴가", "2026-08-10");
+
+    expect(calls[0].cmd).toBe("notion_todo_open_page");
+    expect(calls[0].args).toMatchObject({
+      pageId: "page-9",
+      pageTitle: "휴가",
+      date: "2026-08-10",
+    });
+    expect(result).toEqual(OUTCOME);
+  });
+
+  it("쓰기_래퍼가_날짜를_전달한다", async () => {
+    const calls = captureIPC(OUTCOME);
+
+    // date 전달 → args에 date 포함
+    await addTodo("page-1", "새 할 일", "[TODO]", "2026-08-10");
+    expect(calls[0].args).toMatchObject({ date: "2026-08-10" });
+
+    // 미전달 → undefined
+    await addTodo("page-1", "새 할 일", "[TODO]");
+    expect(calls[1].args).toMatchObject({ date: undefined });
+
+    await toggleTodo("page-1", "b1", true, "[TODO]", "2026-08-11");
+    expect(calls[2].args).toMatchObject({ date: "2026-08-11" });
+
+    await editTodo("page-1", "b1", "수정", "[TODO]", "2026-08-12");
+    expect(calls[3].args).toMatchObject({ date: "2026-08-12" });
   });
 });

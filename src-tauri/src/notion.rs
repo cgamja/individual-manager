@@ -20,6 +20,8 @@ pub enum ConnectError {
     SchemaMismatch(Vec<String>),
     /// 429 — 재시도 후에도 한도 초과
     RateLimited,
+    /// 409 — 다른 곳에서 같은 항목을 먼저 수정함 (쓰기 충돌)
+    Conflict,
     /// 네트워크 오류 (선택적 설명)
     Network(Option<String>),
     /// 응답 형태가 예상과 다름 (예: data source가 정확히 1개가 아님).
@@ -43,6 +45,9 @@ impl ConnectError {
             }
             ConnectError::RateLimited => {
                 "Notion 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요".to_string()
+            }
+            ConnectError::Conflict => {
+                "다른 곳에서 같은 항목이 수정됐습니다. 새로고침 후 다시 시도해 주세요".to_string()
             }
             ConnectError::Network(detail) => match detail {
                 Some(d) => format!("네트워크 오류가 발생했습니다 ({d})"),
@@ -151,10 +156,12 @@ pub fn error_from_code(status: u16, code: &str) -> ConnectError {
         "object_not_found" => ConnectError::NotFound,
         "validation_error" => ConnectError::InvalidId,
         "rate_limited" => ConnectError::RateLimited,
+        "conflict_error" => ConnectError::Conflict,
         // 미지의 코드는 status 기준으로 폴백한다
         _ => match status {
             401 => ConnectError::Unauthorized,
             404 => ConnectError::NotFound,
+            409 => ConnectError::Conflict,
             429 => ConnectError::RateLimited,
             400 => ConnectError::InvalidId,
             _ => ConnectError::Network(Some(format!("HTTP {status}"))),
@@ -264,18 +271,34 @@ impl NotionClient {
         })
     }
 
-    /// 공통 헤더로 GET을 보내고 JSON body를 돌려준다. 이후 마일스톤이 재사용한다.
+    /// 공통 헤더로 GET을 보내고 JSON body를 돌려준다.
+    async fn get_json(&self, path: &str, token: &str) -> Result<Value, ConnectError> {
+        self.request_json(reqwest::Method::GET, path, token, None)
+            .await
+    }
+
+    /// 공통 요청 경로 — GET/POST/PATCH를 하나의 재시도·오류 매핑으로 처리한다.
     /// 429는 `Retry-After`(없으면 지수 백오프)만큼 기다려 최대 `MAX_ATTEMPTS`회 재시도.
     /// 오류 경로 어디에도 토큰 값·URL 전문을 넣지 않는다.
-    async fn get_json(&self, path: &str, token: &str) -> Result<Value, ConnectError> {
+    async fn request_json(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        token: &str,
+        body: Option<&Value>,
+    ) -> Result<Value, ConnectError> {
         let url = format!("{}{}", self.base_url, path);
         let mut attempt = 0;
         loop {
-            let response = self
+            let mut request = self
                 .http
-                .get(&url)
+                .request(method.clone(), &url)
                 .header("Authorization", format!("Bearer {token}"))
-                .header("Notion-Version", NOTION_VERSION)
+                .header("Notion-Version", NOTION_VERSION);
+            if let Some(json) = body {
+                request = request.json(json);
+            }
+            let response = request
                 .send()
                 .await
                 .map_err(|e| {
@@ -617,7 +640,7 @@ mod http_tests {
 
     use super::*;
     use serde_json::json;
-    use wiremock::matchers::{header, method, path};
+    use wiremock::matchers::{body_json, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     // 픽스처 — 전부 가짜 값 (실제 토큰·워크스페이스 ID 아님)
@@ -884,6 +907,112 @@ mod http_tests {
             .await
             .unwrap_err();
         assert_eq!(err, ConnectError::Network(None));
+    }
+
+    #[tokio::test]
+    async fn POST_요청도_429면_Retry_After를_기다렸다가_재시도한다() {
+        let server = MockServer::start().await;
+        let 요청_body = json!({ "parent": { "data_source_id": 가짜_DS_ID } });
+        // 첫 요청만 429 (Retry-After: 0 → 실제 대기 없음) — 재시도에도 같은 body가 와야 한다
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .and(body_json(요청_body.clone()))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "0")
+                    .set_body_json(에러_body(429, "rate_limited")),
+            )
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .and(body_json(요청_body.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let result = client
+            .request_json(reqwest::Method::POST, "/v1/pages", 가짜_토큰, Some(&요청_body))
+            .await
+            .unwrap();
+        assert_eq!(result["object"], "page");
+    }
+
+    #[tokio::test]
+    async fn PATCH_요청의_에러_code가_ConnectError로_매핑된다() {
+        // conflict_error → Conflict (새 변형)
+        let server = MockServer::start().await;
+        let 페이지_경로 = format!("/v1/pages/{가짜_DS_ID_2}");
+        Mock::given(method("PATCH"))
+            .and(path(페이지_경로.as_str()))
+            .respond_with(ResponseTemplate::new(409).set_body_json(에러_body(409, "conflict_error")))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .request_json(
+                reqwest::Method::PATCH,
+                &페이지_경로,
+                가짜_토큰,
+                Some(&json!({ "properties": {} })),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::Conflict);
+        assert!(
+            err.message().contains("새로고침"),
+            "message = {}",
+            err.message()
+        );
+
+        // 기존 코드 매핑도 PATCH 경로에서 동일하게 동작한다 (unauthorized → Unauthorized)
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path(페이지_경로.as_str()))
+            .respond_with(ResponseTemplate::new(401).set_body_json(에러_body(401, "unauthorized")))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .request_json(
+                reqwest::Method::PATCH,
+                &페이지_경로,
+                가짜_토큰,
+                Some(&json!({ "properties": {} })),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::Unauthorized);
+    }
+
+    #[tokio::test]
+    async fn 상태_409는_body_code가_없어도_Conflict로_매핑된다() {
+        // body에 code 필드가 없음 → status 기준 폴백 (401/404/429 폴백과 동일한 규칙)
+        let server = MockServer::start().await;
+        let 페이지_경로 = format!("/v1/pages/{가짜_DS_ID_2}");
+        Mock::given(method("PATCH"))
+            .and(path(페이지_경로.as_str()))
+            .respond_with(ResponseTemplate::new(409).set_body_json(json!({})))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .request_json(
+                reqwest::Method::PATCH,
+                &페이지_경로,
+                가짜_토큰,
+                Some(&json!({ "properties": {} })),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::Conflict);
     }
 
     #[tokio::test]

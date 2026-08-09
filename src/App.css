@@ -407,7 +407,8 @@ button:active {
   white-space: nowrap;
 }
 
-.row-exists button {
+.row-exists button,
+.row-actions button {
   padding: 4px 10px;
   font-size: 12px;
   white-space: nowrap;
@@ -416,12 +417,6 @@ button:active {
 .row-actions {
   display: flex;
   justify-content: flex-end;
-}
-
-.row-actions button {
-  padding: 4px 10px;
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 @media (prefers-color-scheme: dark) {

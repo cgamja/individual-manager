@@ -81,6 +81,23 @@ function App() {
     setTodoSnapshot(next);
   }, []);
 
+  /** todo 작업 시작 부기 — 새 순번 발급, in-flight·busy 표시, 오류 초기화. */
+  const beginTodoTurn = useCallback((): number => {
+    const seq = ++todoSeqRef.current;
+    todoInFlightRef.current = true;
+    setTodoBusy(true);
+    setTodoError(null);
+    return seq;
+  }, []);
+
+  /** todo 작업 종료 부기 — 더 새로운 작업이 시작됐다면 busy 해제는 그 작업의 몫이다. */
+  const endTodoTurnIfCurrent = useCallback((seq: number) => {
+    if (seq === todoSeqRef.current) {
+      todoInFlightRef.current = false;
+      setTodoBusy(false);
+    }
+  }, []);
+
   /** 목록 재조회 — 스냅샷이 이미 있으면 목록을 유지한 채 busy만 건다 (R2). */
   const refreshTodos = useCallback(async () => {
     const seq = ++todoSeqRef.current;
@@ -234,10 +251,7 @@ function App() {
    */
   const runTodoCommand = useCallback(
     async (command: () => Promise<TodoOutcome>): Promise<boolean> => {
-      const seq = ++todoSeqRef.current;
-      todoInFlightRef.current = true;
-      setTodoBusy(true);
-      setTodoError(null);
+      const seq = beginTodoTurn();
       try {
         const outcome = await command();
         // 더 새로운 작업이 시작됐으면 낡은 결과를 버린다 — 입력은 유지시킨다
@@ -265,14 +279,10 @@ function App() {
         if (actual && seq === todoSeqRef.current) applyTodoSnapshot(actual);
         return false;
       } finally {
-        // 더 새로운 작업이 시작됐다면 busy 해제는 그 작업의 몫이다
-        if (seq === todoSeqRef.current) {
-          todoInFlightRef.current = false;
-          setTodoBusy(false);
-        }
+        endTodoTurnIfCurrent(seq);
       }
     },
-    [applyTodoSnapshot],
+    [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent],
   );
 
   const handleTodoRefresh = useCallback(() => {
@@ -312,10 +322,7 @@ function App() {
    */
   const handleTodoCreateRow = useCallback(
     async (params: CreateRowFormParams): Promise<CreateRowFormResult> => {
-      const seq = ++todoSeqRef.current;
-      todoInFlightRef.current = true;
-      setTodoBusy(true);
-      setTodoError(null);
+      const seq = beginTodoTurn();
       try {
         const created = await createTodoRow(params);
         // 더 새로운 작업이 시작됐으면 낡은 결과를 버린다 — 폼·입력은 유지시킨다
@@ -337,13 +344,10 @@ function App() {
         if (seq === todoSeqRef.current) setTodoError(errorMessage(err));
         return { state: "failed" };
       } finally {
-        if (seq === todoSeqRef.current) {
-          todoInFlightRef.current = false;
-          setTodoBusy(false);
-        }
+        endTodoTurnIfCurrent(seq);
       }
     },
-    [applyTodoSnapshot],
+    [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent],
   );
   /** exists의 기존 행 열기 — openTodoPage는 TodoOutcome을 돌려줘 공통 경로를 탄다. */
   const handleTodoOpenPage = useCallback(

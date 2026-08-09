@@ -725,15 +725,17 @@ fn lower_bound_date(date: &str) -> Option<String> {
     Some(lower.format("%Y-%m-%d").to_string())
 }
 
+/// 날짜 문자열의 앞 10자리(date-only) — 행 날짜에는 datetime이 섞일 수 있어
+/// 날짜 비교는 항상 이 값으로 한다 (`YYYY-MM-DD`는 사전순 == 시간순).
+pub(crate) fn date_only(s: &str) -> &str {
+    s.get(..10).unwrap_or(s)
+}
+
 /// 행의 날짜 범위가 조회일을 포함하는가 — `start <= date <= (end ?? start)`.
-/// 행에는 datetime이 섞일 수 있으므로 앞 10자리(date-only)로만 비교한다
-/// (`YYYY-MM-DD`는 사전순 == 시간순).
+/// 비교는 `date_only` 규칙을 따른다.
 fn covers_date(start: &str, end: Option<&str>, date: &str) -> bool {
-    fn day(s: &str) -> &str {
-        s.get(..10).unwrap_or(s)
-    }
-    let start_day = day(start);
-    let end_day = day(end.unwrap_or(start));
+    let start_day = date_only(start);
+    let end_day = date_only(end.unwrap_or(start));
     start_day <= date && date <= end_day
 }
 

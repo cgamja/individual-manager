@@ -19,6 +19,7 @@ export type CreateRowFormResult =
 const TODO_TITLE = "[TODO]";
 const TITLE_CHIPS = [TODO_TITLE, "휴일", "MT"];
 const PERFORMANCE_OPTIONS = ["완료", "일부", "미완", "기타"];
+const DEFAULT_PERFORMANCE = "기타";
 
 // tsconfig lib(ES2020)에는 Intl.Segmenter 타입이 없다 — 런타임(WKWebView·
 // jsdom 모두 지원)에는 존재하므로 필요한 형태만 로컬로 좁혀 쓴다
@@ -31,12 +32,12 @@ const GraphemeSegmenter = (
   }
 ).Segmenter;
 
+const graphemeSegmenter = new GraphemeSegmenter("ko", { granularity: "grapheme" });
+
 /** 그래프임(사용자 지각 문자) 개수 — 결합 이모지(👍🏽)도 1로 센다. */
 function graphemeCount(value: string): number {
   let count = 0;
-  for (const _ of new GraphemeSegmenter("ko", { granularity: "grapheme" }).segment(
-    value,
-  )) {
+  for (const _ of graphemeSegmenter.segment(value)) {
     count += 1;
   }
   return count;
@@ -84,7 +85,7 @@ export function TodoCard({
   const [rowStart, setRowStart] = useState("");
   const [rowRange, setRowRange] = useState(false);
   const [rowEnd, setRowEnd] = useState("");
-  const [rowPerf, setRowPerf] = useState("기타");
+  const [rowPerf, setRowPerf] = useState(DEFAULT_PERFORMANCE);
   const [existsInfo, setExistsInfo] = useState<{
     page_id: string;
     title: string;
@@ -138,7 +139,7 @@ export function TodoCard({
     setRowStart("");
     setRowRange(false);
     setRowEnd("");
-    setRowPerf("기타");
+    setRowPerf(DEFAULT_PERFORMANCE);
     setExistsInfo(null);
   };
 

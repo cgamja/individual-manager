@@ -8,8 +8,8 @@ use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 use crate::notion::{
-    determine_connection_state, parse_database_id, ConnectError, ConnectionState, NewPage,
-    NotionClient, PageIcon, RowInWindow, TodoItem, NOTION_API_BASE,
+    date_only, determine_connection_state, parse_database_id, ConnectError, ConnectionState,
+    NewPage, NotionClient, PageIcon, RowInWindow, TodoItem, NOTION_API_BASE,
 };
 
 /// Keychain service 이름 — 번들 ID(com.kangr.penguin) 기반.
@@ -577,13 +577,10 @@ pub enum CreateRowOutcome {
 }
 
 /// date-only 구간 겹침 — `[a_start, a_end??a_start] ∩ [b_start, b_end??b_start] ≠ ∅`.
-/// 행 날짜에는 datetime이 섞일 수 있어 앞 10자리로만 비교한다
-/// (notion.rs `covers_date`와 같은 규칙 — `YYYY-MM-DD`는 사전순 == 시간순).
+/// 비교는 notion.rs `date_only` 규칙을 그대로 쓴다.
 fn ranges_overlap(a_start: &str, a_end: Option<&str>, b_start: &str, b_end: Option<&str>) -> bool {
-    fn day(s: &str) -> &str {
-        s.get(..10).unwrap_or(s)
-    }
-    day(a_start) <= day(b_end.unwrap_or(b_start)) && day(b_start) <= day(a_end.unwrap_or(a_start))
+    date_only(a_start) <= date_only(b_end.unwrap_or(b_start))
+        && date_only(b_start) <= date_only(a_end.unwrap_or(a_start))
 }
 
 /// 새 기간과 겹치는 같은 제목 행을 찾는다 — end 창을 먼저 보고(새 기간 안쪽·
@@ -678,15 +675,21 @@ async fn create_row_outcome(
         )
         .await
         .map_err(|e| e.message())?;
-    // 생성 후 조회 실패는 Err 대신 빈 목록 + 안내 — page_id를 잃으면 재클릭이
-    // 행을 중복 생성한다 (create_page_outcome과 같은 정책). 스냅샷은 날짜 재쿼리
-    // 없이 새 page_id로 직접 조회한다 — 범위 행은 날짜 조회로 못 찾는다.
-    let (items, notice) = match client.fetch_todos(&access.token, &page_id).await {
-        Ok(items) => (items, None),
-        Err(_) => (
-            Vec::new(),
-            Some(TODO_CREATED_FETCH_FAILED_NOTICE.to_string()),
-        ),
+    // [TODO] 행만 생성 직후 children을 조회한다 — 특수 행은 children 없이
+    // 만들었으므로 빈 목록이 확정이다. 조회 실패는 Err 대신 빈 목록 + 안내 —
+    // page_id를 잃으면 재클릭이 행을 중복 생성한다 (create_page_outcome과 같은
+    // 정책). 스냅샷은 날짜 재쿼리 없이 새 page_id로 직접 조회한다 — 범위 행은
+    // 날짜 조회로 못 찾는다.
+    let (items, notice) = if is_todo_row {
+        match client.fetch_todos(&access.token, &page_id).await {
+            Ok(items) => (items, None),
+            Err(_) => (
+                Vec::new(),
+                Some(TODO_CREATED_FETCH_FAILED_NOTICE.to_string()),
+            ),
+        }
+    } else {
+        (Vec::new(), None)
     };
     Ok(CreateRowOutcome::Created {
         outcome: TodoOutcome {
@@ -784,6 +787,13 @@ pub async fn notion_todo_open_page(
     .await
 }
 
+/// 쓰기 커맨드 공통 — 스냅샷 날짜가 없으면 오늘로 본다. `(date, today)`를 돌려준다.
+fn resolve_write_date(date: Option<String>) -> (String, String) {
+    let today = today_local();
+    let date = date.unwrap_or_else(|| today.clone());
+    (date, today)
+}
+
 /// 페이지 본문 끝에 to_do를 추가하고 재조회 스냅샷을 돌려준다 (R4·R6).
 /// `page_title`은 프론트가 현재 스냅샷에서 넘긴다 — children 재조회는 페이지
 /// 제목을 주지 않고, 날짜 재쿼리는 KTD5가 금지한다.
@@ -801,8 +811,7 @@ pub async fn notion_todo_add(
         .map_err(|_| TODO_NOT_CONNECTED_ERROR.to_string())?;
     let client = NotionClient::new(NOTION_API_BASE);
     let write = client.append_todo(&access.token, &page_id, &text).await;
-    let today = today_local();
-    let date = date.unwrap_or_else(|| today.clone());
+    let (date, today) = resolve_write_date(date);
     finish_write(
         NOTION_API_BASE,
         &access,
@@ -832,8 +841,7 @@ pub async fn notion_todo_toggle(
     let write = client
         .set_todo_checked(&access.token, &block_id, checked)
         .await;
-    let today = today_local();
-    let date = date.unwrap_or_else(|| today.clone());
+    let (date, today) = resolve_write_date(date);
     finish_write(
         NOTION_API_BASE,
         &access,
@@ -861,8 +869,7 @@ pub async fn notion_todo_edit(
         .map_err(|_| TODO_NOT_CONNECTED_ERROR.to_string())?;
     let client = NotionClient::new(NOTION_API_BASE);
     let write = client.set_todo_text(&access.token, &block_id, &text).await;
-    let today = today_local();
-    let date = date.unwrap_or_else(|| today.clone());
+    let (date, today) = resolve_write_date(date);
     finish_write(
         NOTION_API_BASE,
         &access,
@@ -1832,7 +1839,13 @@ mod http_tests {
             .expect(1)
             .mount(&server)
             .await;
-        mount_children(&server, 가짜_특수_페이지_ID, vec![]).await;
+        // 특수 행은 children 없이 만들었으므로 생성 후 children 조회가 없어야 한다
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_특수_페이지_ID)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(vec![])))
+            .expect(0)
+            .mount(&server)
+            .await;
 
         let outcome = create_row_outcome(
             &server.uri(),

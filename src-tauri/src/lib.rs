@@ -1,4 +1,5 @@
 pub mod notion;
+pub mod notion_bridge;
 pub mod pomodoro;
 pub mod timer_bridge;
 
@@ -127,6 +128,11 @@ pub fn run() {
             timer_bridge::timer_get_state,
             timer_bridge::timer_get_config,
             timer_bridge::timer_set_config,
+            notion_bridge::notion_save_token,
+            notion_bridge::notion_delete_token,
+            notion_bridge::notion_set_database,
+            notion_bridge::notion_get_status,
+            notion_bridge::notion_test_connection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

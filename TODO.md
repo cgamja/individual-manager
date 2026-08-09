@@ -9,6 +9,7 @@
 
 ## 개발 환경
 - [x] 개발 워크플로우 정비: `CLAUDE.md`(상시 컨텍스트) + `develop` 스킬(플랜→PR 절차) (2026-08-09)
+- [x] `develop` 스킬 2~4단계에 compound-engineering 엔진 사용 의무화 (2026-08-09)
 
 ## M1 — 앱 골격 + 뽀모도로
 - [x] macOS 메뉴바 상주 앱 골격 (펭귄 아이콘 `penguin-icon.png`)

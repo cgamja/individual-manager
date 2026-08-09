@@ -587,6 +587,82 @@ describe("행 만들기 폼", () => {
     expect(screen.getByRole("textbox", { name: "아이콘" })).toHaveValue("");
   });
 
+  it("행_만들기_실패_시_입력이_유지되고_재조회가_실행된다", async () => {
+    const calls = mockAppIPC({
+      notion_todo_create_row: () => {
+        throw "행 생성에 실패했습니다";
+      },
+    });
+    render(<App />);
+    await screen.findByRole("checkbox", { name: "아침 운동" });
+
+    await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
+    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
+    const listCallsBefore = calls.filter((c) => c.cmd === "notion_todo_list").length;
+    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
+
+    await screen.findByText("행 생성에 실패했습니다");
+    // 타임아웃 뒤 실제로 생성됐다면 재조회가 그 행/exists 상태를 드러낸다 (R10)
+    await waitFor(() =>
+      expect(calls.filter((c) => c.cmd === "notion_todo_list").length).toBe(
+        listCallsBefore + 1,
+      ),
+    );
+    // 폼 입력값은 유지된다 — 재시도할 수 있어야 한다
+    expect(screen.getByRole("textbox", { name: "행 제목" })).toHaveValue("휴일");
+  });
+
+  it("생성_후_스냅샷_없음_응답은_기존_목록을_유지한다", async () => {
+    // snapshot: null = 생성은 됐지만 재조회만 실패 — 기존 목록 유지 + 안내 배너
+    const 안내 = "행은 생성됐지만 목록 조회에 실패했습니다. 새로고침해 주세요.";
+    mockAppIPC({
+      notion_todo_create_row: () => ({
+        state: "created",
+        snapshot: null,
+        notice: 안내,
+      }),
+    });
+    render(<App />);
+    await screen.findByRole("checkbox", { name: "아침 운동" });
+
+    await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
+    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
+    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
+
+    await screen.findByText(안내);
+    // 목록은 마지막 스냅샷 그대로 유지된다 (비워지지 않음)
+    expect(screen.getByRole("checkbox", { name: "아침 운동" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "이메일 정리" })).toBeInTheDocument();
+    // 생성 자체는 성공(created) — 폼은 접혀 중복 재시도를 막는다
+    expect(
+      screen.queryByRole("textbox", { name: "행 제목" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("공백_포함_제목은_트림되어_전송된다", async () => {
+    const { props } = await renderOpenForm();
+    const title = screen.getByRole("textbox", { name: "행 제목" });
+    await userEvent.type(title, "휴일 ");
+
+    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
+    await waitFor(() =>
+      expect(props.onCreateRow).toHaveBeenCalledWith({
+        title: "휴일",
+        start: "2026-08-09",
+        performance: "기타",
+      }),
+    );
+
+    // ' [TODO]'도 트림 기준으로 [TODO]로 분류 — 아이콘·수행도 필드가 숨겨진다.
+    // created로 폼이 접혔으니 다시 연다
+    await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
+    const title2 = screen.getByRole("textbox", { name: "행 제목" });
+    await userEvent.type(title2, " [[TODO]"); // "[["는 userEvent의 리터럴 "[" 이스케이프
+    expect(title2).toHaveValue(" [TODO]");
+    expect(screen.queryByRole("textbox", { name: "아이콘" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "수행도" })).not.toBeInTheDocument();
+  });
+
   it("exists_응답이_기존_행_열기_버튼을_보여준다", async () => {
     const onCreateRow = vi.fn(
       async (): Promise<CreateRowFormResult> => ({

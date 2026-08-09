@@ -389,23 +389,34 @@ impl NotionClient {
                 Some(&body),
             )
             .await?;
-        let results = response
-            .get("results")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| ConnectError::UnexpectedShape("results가 배열이 아님".to_string()))?;
-        Ok(results
-            .iter()
-            .filter_map(|page| {
-                let page_id = page.get("id")?.as_str()?.to_string();
-                let (start, end) = row_date_range(page)?;
-                Some(RowInWindow {
-                    page_id,
-                    title: page_title(page),
-                    start: start.to_string(),
-                    end: end.map(str::to_string),
-                })
-            })
-            .collect())
+        rows_from_query_response(&response)
+    }
+
+    /// 같은 제목 행 전체를 날짜 내림차순으로 돌려준다 — 새 행 생성 전 중복 검사(U4)용.
+    /// 날짜 창 조회(`find_rows_in_window`)는 31일 하한이 있어 훨씬 전에 시작한 범위
+    /// 행을 놓친다 — 제목 필터는 하한 없이 같은 제목 행을 전부 받는다.
+    /// 제목 필터의 property는 표시 이름이 아니라 title 속성의 고정 id "title"을 쓴다
+    /// (`latest_todo_icon`과 같은 이유 — title 키를 하드코딩하지 않는 모듈 규칙).
+    pub async fn find_rows_by_title(
+        &self,
+        token: &str,
+        data_source_id: &str,
+        title: &str,
+    ) -> Result<Vec<RowInWindow>, ConnectError> {
+        let body = serde_json::json!({
+            "filter": { "property": "title", "title": { "equals": title } },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
+        });
+        let response = self
+            .request_json(
+                reqwest::Method::POST,
+                &format!("/v1/data_sources/{data_source_id}/query"),
+                token,
+                Some(&body),
+            )
+            .await?;
+        rows_from_query_response(&response)
     }
 
     /// 임의 제목·날짜 범위·수행도·아이콘·골격 여부로 페이지를 생성한다.
@@ -737,6 +748,28 @@ fn covers_date(start: &str, end: Option<&str>, date: &str) -> bool {
     let start_day = date_only(start);
     let end_day = date_only(end.unwrap_or(start));
     start_day <= date && date <= end_day
+}
+
+/// 쿼리 응답의 `results` 배열 → `RowInWindow` 목록 (창·제목 조회 공용 추출층).
+/// 형태가 어긋난 행은 오류 대신 조용히 제외한다 (`todo_from_block`과 같은 정책).
+fn rows_from_query_response(response: &Value) -> Result<Vec<RowInWindow>, ConnectError> {
+    let results = response
+        .get("results")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| ConnectError::UnexpectedShape("results가 배열이 아님".to_string()))?;
+    Ok(results
+        .iter()
+        .filter_map(|page| {
+            let page_id = page.get("id")?.as_str()?.to_string();
+            let (start, end) = row_date_range(page)?;
+            Some(RowInWindow {
+                page_id,
+                title: page_title(page),
+                start: start.to_string(),
+                end: end.map(str::to_string),
+            })
+        })
+        .collect())
 }
 
 /// 행 `properties.날짜.date`에서 `(start, end)`를 꺼낸다. 형태가 다르면 None.
@@ -1848,6 +1881,53 @@ mod http_tests {
             .await
             .unwrap();
         assert_eq!(found, None);
+    }
+
+    #[tokio::test]
+    async fn 제목_필터_조회가_고정_id_body로_같은_제목_행_전체를_돌려준다() {
+        let server = MockServer::start().await;
+        // 제목 필터의 property는 표시 이름("이름")이 아니라 고정 id "title"을 쓴다.
+        // 날짜 창 조회(31일 하한)와 달리 하한이 없어 오래전에 시작한 행도 받는다.
+        // body_json은 정확 일치 — 필터·정렬·page_size가 다르면 매치가 실패한다.
+        let 제목_쿼리_body = json!({
+            "filter": { "property": "title", "title": { "equals": "휴가" } },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
+        });
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(header("Notion-Version", NOTION_VERSION))
+            .and(body_json(제목_쿼리_body))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                기간_페이지_행("row-old", "휴가", "2026-06-25", Some("2026-09-20")),
+                기간_페이지_행("row-single", "휴가", "2026-05-01", None),
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let rows = client
+            .find_rows_by_title(가짜_토큰, 가짜_DS_ID, "휴가")
+            .await
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                RowInWindow {
+                    page_id: "row-old".to_string(),
+                    title: "휴가".to_string(),
+                    start: "2026-06-25".to_string(),
+                    end: Some("2026-09-20".to_string()),
+                },
+                RowInWindow {
+                    page_id: "row-single".to_string(),
+                    title: "휴가".to_string(),
+                    start: "2026-05-01".to_string(),
+                    end: None,
+                },
+            ]
+        );
     }
 
     #[tokio::test]

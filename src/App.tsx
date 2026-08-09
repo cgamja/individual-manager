@@ -244,6 +244,26 @@ function App() {
   }, [runNotionCommand]);
 
   /**
+   * 쓰기 실패 후 1회 재조회 — 타임아웃 뒤 실제로 반영됐다면 재조회가 그 결과를
+   * 드러낸다. 날짜 전환 중(loaded && !is_today)이면 그 날짜(openTodoPage)로
+   * 재조회해 오늘로 튕기지 않게 하고, 오늘이면 getTodoList. 결과는 순번이
+   * 여전히 최신일 때만 반영하고 재조회 자체의 실패는 삼킨다.
+   */
+  const refetchAfterTodoFailure = useCallback(
+    async (seq: number) => {
+      const current = todoSnapshotRef.current;
+      const actual =
+        current?.state === "loaded" && !current.is_today
+          ? await openTodoPage(current.page_id, current.title, current.date)
+              .then((o) => o.snapshot)
+              .catch(() => null)
+          : await getTodoList().catch(() => null);
+      if (actual && seq === todoSeqRef.current) applyTodoSnapshot(actual);
+    },
+    [applyTodoSnapshot],
+  );
+
+  /**
    * todo 쓰기 커맨드 공통 실행 (runNotionCommand 전례) — busy 플래그 관리,
    * 성공 시 재조회 스냅샷 반영. notice(블록 소실·충돌)는 쓰기가 반영되지 않은
    * 것이므로 배너로 알리고 false를 돌려줘 입력을 유지시킨다 (R8).
@@ -266,23 +286,14 @@ function App() {
       } catch (err) {
         if (seq !== todoSeqRef.current) return false;
         setTodoError(errorMessage(err));
-        // 실패 시에도 목록을 1회 재조회한다 — 입력값은 카드가 유지한다 (R8).
-        // 날짜 전환 중(loaded && !is_today)이면 그 날짜(openTodoPage)로 재조회해
-        // 오늘로 튕기지 않게 한다 — 오늘이면 기존대로 getTodoList
-        const current = todoSnapshotRef.current;
-        const actual =
-          current?.state === "loaded" && !current.is_today
-            ? await openTodoPage(current.page_id, current.title, current.date)
-                .then((o) => o.snapshot)
-                .catch(() => null)
-            : await getTodoList().catch(() => null);
-        if (actual && seq === todoSeqRef.current) applyTodoSnapshot(actual);
+        // 실패 시에도 목록을 1회 재조회한다 — 입력값은 카드가 유지한다 (R8)
+        await refetchAfterTodoFailure(seq);
         return false;
       } finally {
         endTodoTurnIfCurrent(seq);
       }
     },
-    [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent],
+    [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent, refetchAfterTodoFailure],
   );
 
   const handleTodoRefresh = useCallback(() => {
@@ -340,14 +351,18 @@ function App() {
         if (created.snapshot !== null) applyTodoSnapshot(created.snapshot);
         return { state: "created" };
       } catch (err) {
-        // 실패 — 배너만 띄우고 폼 입력은 카드가 유지한다 (R10)
-        if (seq === todoSeqRef.current) setTodoError(errorMessage(err));
+        // 실패 — 배너를 띄우고 폼 입력은 카드가 유지한다 (R10).
+        // runTodoCommand와 동일하게 1회 재조회한다 — 타임아웃 뒤 실제로
+        // 생성됐다면 재조회가 그 행/exists 상태를 드러낸다
+        if (seq !== todoSeqRef.current) return { state: "failed" };
+        setTodoError(errorMessage(err));
+        await refetchAfterTodoFailure(seq);
         return { state: "failed" };
       } finally {
         endTodoTurnIfCurrent(seq);
       }
     },
-    [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent],
+    [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent, refetchAfterTodoFailure],
   );
   /** exists의 기존 행 열기 — openTodoPage는 TodoOutcome을 돌려줘 공통 경로를 탄다. */
   const handleTodoOpenPage = useCallback(

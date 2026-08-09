@@ -154,18 +154,20 @@ export function TodoCard({
     setFormOpen(true);
   };
 
-  // 분류 기준은 "현재 제목 입력값" — 클릭한 칩이 아니다
-  const isTodoTitle = rowTitle === TODO_TITLE;
+  // 분류·전송 모두 트림된 제목 기준 — 추가·편집 핸들러의 trim 전례와 일치
+  const trimmedTitle = rowTitle.trim();
+  // 분류 기준은 "현재 제목 입력값"(트림 후) — 클릭한 칩이 아니다
+  const isTodoTitle = trimmedTitle === TODO_TITLE;
   const iconInvalid =
     !isTodoTitle && rowIcon !== "" && graphemeCount(rowIcon) !== 1;
   const dateInvalid =
     !isTodoTitle && rowRange && rowEnd !== "" && rowEnd < rowStart;
   const canSubmit =
-    rowTitle.trim() !== "" && rowStart !== "" && !iconInvalid && !dateInvalid;
+    trimmedTitle !== "" && rowStart !== "" && !iconInvalid && !dateInvalid;
 
   const submitRow = async () => {
     if (isBusy || !canSubmit) return;
-    const params: CreateRowFormParams = { title: rowTitle, start: rowStart };
+    const params: CreateRowFormParams = { title: trimmedTitle, start: rowStart };
     if (!isTodoTitle) {
       // [TODO]에는 end·icon·performance를 절대 실지 않는다 (아이콘은 백엔드가 복사)
       if (rowRange && rowEnd !== "") params.end = rowEnd;

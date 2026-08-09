@@ -567,8 +567,8 @@ pub enum CreateRowOutcome {
         #[serde(flatten)]
         outcome: TodoOutcome,
     },
-    /// 같은 제목 행이 요청 기간과 겹쳐 생성하지 않았다 — 겹친 행과 판정 기준
-    /// 날짜(요청 start)를 실어 프론트가 그 행을 곧장 열 수 있게 한다.
+    /// 같은 제목 행이 요청 기간과 겹쳐 생성하지 않았다 — 겹친 행과 그 행
+    /// 자신의 시작일을 실어 프론트가 그 행을 실제 날짜로 곧장 열 수 있게 한다.
     Exists {
         page_id: String,
         title: String,
@@ -583,11 +583,10 @@ fn ranges_overlap(a_start: &str, a_end: Option<&str>, b_start: &str, b_end: Opti
         && date_only(b_start) <= date_only(a_end.unwrap_or(a_start))
 }
 
-/// 새 기간과 겹치는 같은 제목 행을 찾는다 — end 창을 먼저 보고(새 기간 안쪽·
-/// 끝점의 기존 행), 범위 생성이면 start 창까지 본다(시작점을 훨씬 전에 시작한
-/// 행). 커버 판정 없는 창 원본(`find_rows_in_window`)에 구간 겹침을 직접
-/// 적용하므로, 끝점 커버 조회가 놓치는 "기간 안쪽 단일 행"도 잡는다.
-/// 창 하한(31일)은 기존 날짜 조회 경로와 같은 한계다.
+/// 새 기간과 겹치는 같은 제목 행을 찾는다 — 제목 필터 쿼리 한 번
+/// (`find_rows_by_title`, 날짜 하한 없음)으로 같은 제목 행 전체를 받아
+/// 구간 겹침을 클라이언트에서 판정한다. 날짜 창 조회(31일 하한)는 훨씬 전에
+/// 시작한 범위 행(예: 45일 전 시작한 휴가)을 조용히 놓쳐 중복 생성을 허용했다.
 async fn overlapping_row(
     client: &NotionClient,
     access: &TodoAccess,
@@ -595,26 +594,12 @@ async fn overlapping_row(
     start: &str,
     end: &str,
 ) -> Result<Option<RowInWindow>, ConnectError> {
-    fn find(rows: Vec<RowInWindow>, title: &str, start: &str, end: &str) -> Option<RowInWindow> {
-        rows.into_iter().find(|row| {
-            row.title == title && ranges_overlap(&row.start, row.end.as_deref(), start, Some(end))
-        })
-    }
     let rows = client
-        .find_rows_in_window(&access.token, &access.data_source_id, end)
+        .find_rows_by_title(&access.token, &access.data_source_id, title)
         .await?;
-    if let Some(row) = find(rows, title, start, end) {
-        return Ok(Some(row));
-    }
-    if start != end {
-        let rows = client
-            .find_rows_in_window(&access.token, &access.data_source_id, start)
-            .await?;
-        if let Some(row) = find(rows, title, start, end) {
-            return Ok(Some(row));
-        }
-    }
-    Ok(None)
+    Ok(rows
+        .into_iter()
+        .find(|row| ranges_overlap(&row.start, row.end.as_deref(), start, Some(end))))
 }
 
 /// 행 생성의 코어 (`create_page_outcome` 전례 — AppHandle 무의존, today 주입).
@@ -641,8 +626,10 @@ async fn create_row_outcome(
     {
         return Ok(CreateRowOutcome::Exists {
             page_id: row.page_id,
+            // 겹친 행 자신의 시작일 (date-only) — 요청 start를 실으면 프론트가
+            // 그 행과 무관한 날짜로 열게 된다
+            date: date_only(&row.start).to_string(),
             title: row.title,
-            date: params.start.clone(),
         });
     }
 
@@ -1542,6 +1529,16 @@ mod http_tests {
         })
     }
 
+    /// 겹침 검사(제목 필터, 하한 없음) 쿼리 body — 아이콘 조회와 filter 형태는 같지만
+    /// page_size(100 vs 1)로 구분된다. body 명세는 notion.rs U4 테스트가 소유한다.
+    fn 제목_쿼리_body(제목: &str) -> serde_json::Value {
+        json!({
+            "filter": { "property": "title", "title": { "equals": 제목 } },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
+        })
+    }
+
     /// data_source_응답()의 title 키("이름") 기준 생성 body — body_json 정확 일치라
     /// icon이 None이면 icon 키 부재까지 검증된다.
     fn 생성_body(icon: Option<serde_json::Value>) -> serde_json::Value {
@@ -1703,10 +1700,10 @@ mod http_tests {
     #[tokio::test]
     async fn 같은_날짜에_TODO_행이_있으면_생성_없이_exists를_돌려준다() {
         let server = MockServer::start().await;
-        // 겹침 검사 창 조회가 같은 날짜의 [TODO] 행을 찾는다
+        // 겹침 검사(제목 필터 조회)가 같은 날짜의 [TODO] 행을 찾는다
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
-            .and(body_json(날짜_쿼리_body()))
+            .and(body_json(제목_쿼리_body("[TODO]")))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_json(쿼리_응답(vec![페이지_행(가짜_페이지_ID, "[TODO]")])),
@@ -1742,15 +1739,14 @@ mod http_tests {
 
     #[tokio::test]
     async fn 휴일_행만_있는_날의_TODO_생성은_정상_생성된다() {
-        // AE4 — 같은 날짜의 특수 행은 [TODO] 생성을 막지 않는다
+        // AE4 — 같은 날짜의 특수 행은 [TODO] 생성을 막지 않는다:
+        // 겹침 검사는 제목 필터 조회라 [TODO] 결과가 비어 있으면 생성이 진행된다
+        // (같은 날짜의 휴일 행은 서버 필터가 걸러낸다)
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
-            .and(body_json(날짜_쿼리_body()))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(쿼리_응답(vec![페이지_행(가짜_특수_페이지_ID, "휴일")])),
-            )
+            .and(body_json(제목_쿼리_body("[TODO]")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
             .expect(1)
             .mount(&server)
             .await;
@@ -1808,17 +1804,10 @@ mod http_tests {
     async fn 특수_행_생성_후_그_날짜_스냅샷을_돌려준다() {
         // AE1 백엔드 — 범위(8/12~8/14) 특수 행, 수행도 기본 "기타", 골격·아이콘 없음
         let server = MockServer::start().await;
-        // 겹침 검사: 범위 생성은 end 창과 start 창 두 번 조회한다
+        // 겹침 검사: 범위 생성도 제목 필터 조회 한 번이다
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
-            .and(body_json(날짜_쿼리_body_창("2026-07-14", "2026-08-14")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path(쿼리_경로()))
-            .and(body_json(날짜_쿼리_body_창("2026-07-12", "2026-08-12")))
+            .and(body_json(제목_쿼리_body("휴일")))
             .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
             .expect(1)
             .mount(&server)
@@ -1877,10 +1866,10 @@ mod http_tests {
     async fn 범위_생성은_기간과_겹치는_같은_제목_행에_차단된다() {
         // 기존 휴일 8/13 단일 행 — 새 휴일 8/12~8/14의 기간 안쪽이라 차단돼야 한다
         let server = MockServer::start().await;
-        // end(8/14) 창 조회가 8/13 행을 돌려준다 → 겹침 → start 창 조회 없이 차단
+        // 제목 필터 조회가 8/13 행을 돌려준다 → 기간 안쪽이라 겹침 → 차단
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
-            .and(body_json(날짜_쿼리_body_창("2026-07-14", "2026-08-14")))
+            .and(body_json(제목_쿼리_body("휴일")))
             .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
                 범위_페이지_행(가짜_특수_페이지_ID, "휴일", "2026-08-13", None),
             ])))
@@ -1907,7 +1896,50 @@ mod http_tests {
             CreateRowOutcome::Exists {
                 page_id: 가짜_특수_페이지_ID.to_string(),
                 title: "휴일".to_string(),
-                date: "2026-08-12".to_string(),
+                // 겹친 행 자신의 시작일(8/13) — 요청 start(8/12)가 아니다
+                date: "2026-08-13".to_string(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn 같은_제목_행이_31일_이전에_시작해도_겹침이_검출된다() {
+        // 기존 휴가 6/25~9/20 — 요청(9/15)의 31일 창(8/15~) 훨씬 밖에서 시작한 범위 행.
+        // 제목 필터 조회는 날짜 하한이 없어 이 행을 받고, 겹침 판정이 생성을 차단한다.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(제목_쿼리_body("휴가")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                범위_페이지_행(가짜_특수_페이지_ID, "휴가", "2026-06-25", Some("2026-09-20")),
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // 생성 요청은 한 번도 오면 안 된다 — 중복 행 방지가 이 테스트의 핵심
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let outcome = create_row_outcome(
+            &server.uri(),
+            &가짜_access(),
+            &새_행("휴가", "2026-09-15", None),
+            가짜_날짜,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            outcome,
+            CreateRowOutcome::Exists {
+                page_id: 가짜_특수_페이지_ID.to_string(),
+                title: "휴가".to_string(),
+                // 요청 start(9/15)가 아니라 겹친 행 자신의 시작일 — 프론트가 그 행의
+                // 실제 날짜로 곧장 열 수 있어야 한다
+                date: "2026-06-25".to_string(),
             }
         );
     }
@@ -1916,9 +1948,10 @@ mod http_tests {
     async fn TODO_생성은_골격과_복사_아이콘을_포함한다() {
         // AE2 백엔드 — create_row 경로의 [TODO] 생성도 골격 body + 최신 아이콘 복사
         let server = MockServer::start().await;
+        // 겹침 검사(제목 필터, page_size 100)는 빈 결과 — 생성이 진행된다
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
-            .and(body_json(날짜_쿼리_body()))
+            .and(body_json(제목_쿼리_body("[TODO]")))
             .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
             .expect(1)
             .mount(&server)
@@ -1991,6 +2024,184 @@ mod http_tests {
         .await
         .unwrap_err();
         assert_eq!(err, TODO_ROW_RANGE_ERROR);
+    }
+
+    // ------------------------------------------------------------------
+    // U4 — 생성·열기 체인의 오류 경로 (계약 고정)
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn 겹침_검사_쿼리_실패는_생성_없이_오류를_돌려준다() {
+        // 겹침 검사(제목 필터 조회) 자체가 실패 — 아직 아무것도 만들지 않았으므로
+        // Err가 안전하다 (재시도해도 중복이 생기지 않는다)
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_json(에러_body(500, "internal_server_error")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let err = create_row_outcome(
+            &server.uri(),
+            &가짜_access(),
+            &새_행("휴일", 가짜_날짜, None),
+            가짜_날짜,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, ConnectError::Network(Some("HTTP 500".to_string())).message());
+    }
+
+    #[tokio::test]
+    async fn create_row의_생성_POST_실패는_오류로_전파된다() {
+        // 겹침 검사는 통과(빈 결과)했지만 생성 POST가 500 — Exists도 Created도 아닌
+        // 순수 오류로 전파된다 (프론트가 실패를 알고 재시도할 수 있어야 한다)
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(제목_쿼리_body("휴일")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // create_page의 스키마 조회는 성공한다 — 실패 지점은 생성 POST 하나다
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/data_sources/{가짜_DS_ID}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(data_source_응답()))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_json(에러_body(500, "internal_server_error")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let err = create_row_outcome(
+            &server.uri(),
+            &가짜_access(),
+            &새_행("휴일", 가짜_날짜, None),
+            가짜_날짜,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, ConnectError::Network(Some("HTTP 500".to_string())).message());
+    }
+
+    #[tokio::test]
+    async fn TODO_행_생성_후_조회_실패는_page_id_보존_안내를_돌려준다() {
+        // 생성은 성공했으므로 Err가 아니다 — page_id를 잃으면 재클릭이 행을 중복
+        // 생성한다. 골격 페이지에는 to_do가 없으므로 빈 목록이 정확하다.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(제목_쿼리_body("[TODO]")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // 아이콘 조회 — 이 테스트의 관심사가 아니므로 빈 결과(아이콘 없음)로 응답
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(아이콘_쿼리_body()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/data_sources/{가짜_DS_ID}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(data_source_응답()))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "page", "id": 가짜_새_페이지_ID })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        // 생성 직후 children 조회는 실패한다
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_새_페이지_ID)))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_json(에러_body(500, "internal_server_error")),
+            )
+            .mount(&server)
+            .await;
+
+        let outcome = create_row_outcome(
+            &server.uri(),
+            &가짜_access(),
+            &새_행("[TODO]", 가짜_날짜, None),
+            가짜_날짜,
+        )
+        .await
+        .unwrap();
+        match outcome {
+            CreateRowOutcome::Created { outcome } => {
+                assert_eq!(
+                    outcome.notice,
+                    Some(TODO_CREATED_FETCH_FAILED_NOTICE.to_string())
+                );
+                assert_eq!(
+                    outcome.snapshot,
+                    Some(TodoSnapshot::Loaded {
+                        date: 가짜_날짜.to_string(),
+                        page_id: 가짜_새_페이지_ID.to_string(),
+                        title: "[TODO]".to_string(),
+                        items: vec![],
+                        is_today: true,
+                    })
+                );
+            }
+            other => panic!("Created가 아님: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn open_page_폴백_조회_실패는_오류로_전파된다() {
+        // 행이 사라진 404 → 날짜 조회 폴백까지 실패 — 스냅샷 없이 오류로 끝난다
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(
+                ResponseTemplate::new(404).set_body_json(에러_body(404, "object_not_found")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_json(에러_body(500, "internal_server_error")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let err = open_page_outcome(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "휴일",
+            가짜_날짜,
+            가짜_날짜,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, ConnectError::Network(Some("HTTP 500".to_string())).message());
     }
 
     #[tokio::test]

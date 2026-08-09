@@ -111,16 +111,23 @@ function App() {
   const runNotionCommand = useCallback(
     async (command: () => Promise<ConnectionState>): Promise<ConnectionState> => {
       setNotionVerifying(true);
+      // 이전 오류 배너는 새 시도 시작 시 지운다 — "확인 중..."과 겹쳐 보이지 않게
+      setNotionError(null);
       try {
         const next = await command();
         setNotionStatus(next);
-        setNotionError(null);
         return next;
       } catch (err) {
         // 커맨드 reject 시 실제 상태를 재조회해 파생 UI(저장됨 배지 등)가
         // 어긋나지 않게 하고, 오류 메시지는 별도 배너로 알린다.
         // 카드에는 failed를 돌려줘 입력값 유지(실패 시 비우지 않음)를 지킨다.
-        const message = typeof err === "string" ? err : String(err);
+        // IPC 계층은 Error 객체로 reject할 수 있어 방어적으로 추출한다.
+        const message =
+          err instanceof Error
+            ? err.message
+            : typeof err === "string"
+              ? err
+              : String(err);
         const failed: ConnectionState = { state: "failed", message };
         const actual = await getNotionStatus().catch(() => null);
         setNotionStatus(actual ?? failed);

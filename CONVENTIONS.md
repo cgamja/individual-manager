@@ -36,4 +36,5 @@
 
 ### 시크릿 관리
 - API 토큰·OAuth 자격증명은 코드·문서·커밋에 절대 포함하지 않는다
-- 토큰은 macOS Keychain(또는 `.gitignore`된 로컬 설정 파일)에만 보관한다
+- 토큰은 macOS Keychain에만 보관한다 (Rust `keyring` crate, PRD Q2 확정). 로컬 설정 파일에 쓰지 않는다
+- Keychain 접근은 Rust에서만 한다. 토큰 값을 프론트로 넘기거나 로그·테스트 픽스처에 남기지 않는다

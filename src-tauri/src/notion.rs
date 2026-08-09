@@ -224,6 +224,22 @@ pub enum PageIcon {
 /// 복사할 수 없는 아이콘(file·custom_emoji)의 폴백 이모지.
 pub const DEFAULT_PAGE_ICON: &str = "📝";
 
+/// 새 페이지 생성 입력 — 하루 골격(`[TODO]`)과 특수 행(휴일·MT 등)을 하나의
+/// 생성 경로로 다루기 위한 범용 구조체.
+pub struct NewPage<'a> {
+    pub title: &'a str,
+    /// `날짜` 시작 (date-only `YYYY-MM-DD`)
+    pub start: &'a str,
+    /// `날짜` 끝 — None이면 body에 end 키를 넣지 않는다 (null 아님)
+    pub end: Option<&'a str>,
+    /// 페이지 아이콘 — None이면 icon 키 생략
+    pub icon: Option<&'a PageIcon>,
+    /// `수행도` select 값 — None이면 수행도 키 생략
+    pub performance: Option<&'a str>,
+    /// true면 공부/기타 heading_3 골격 children을 싣는다
+    pub skeleton: bool,
+}
+
 /// base URL 주입형 Notion HTTP 클라이언트.
 /// 토큰은 요청 헤더로만 쓰고 어떤 로그·에러 메시지에도 남기지 않는다.
 pub struct NotionClient {
@@ -300,7 +316,7 @@ impl NotionClient {
     }
 
     /// 주어진 날짜(로컬 `YYYY-MM-DD`, 브릿지가 주입)의 행을 data source에서 찾는다.
-    /// date-only `equals` 필터만 쓴다 — datetime을 섞으면 타임존 드리프트가 생긴다(KTD3).
+    /// 범위 인식 조회(`find_rows_covering_date`) 위의 얇은 래퍼.
     /// 반환: `Some((page_id, 제목))` 또는 행 없음 `None`. 복수 행이면 `[TODO]` 제목 우선.
     pub async fn find_page_by_date(
         &self,
@@ -308,9 +324,35 @@ impl NotionClient {
         data_source_id: &str,
         date: &str,
     ) -> Result<Option<(String, String)>, ConnectError> {
+        let rows = self
+            .find_rows_covering_date(token, data_source_id, date)
+            .await?;
+        Ok(pick_day_page(&rows))
+    }
+
+    /// 주어진 날짜를 기간에 포함하는 행들을 조회 순서대로 돌려준다 — `(page_id, 제목)`.
+    /// Notion 날짜 필터의 범위 행(start+end) 평가는 문서화되지 않았고 통설은
+    /// 시작일 비교라 equals는 기간 중간 날짜를 못 잡는다(KTD1) — 서버에는
+    /// 하한(31일 전)~조회일 창으로 넓게 묻고, 클라이언트에서
+    /// `start <= date <= (end ?? start)`로 판정한다. 필터는 date-only만 쓴다 —
+    /// datetime을 섞으면 타임존 드리프트가 생긴다(KTD3).
+    pub async fn find_rows_covering_date(
+        &self,
+        token: &str,
+        data_source_id: &str,
+        date: &str,
+    ) -> Result<Vec<(String, String)>, ConnectError> {
+        let lower = lower_bound_date(date).ok_or_else(|| {
+            // 날짜는 브릿지가 만든 값 — 원문 인용 없이 형식만 알린다 (모듈 규칙)
+            ConnectError::UnexpectedShape("조회 날짜 형식이 YYYY-MM-DD가 아님".to_string())
+        })?;
         let body = serde_json::json!({
-            "filter": { "property": "날짜", "date": { "equals": date } },
-            "page_size": 5
+            "filter": { "and": [
+                { "property": "날짜", "date": { "on_or_after": lower } },
+                { "property": "날짜", "date": { "on_or_before": date } }
+            ] },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
         });
         let response = self
             .request_json(
@@ -324,7 +366,63 @@ impl NotionClient {
             .get("results")
             .and_then(|v| v.as_array())
             .ok_or_else(|| ConnectError::UnexpectedShape("results가 배열이 아님".to_string()))?;
-        Ok(pick_day_page(results))
+        Ok(results
+            .iter()
+            .filter_map(|page| {
+                let id = page.get("id")?.as_str()?.to_string();
+                let (start, end) = row_date_range(page)?;
+                covers_date(start, end, date).then(|| (id, page_title(page)))
+            })
+            .collect())
+    }
+
+    /// 임의 제목·날짜 범위·수행도·아이콘·골격 여부로 페이지를 생성한다.
+    /// end·수행도·icon·children은 값이 없으면 키 자체를 넣지 않는다 (null 아님).
+    /// title 속성 키는 DB마다 다르므로 스키마를 먼저 조회해 알아낸다.
+    /// 반환: 생성된 페이지 ID.
+    pub async fn create_page(
+        &self,
+        token: &str,
+        data_source_id: &str,
+        page: &NewPage<'_>,
+    ) -> Result<String, ConnectError> {
+        let data_source = self
+            .get_json(&format!("/v1/data_sources/{data_source_id}"), token)
+            .await?;
+        let properties = data_source
+            .get("properties")
+            .ok_or_else(|| ConnectError::UnexpectedShape("properties 없음".to_string()))?;
+        let title_key = title_property_key(properties)
+            .ok_or_else(|| ConnectError::UnexpectedShape("title 속성 없음".to_string()))?;
+
+        let mut date_value = serde_json::json!({ "start": page.start });
+        if let Some(end) = page.end {
+            date_value["end"] = serde_json::json!(end);
+        }
+        let mut body = serde_json::json!({
+            "parent": { "type": "data_source_id", "data_source_id": data_source_id },
+            "properties": {
+                title_key: { "title": plain_rich_text(page.title)? },
+                "날짜": { "date": date_value }
+            }
+        });
+        if let Some(performance) = page.performance {
+            body["properties"]["수행도"] = serde_json::json!({ "select": { "name": performance } });
+        }
+        if page.skeleton {
+            body["children"] = serde_json::json!([heading_3_block("공부"), heading_3_block("기타")]);
+        }
+        if let Some(icon) = page.icon {
+            body["icon"] = page_icon_json(icon);
+        }
+        let created = self
+            .request_json(reqwest::Method::POST, "/v1/pages", token, Some(&body))
+            .await?;
+        created
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| ConnectError::UnexpectedShape("생성된 페이지 ID 없음".to_string()))
     }
 
     /// 가장 최근 `[TODO]` 행의 페이지 아이콘을 읽는다 — 새 페이지 생성 시 복사용.
@@ -453,8 +551,7 @@ impl NotionClient {
 
     /// 오늘 행이 없을 때 하루 골격 페이지를 만든다 — 제목 `[TODO]`,
     /// `날짜` date-only, 본문에 heading_3 `공부`/`기타` 두 섹션.
-    /// title 속성 키는 DB마다 다르므로 스키마를 먼저 조회해 알아낸다.
-    /// `icon`이 Some이면 페이지 아이콘으로 싣고, None이면 icon 키를 생략한다.
+    /// `create_page` 위의 얇은 래퍼 — 전송 body는 기존과 동일하다.
     /// 반환: 생성된 페이지 ID.
     pub async fn create_day_page(
         &self,
@@ -463,34 +560,19 @@ impl NotionClient {
         date: &str,
         icon: Option<&PageIcon>,
     ) -> Result<String, ConnectError> {
-        let data_source = self
-            .get_json(&format!("/v1/data_sources/{data_source_id}"), token)
-            .await?;
-        let properties = data_source
-            .get("properties")
-            .ok_or_else(|| ConnectError::UnexpectedShape("properties 없음".to_string()))?;
-        let title_key = title_property_key(properties)
-            .ok_or_else(|| ConnectError::UnexpectedShape("title 속성 없음".to_string()))?;
-
-        let mut body = serde_json::json!({
-            "parent": { "type": "data_source_id", "data_source_id": data_source_id },
-            "properties": {
-                title_key: { "title": plain_rich_text("[TODO]")? },
-                "날짜": { "date": { "start": date } }
+        self.create_page(
+            token,
+            data_source_id,
+            &NewPage {
+                title: "[TODO]",
+                start: date,
+                end: None,
+                icon,
+                performance: None,
+                skeleton: true,
             },
-            "children": [ heading_3_block("공부"), heading_3_block("기타") ]
-        });
-        // 아이콘은 선택 — None이면 icon 키 자체를 넣지 않는다
-        if let Some(icon) = icon {
-            body["icon"] = page_icon_json(icon);
-        }
-        let page = self
-            .request_json(reqwest::Method::POST, "/v1/pages", token, Some(&body))
-            .await?;
-        page.get("id")
-            .and_then(|v| v.as_str())
-            .map(str::to_string)
-            .ok_or_else(|| ConnectError::UnexpectedShape("생성된 페이지 ID 없음".to_string()))
+        )
+        .await
     }
 
     /// 공통 헤더로 GET을 보내고 JSON body를 돌려준다.
@@ -595,16 +677,45 @@ fn heading_3_block(text: &str) -> Value {
     })
 }
 
-/// query 결과에서 하루의 행 하나를 고른다 — 같은 날짜에 휴일·MT 행이 섞일 수 있으므로
-/// 제목이 정확히 `[TODO]`인 행을 우선하고, 없으면 첫 행을 쓴다. 반환: (page_id, 제목).
-fn pick_day_page(results: &[Value]) -> Option<(String, String)> {
-    let candidates: Vec<(String, String)> = results
-        .iter()
-        .filter_map(|page| {
-            let id = page.get("id")?.as_str()?.to_string();
-            Some((id, page_title(page)))
-        })
-        .collect();
+/// 범위 조회 하한 일수 — 하한 없는 on_or_before는 page_size 창 밖으로 긴 범위
+/// 행을 밀어낼 수 있어, 31일 창 + 큰 page_size(100)로 조회한다.
+const QUERY_LOOKBACK_DAYS: u64 = 31;
+
+/// 조회 하한 — 날짜(`YYYY-MM-DD`)에서 31일을 뺀 date-only 문자열. 형식 오류면 None.
+/// chrono는 자릿수 없는 "2026-8-9"도 허용하지만, date-only 문자열 비교가 전제인
+/// 이 모듈에서는 정확히 10자(`YYYY-MM-DD`)만 유효하다.
+fn lower_bound_date(date: &str) -> Option<String> {
+    if date.len() != 10 {
+        return None;
+    }
+    let parsed = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
+    let lower = parsed.checked_sub_days(chrono::Days::new(QUERY_LOOKBACK_DAYS))?;
+    Some(lower.format("%Y-%m-%d").to_string())
+}
+
+/// 행의 날짜 범위가 조회일을 포함하는가 — `start <= date <= (end ?? start)`.
+/// 행에는 datetime이 섞일 수 있으므로 앞 10자리(date-only)로만 비교한다
+/// (`YYYY-MM-DD`는 사전순 == 시간순).
+fn covers_date(start: &str, end: Option<&str>, date: &str) -> bool {
+    fn day(s: &str) -> &str {
+        s.get(..10).unwrap_or(s)
+    }
+    let start_day = day(start);
+    let end_day = day(end.unwrap_or(start));
+    start_day <= date && date <= end_day
+}
+
+/// 행 `properties.날짜.date`에서 `(start, end)`를 꺼낸다. 형태가 다르면 None.
+fn row_date_range(page: &Value) -> Option<(&str, Option<&str>)> {
+    let date = page.get("properties")?.get("날짜")?.get("date")?;
+    let start = date.get("start")?.as_str()?;
+    let end = date.get("end").and_then(|e| e.as_str());
+    Some((start, end))
+}
+
+/// 후보 `(page_id, 제목)` 중 하루의 행 하나를 고른다 — 같은 날짜에 휴일·MT 행이
+/// 섞일 수 있으므로 제목이 정확히 `[TODO]`인 행을 우선하고, 없으면 첫 행을 쓴다.
+fn pick_day_page(candidates: &[(String, String)]) -> Option<(String, String)> {
     candidates
         .iter()
         .find(|(_, title)| title == "[TODO]")
@@ -946,17 +1057,36 @@ mod tests {
         );
     }
 
-    fn 가짜_페이지_행(id: &str, 제목: &str) -> Value {
-        json!({
-            "object": "page",
-            "id": id,
-            "properties": {
-                "날짜": { "id": "a%3Abc", "type": "date",
-                          "date": { "start": "2026-08-09", "end": null } },
-                "이름": { "id": "title", "type": "title",
-                          "title": [ { "type": "text", "plain_text": 제목 } ] }
-            }
-        })
+    #[test]
+    fn 하한_계산이_월초를_넘어가도_정확하다() {
+        // 31일 전 — 월 경계를 넘는다
+        assert_eq!(lower_bound_date("2026-08-09").as_deref(), Some("2026-07-09"));
+        // 연초 경계 — 연도가 바뀐다
+        assert_eq!(lower_bound_date("2026-01-15").as_deref(), Some("2025-12-15"));
+        // 짧은 달(2월)을 건너는 경계
+        assert_eq!(lower_bound_date("2026-03-05").as_deref(), Some("2026-02-02"));
+        // 형식 오류는 None
+        assert_eq!(lower_bound_date("2026-8-9"), None);
+        assert_eq!(lower_bound_date(""), None);
+    }
+
+    #[test]
+    fn 끝_없는_행은_시작일에만_매칭된다() {
+        assert!(covers_date("2026-08-12", None, "2026-08-12"));
+        assert!(!covers_date("2026-08-12", None, "2026-08-13"));
+        assert!(!covers_date("2026-08-12", None, "2026-08-11"));
+    }
+
+    #[test]
+    fn datetime이_섞인_날짜도_앞_10자리로_판정한다() {
+        // Notion 행에는 datetime이 섞일 수 있다 — 앞 10자리(date-only)로만 판정한다
+        assert!(covers_date(
+            "2026-08-12T09:00:00.000+09:00",
+            Some("2026-08-14T21:00:00.000+09:00"),
+            "2026-08-13"
+        ));
+        assert!(covers_date("2026-08-12T09:00:00.000+09:00", None, "2026-08-12"));
+        assert!(!covers_date("2026-08-12T09:00:00.000+09:00", None, "2026-08-13"));
     }
 
     #[test]
@@ -1006,10 +1136,20 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn TODO_제목_행이_없으면_첫_행을_선택한다() {
+        // 후보가 여럿이면 [TODO] 제목 행을 우선 선택한다
+        let 혼재 = vec![
+            ("page-holiday".to_string(), "휴일".to_string()),
+            ("page-todo".to_string(), "[TODO]".to_string()),
+        ];
+        assert_eq!(
+            pick_day_page(&혼재),
+            Some(("page-todo".to_string(), "[TODO]".to_string()))
+        );
+
         // [TODO] 행이 없는 날 (휴일만 있는 날) — 첫 행 폴백
         let rows = vec![
-            가짜_페이지_행("page-holiday", "휴일"),
-            가짜_페이지_행("page-mt", "MT"),
+            ("page-holiday".to_string(), "휴일".to_string()),
+            ("page-mt".to_string(), "MT".to_string()),
         ];
         assert_eq!(
             pick_day_page(&rows),
@@ -1520,24 +1660,40 @@ mod http_tests {
         format!("/v1/blocks/{가짜_페이지_ID}/children")
     }
 
+    /// 가짜_날짜에서 31일을 뺀 조회 하한 (2026-08-09 → 2026-07-09).
+    const 가짜_하한_날짜: &str = "2026-07-09";
+
     fn 날짜_쿼리_body() -> serde_json::Value {
         json!({
-            "filter": { "property": "날짜", "date": { "equals": 가짜_날짜 } },
-            "page_size": 5
+            "filter": { "and": [
+                { "property": "날짜", "date": { "on_or_after": 가짜_하한_날짜 } },
+                { "property": "날짜", "date": { "on_or_before": 가짜_날짜 } }
+            ] },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
         })
     }
 
-    fn 페이지_행(id: &str, 제목: &str) -> serde_json::Value {
+    fn 기간_페이지_행(
+        id: &str,
+        제목: &str,
+        start: &str,
+        end: Option<&str>,
+    ) -> serde_json::Value {
         json!({
             "object": "page",
             "id": id,
             "properties": {
                 "날짜": { "id": "a%3Abc", "type": "date",
-                          "date": { "start": 가짜_날짜, "end": null } },
+                          "date": { "start": start, "end": end } },
                 "이름": { "id": "title", "type": "title",
                           "title": [ { "type": "text", "plain_text": 제목 } ] }
             }
         })
+    }
+
+    fn 페이지_행(id: &str, 제목: &str) -> serde_json::Value {
+        기간_페이지_행(id, 제목, 가짜_날짜, None)
     }
 
     fn 쿼리_응답(rows: Vec<serde_json::Value>) -> serde_json::Value {
@@ -1568,9 +1724,10 @@ mod http_tests {
     }
 
     #[tokio::test]
-    async fn 날짜_필터_쿼리_body가_date_only_equals로_전송된다() {
+    async fn 조회_body가_31일_하한과_내림차순_정렬로_전송된다() {
         let server = MockServer::start().await;
-        // 필터는 date-only equals 하나 + page_size — 그 외 필드가 붙으면 매치 실패한다
+        // equals는 기간(start~end) 중간 날짜 행을 못 잡는다 — 하한(31일 전)~조회일 창으로
+        // 넓게 받는다. body_json은 정확 일치 — 필터·정렬·page_size가 다르면 매치 실패한다.
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
             .and(header("Notion-Version", NOTION_VERSION))
@@ -1591,6 +1748,54 @@ mod http_tests {
         assert_eq!(
             found,
             Some((가짜_페이지_ID.to_string(), "[TODO]".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn 범위_행은_기간_중간_날짜에도_후보에_포함된다() {
+        // 조회일(8/13)이 행의 기간(8/12~8/14) 중간 — equals 필터라면 놓쳤을 행
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                기간_페이지_행("row-range", "휴가", "2026-08-12", Some("2026-08-14")),
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let rows = client
+            .find_rows_covering_date(가짜_토큰, 가짜_DS_ID, "2026-08-13")
+            .await
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![("row-range".to_string(), "휴가".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn 기간이_끝난_과거_행은_후보에서_제외된다() {
+        // 서버 필터는 시작일 기준이라 이미 끝난 범위 행도 응답에 섞인다 —
+        // 클라이언트 판정(start <= date <= end)이 걸러내야 한다
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                기간_페이지_행("row-today", "[TODO]", "2026-08-13", None),
+                기간_페이지_행("row-past", "지난주", "2026-08-01", Some("2026-08-05")),
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let rows = client
+            .find_rows_covering_date(가짜_토큰, 가짜_DS_ID, "2026-08-13")
+            .await
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![("row-today".to_string(), "[TODO]".to_string())]
         );
     }
 
@@ -2146,6 +2351,52 @@ mod http_tests {
         let client = NotionClient::new(server.uri());
         let page_id = client
             .create_day_page(가짜_토큰, 가짜_DS_ID, 가짜_날짜, None)
+            .await
+            .unwrap();
+        assert_eq!(page_id, 가짜_새_페이지_ID);
+    }
+
+    #[tokio::test]
+    async fn 특수_행_생성_body에_제목_범위_아이콘_수행도가_실린다() {
+        let server = MockServer::start().await;
+        mount_정상_data_source(&server).await;
+        // 휴일처럼 하루 골격이 아닌 특수 행 — 제목·날짜 범위(start+end)·아이콘·수행도를
+        // 싣고, skeleton=false이므로 children 키 자체가 없어야 한다.
+        // body_json 정확 일치가 children 부재까지 함께 검증한다.
+        let 생성_body = json!({
+            "parent": { "type": "data_source_id", "data_source_id": 가짜_DS_ID },
+            "properties": {
+                "이름": {
+                    "title": [ { "type": "text", "text": { "content": "휴일" } } ]
+                },
+                "날짜": { "date": { "start": "2026-08-13", "end": "2026-08-14" } },
+                "수행도": { "select": { "name": "기타" } }
+            },
+            "icon": { "type": "emoji", "emoji": "🏖️" }
+        });
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .and(body_json(생성_body))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "page", "id": 가짜_새_페이지_ID })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let icon = PageIcon::Emoji("🏖️".to_string());
+        let page = NewPage {
+            title: "휴일",
+            start: "2026-08-13",
+            end: Some("2026-08-14"),
+            icon: Some(&icon),
+            performance: Some("기타"),
+            skeleton: false,
+        };
+        let page_id = client
+            .create_page(가짜_토큰, 가짜_DS_ID, &page)
             .await
             .unwrap();
         assert_eq!(page_id, 가짜_새_페이지_ID);

@@ -1023,10 +1023,7 @@ mod http_tests {
         // stale no_page 화면에서 클릭 — 사전 재확인이 기존 행을 찾는다
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
-            .and(body_json(json!({
-                "filter": { "property": "날짜", "date": { "equals": 가짜_날짜 } },
-                "page_size": 5
-            })))
+            .and(body_json(날짜_쿼리_body()))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_json(쿼리_응답(vec![페이지_행(가짜_페이지_ID, "[TODO]")])),
@@ -1158,12 +1155,16 @@ mod http_tests {
     // U2 — 생성 시 최신 [TODO] 행 아이콘 복사
     // ------------------------------------------------------------------
 
-    /// 사전 재확인(날짜 equals)과 아이콘 조회(제목 title 필터)는 같은 쿼리 경로를
-    /// 쓴다 — body로만 구분해 매치한다.
+    /// 사전 재확인(날짜 범위 창)과 아이콘 조회(제목 title 필터)는 같은 쿼리 경로를
+    /// 쓴다 — body로만 구분해 매치한다. body 명세는 notion.rs U3 테스트가 소유한다.
     fn 날짜_쿼리_body() -> serde_json::Value {
         json!({
-            "filter": { "property": "날짜", "date": { "equals": 가짜_날짜 } },
-            "page_size": 5
+            "filter": { "and": [
+                { "property": "날짜", "date": { "on_or_after": "2026-07-09" } },
+                { "property": "날짜", "date": { "on_or_before": 가짜_날짜 } }
+            ] },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
         })
     }
 

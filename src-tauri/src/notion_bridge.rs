@@ -481,7 +481,7 @@ async fn create_page_outcome(
         });
     }
     let page_id = client
-        .create_day_page(&access.token, &access.data_source_id, date)
+        .create_day_page(&access.token, &access.data_source_id, date, None)
         .await
         .map_err(|e| e.message())?;
     let (items, notice) = match client.fetch_todos(&access.token, &page_id).await {

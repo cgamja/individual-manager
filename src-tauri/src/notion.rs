@@ -196,6 +196,14 @@ pub struct Verified {
     pub data_source_id: String,
 }
 
+/// 페이지 본문의 to_do 블록 하나 — U4에서 웹뷰로 직렬화된다 (`ConnectionState` 전례).
+#[derive(Clone, PartialEq, Eq, Debug, Serialize)]
+pub struct TodoItem {
+    pub id: String,
+    pub text: String,
+    pub checked: bool,
+}
+
 /// base URL 주입형 Notion HTTP 클라이언트.
 /// 토큰은 요청 헤더로만 쓰고 어떤 로그·에러 메시지에도 남기지 않는다.
 pub struct NotionClient {
@@ -271,6 +279,75 @@ impl NotionClient {
         })
     }
 
+    /// 주어진 날짜(로컬 `YYYY-MM-DD`, 브릿지가 주입)의 행을 data source에서 찾는다.
+    /// date-only `equals` 필터만 쓴다 — datetime을 섞으면 타임존 드리프트가 생긴다(KTD3).
+    /// 반환: `Some((page_id, 제목))` 또는 행 없음 `None`. 복수 행이면 `[TODO]` 제목 우선.
+    pub async fn find_page_by_date(
+        &self,
+        token: &str,
+        data_source_id: &str,
+        date: &str,
+    ) -> Result<Option<(String, String)>, ConnectError> {
+        let body = serde_json::json!({
+            "filter": { "property": "날짜", "date": { "equals": date } },
+            "page_size": 5
+        });
+        let response = self
+            .request_json(
+                reqwest::Method::POST,
+                &format!("/v1/data_sources/{data_source_id}/query"),
+                token,
+                Some(&body),
+            )
+            .await?;
+        let results = response
+            .get("results")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| ConnectError::UnexpectedShape("results가 배열이 아님".to_string()))?;
+        Ok(pick_day_page(results))
+    }
+
+    /// 페이지 본문의 최상위 to_do 블록을 페이지 순서대로 모두 수집한다(KTD6).
+    /// `has_more`/`next_cursor` 페이지네이션 루프(100개/페이지)로 끝까지 돈다.
+    pub async fn fetch_todos(
+        &self,
+        token: &str,
+        page_id: &str,
+    ) -> Result<Vec<TodoItem>, ConnectError> {
+        let mut items = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let path = match &cursor {
+                Some(c) => format!("/v1/blocks/{page_id}/children?page_size=100&start_cursor={c}"),
+                None => format!("/v1/blocks/{page_id}/children?page_size=100"),
+            };
+            let response = self.get_json(&path, token).await?;
+            let results = response
+                .get("results")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| {
+                    ConnectError::UnexpectedShape("results가 배열이 아님".to_string())
+                })?;
+            items.extend(results.iter().filter_map(todo_from_block));
+            if !response
+                .get("has_more")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                return Ok(items);
+            }
+            cursor = response
+                .get("next_cursor")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            if cursor.is_none() {
+                return Err(ConnectError::UnexpectedShape(
+                    "has_more인데 next_cursor 없음".to_string(),
+                ));
+            }
+        }
+    }
+
     /// 공통 헤더로 GET을 보내고 JSON body를 돌려준다.
     async fn get_json(&self, path: &str, token: &str) -> Result<Value, ConnectError> {
         self.request_json(reqwest::Method::GET, path, token, None)
@@ -343,6 +420,56 @@ impl NotionClient {
                 .map_err(|_| ConnectError::Network(None));
         }
     }
+}
+
+/// query 결과에서 하루의 행 하나를 고른다 — 같은 날짜에 휴일·MT 행이 섞일 수 있으므로
+/// 제목이 정확히 `[TODO]`인 행을 우선하고, 없으면 첫 행을 쓴다. 반환: (page_id, 제목).
+fn pick_day_page(results: &[Value]) -> Option<(String, String)> {
+    let candidates: Vec<(String, String)> = results
+        .iter()
+        .filter_map(|page| {
+            let id = page.get("id")?.as_str()?.to_string();
+            Some((id, page_title(page)))
+        })
+        .collect();
+    candidates
+        .iter()
+        .find(|(_, title)| title == "[TODO]")
+        .or_else(|| candidates.first())
+        .cloned()
+}
+
+/// 페이지 `properties`에서 title 타입 속성을 찾아 plain_text를 이어붙인다.
+/// 키 이름은 하드코딩하지 않는다 — DB마다 다를 수 있다(사용자 DB는 `이름`).
+fn page_title(page: &Value) -> String {
+    page.get("properties")
+        .and_then(|props| props.as_object())
+        .and_then(|props| {
+            props
+                .values()
+                .find(|p| p.get("type").and_then(|t| t.as_str()) == Some("title"))
+        })
+        .and_then(|p| rich_text_plain(p.get("title")))
+        .unwrap_or_default()
+}
+
+/// 블록 JSON → TodoItem 변환. `type == "to_do"`이고 archived가 아닌 블록만 변환한다.
+/// 오류 대신 None — 형태가 어긋난 블록은 목록에서 조용히 제외된다.
+fn todo_from_block(block: &Value) -> Option<TodoItem> {
+    if block.get("type").and_then(|t| t.as_str()) != Some("to_do") {
+        return None;
+    }
+    if block.get("archived").and_then(|a| a.as_bool()) == Some(true) {
+        return None;
+    }
+    let id = block.get("id")?.as_str()?.to_string();
+    let to_do = block.get("to_do")?;
+    let text = rich_text_plain(to_do.get("rich_text")).unwrap_or_default();
+    let checked = to_do
+        .get("checked")
+        .and_then(|c| c.as_bool())
+        .unwrap_or(false);
+    Some(TodoItem { id, text, checked })
 }
 
 /// title rich text 배열의 `plain_text`를 이어붙인다. 배열이 아니면 None.
@@ -614,6 +741,80 @@ mod tests {
         );
     }
 
+    fn 가짜_페이지_행(id: &str, 제목: &str) -> Value {
+        json!({
+            "object": "page",
+            "id": id,
+            "properties": {
+                "날짜": { "id": "a%3Abc", "type": "date",
+                          "date": { "start": "2026-08-09", "end": null } },
+                "이름": { "id": "title", "type": "title",
+                          "title": [ { "type": "text", "plain_text": 제목 } ] }
+            }
+        })
+    }
+
+    #[test]
+    fn rich_text_조각들이_plain_text로_연결된다() {
+        let block = json!({
+            "object": "block",
+            "id": "block-1",
+            "type": "to_do",
+            "has_children": false,
+            "archived": false,
+            "to_do": {
+                "rich_text": [
+                    { "type": "text", "plain_text": "10:00 알고리즘 " },
+                    { "type": "text", "plain_text": "1문제" }
+                ],
+                "checked": true
+            }
+        });
+        assert_eq!(
+            todo_from_block(&block),
+            Some(TodoItem {
+                id: "block-1".to_string(),
+                text: "10:00 알고리즘 1문제".to_string(),
+                checked: true,
+            })
+        );
+    }
+
+    #[test]
+    fn to_do가_아닌_블록과_archived_블록은_변환되지_않는다() {
+        let heading = json!({
+            "object": "block", "id": "block-h", "type": "heading_3",
+            "has_children": false, "archived": false,
+            "heading_3": { "rich_text": [ { "type": "text", "plain_text": "공부" } ] }
+        });
+        assert_eq!(todo_from_block(&heading), None);
+
+        let archived = json!({
+            "object": "block", "id": "block-a", "type": "to_do",
+            "has_children": false, "archived": true,
+            "to_do": { "rich_text": [ { "type": "text", "plain_text": "지운 항목" } ],
+                       "checked": false }
+        });
+        assert_eq!(todo_from_block(&archived), None);
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn TODO_제목_행이_없으면_첫_행을_선택한다() {
+        // [TODO] 행이 없는 날 (휴일만 있는 날) — 첫 행 폴백
+        let rows = vec![
+            가짜_페이지_행("page-holiday", "휴일"),
+            가짜_페이지_행("page-mt", "MT"),
+        ];
+        assert_eq!(
+            pick_day_page(&rows),
+            Some(("page-holiday".to_string(), "휴일".to_string()))
+        );
+
+        // 빈 결과 → None
+        assert_eq!(pick_day_page(&[]), None);
+    }
+
     #[test]
     fn 연결_상태는_snake_case_태그로_직렬화된다() {
         // U3 웹뷰 직렬화 계약 (timer Snapshot 전례)
@@ -640,7 +841,7 @@ mod http_tests {
 
     use super::*;
     use serde_json::json;
-    use wiremock::matchers::{body_json, header, method, path};
+    use wiremock::matchers::{body_json, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     // 픽스처 — 전부 가짜 값 (실제 토큰·워크스페이스 ID 아님)
@@ -1013,6 +1214,221 @@ mod http_tests {
             .await
             .unwrap_err();
         assert_eq!(err, ConnectError::Conflict);
+    }
+
+    // --- U2. 조회 경로 — 오늘 행 쿼리 + to_do 블록 수집 픽스처 ---
+
+    const 가짜_페이지_ID: &str = "77770000-1111-2222-3333-444455556666";
+    const 가짜_휴일_페이지_ID: &str = "88880000-1111-2222-3333-444455556666";
+    const 가짜_날짜: &str = "2026-08-09";
+
+    fn 쿼리_경로() -> String {
+        format!("/v1/data_sources/{가짜_DS_ID}/query")
+    }
+
+    fn children_경로() -> String {
+        format!("/v1/blocks/{가짜_페이지_ID}/children")
+    }
+
+    fn 날짜_쿼리_body() -> serde_json::Value {
+        json!({
+            "filter": { "property": "날짜", "date": { "equals": 가짜_날짜 } },
+            "page_size": 5
+        })
+    }
+
+    fn 페이지_행(id: &str, 제목: &str) -> serde_json::Value {
+        json!({
+            "object": "page",
+            "id": id,
+            "properties": {
+                "날짜": { "id": "a%3Abc", "type": "date",
+                          "date": { "start": 가짜_날짜, "end": null } },
+                "이름": { "id": "title", "type": "title",
+                          "title": [ { "type": "text", "plain_text": 제목 } ] }
+            }
+        })
+    }
+
+    fn 쿼리_응답(rows: Vec<serde_json::Value>) -> serde_json::Value {
+        json!({ "object": "list", "results": rows, "has_more": false, "next_cursor": null })
+    }
+
+    fn to_do_블록(id: &str, text: &str, checked: bool) -> serde_json::Value {
+        json!({
+            "object": "block", "id": id, "type": "to_do",
+            "has_children": false, "archived": false,
+            "to_do": {
+                "rich_text": [ { "type": "text", "plain_text": text } ],
+                "checked": checked
+            }
+        })
+    }
+
+    fn children_응답(
+        blocks: Vec<serde_json::Value>,
+        next_cursor: Option<&str>,
+    ) -> serde_json::Value {
+        json!({
+            "object": "list",
+            "results": blocks,
+            "has_more": next_cursor.is_some(),
+            "next_cursor": next_cursor
+        })
+    }
+
+    #[tokio::test]
+    async fn 날짜_필터_쿼리_body가_date_only_equals로_전송된다() {
+        let server = MockServer::start().await;
+        // 필터는 date-only equals 하나 + page_size — 그 외 필드가 붙으면 매치 실패한다
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(header("Notion-Version", NOTION_VERSION))
+            .and(body_json(날짜_쿼리_body()))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(쿼리_응답(vec![페이지_행(가짜_페이지_ID, "[TODO]")])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let found = client
+            .find_page_by_date(가짜_토큰, 가짜_DS_ID, 가짜_날짜)
+            .await
+            .unwrap();
+        assert_eq!(
+            found,
+            Some((가짜_페이지_ID.to_string(), "[TODO]".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn 결과가_없으면_None을_돌려준다() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let found = client
+            .find_page_by_date(가짜_토큰, 가짜_DS_ID, 가짜_날짜)
+            .await
+            .unwrap();
+        assert_eq!(found, None);
+    }
+
+    #[tokio::test]
+    #[allow(non_snake_case)]
+    async fn 결과가_여러_행이면_TODO_제목_행을_우선_선택한다() {
+        // 같은 날짜에 휴일 행이 먼저 오는 혼재 픽스처 — [TODO] 행을 골라야 한다
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                페이지_행(가짜_휴일_페이지_ID, "휴일"),
+                페이지_행(가짜_페이지_ID, "[TODO]"),
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let found = client
+            .find_page_by_date(가짜_토큰, 가짜_DS_ID, 가짜_날짜)
+            .await
+            .unwrap();
+        assert_eq!(
+            found,
+            Some((가짜_페이지_ID.to_string(), "[TODO]".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn 두_페이지로_나뉜_children을_병합해_순서를_유지한다() {
+        let server = MockServer::start().await;
+        // 커서 있는 요청 매처를 먼저 등록한다 — 뒤의 일반 매처가 가로채지 않게
+        Mock::given(method("GET"))
+            .and(path(children_경로()))
+            .and(query_param("page_size", "100"))
+            .and(query_param("start_cursor", "cursor-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(
+                vec![
+                    to_do_블록("block-3", "셋째", false),
+                    to_do_블록("block-4", "넷째", true),
+                ],
+                None,
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(children_경로()))
+            .and(query_param("page_size", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(
+                vec![
+                    to_do_블록("block-1", "첫째", true),
+                    to_do_블록("block-2", "둘째", false),
+                ],
+                Some("cursor-1"),
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let todos = client.fetch_todos(가짜_토큰, 가짜_페이지_ID).await.unwrap();
+        assert_eq!(
+            todos.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            vec!["block-1", "block-2", "block-3", "block-4"]
+        );
+        assert_eq!(
+            todos.iter().map(|t| t.text.as_str()).collect::<Vec<_>>(),
+            vec!["첫째", "둘째", "셋째", "넷째"]
+        );
+        assert_eq!(
+            todos.iter().map(|t| t.checked).collect::<Vec<_>>(),
+            vec![true, false, false, true]
+        );
+    }
+
+    #[tokio::test]
+    async fn to_do가_아닌_블록과_archived_블록은_목록에서_제외된다() {
+        let server = MockServer::start().await;
+        // heading·paragraph·archived to_do 혼재 — to_do 2개만 남아야 한다
+        let mut archived = to_do_블록("block-arch", "지운 항목", false);
+        archived["archived"] = json!(true);
+        Mock::given(method("GET"))
+            .and(path(children_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(
+                vec![
+                    json!({
+                        "object": "block", "id": "block-h", "type": "heading_3",
+                        "has_children": false, "archived": false,
+                        "heading_3": { "rich_text": [ { "type": "text", "plain_text": "공부" } ] }
+                    }),
+                    to_do_블록("block-1", "첫째", false),
+                    json!({
+                        "object": "block", "id": "block-p", "type": "paragraph",
+                        "has_children": false, "archived": false,
+                        "paragraph": { "rich_text": [ { "type": "text", "plain_text": "메모" } ] }
+                    }),
+                    archived,
+                    to_do_블록("block-2", "둘째", true),
+                ],
+                None,
+            )))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let todos = client.fetch_todos(가짜_토큰, 가짜_페이지_ID).await.unwrap();
+        assert_eq!(
+            todos.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            vec!["block-1", "block-2"]
+        );
     }
 
     #[tokio::test]

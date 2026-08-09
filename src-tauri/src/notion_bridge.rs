@@ -145,14 +145,16 @@ async fn verify_and_cache(
             // 캐시를 유지해 오프라인 재시작이 연결 상태를 잃지 않게 한다.
             let transient = matches!(err, ConnectError::Network(_) | ConnectError::RateLimited);
             if !transient {
-                write_settings(
+                // 캐시 비우기는 부수 효과 — store 쓰기가 실패해도 실제 검증 실패
+                // 원인(토큰 무효·미공유·스키마 불일치)을 가리지 않고 그대로 전달한다
+                let _ = write_settings(
                     app,
                     &NotionSettings {
                         database_id: Some(database_id.to_string()),
                         data_source_id: None,
                         title: None,
                     },
-                )?;
+                );
             }
             Some(Err(err))
         }

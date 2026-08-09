@@ -175,7 +175,8 @@ button:active {
   font-size: 11px;
   padding: 1px 6px;
   border-radius: 6px;
-  color: #248a3d;
+  /* 11px은 큰 글자 기준 미달 — 배지 배경 위 4.5:1 이상(#1d7233 ≈ 5.3:1) */
+  color: #1d7233;
   background: rgba(52, 199, 89, 0.15);
 }
 

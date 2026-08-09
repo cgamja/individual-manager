@@ -15,6 +15,11 @@ body,
   background: transparent;
 }
 
+/* 카드가 팝오버(360×540)를 세로로 넘치면 팝오버 안에서 스크롤한다 */
+body {
+  overflow-y: auto;
+}
+
 .popover {
   display: flex;
   flex-direction: column;
@@ -121,6 +126,80 @@ button:active {
   text-align: center;
 }
 
+.notion-row {
+  margin-bottom: 10px;
+}
+
+.notion-row label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #3a3a3c;
+}
+
+.notion-input-group {
+  display: flex;
+  gap: 6px;
+}
+
+.notion-input-group input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+}
+
+.notion-input-group button {
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.notion-token-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.notion-token-meta button {
+  padding: 2px 10px;
+  font-size: 11px;
+}
+
+.notion-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #248a3d;
+  background: rgba(52, 199, 89, 0.15);
+}
+
+.notion-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.notion-actions button {
+  font-size: 12px;
+}
+
+.notion-status {
+  margin: 0;
+  font-size: 11px;
+  color: #6e6e73;
+  min-height: 14px;
+}
+
+.notion-error {
+  color: #d70015;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f5f5f7;
@@ -163,5 +242,28 @@ button:active {
   .settings-row input:disabled {
     background: #2c2c30;
     color: #7c7c81;
+  }
+
+  .notion-row label {
+    color: #d1d1d6;
+  }
+
+  .notion-input-group input {
+    background: #3a3a3e;
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #f5f5f7;
+  }
+
+  .notion-badge {
+    color: #30d158;
+    background: rgba(48, 209, 88, 0.18);
+  }
+
+  .notion-status {
+    color: #a1a1a6;
+  }
+
+  .notion-error {
+    color: #ff6961;
   }
 }

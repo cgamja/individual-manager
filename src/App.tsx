@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import { NotionCard } from "./components/NotionCard";
 import { SettingsCard } from "./components/SettingsCard";
 import { TimerCard } from "./components/TimerCard";
 import { ensureNotificationPermission } from "./lib/notification";
+import {
+  deleteNotionToken,
+  getNotionStatus,
+  saveNotionToken,
+  setNotionDatabase,
+  testNotionConnection,
+  type ConnectionState,
+} from "./lib/notion";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settings";
 import {
   getTimerState,
@@ -23,6 +32,11 @@ function App() {
   const [config, setConfig] = useState<TimerConfig>(DEFAULT_SETTINGS);
   const [notifGranted, setNotifGranted] = useState(true);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [notionStatus, setNotionStatus] = useState<ConnectionState>({
+    state: "not_configured",
+    missing: "both",
+  });
+  const [notionVerifying, setNotionVerifying] = useState(false);
 
   useEffect(() => {
     let unlistenTick: UnlistenFn | undefined;
@@ -39,6 +53,9 @@ function App() {
       // 알림 권한: 거부돼도 앱은 계속 동작하고 카드 내 표시로 대체한다 (R8)
       const granted = await ensureNotificationPermission();
       if (!cancelled) setNotifGranted(granted);
+      // Notion 연결 상태 로드 (네트워크 없이 저장된 설정만 본다)
+      const notion = await getNotionStatus().catch(() => null);
+      if (!cancelled && notion) setNotionStatus(notion);
     })();
 
     // 팝오버가 다시 보일 때 즉시 재동기화 (틱 대기 없이)
@@ -88,6 +105,46 @@ function App() {
     }
   }, []);
 
+  /** Notion 커맨드 공통 실행 — 진행 플래그 관리, reject는 failed 상태로 렌더한다. */
+  const runNotionCommand = useCallback(
+    async (command: () => Promise<ConnectionState>): Promise<ConnectionState> => {
+      setNotionVerifying(true);
+      try {
+        const next = await command();
+        setNotionStatus(next);
+        return next;
+      } catch (err) {
+        // 커맨드 reject 메시지는 한국어 문자열 — 카드 상태 배너로 표시한다
+        const failed: ConnectionState = {
+          state: "failed",
+          message: typeof err === "string" ? err : String(err),
+        };
+        setNotionStatus(failed);
+        return failed;
+      } finally {
+        setNotionVerifying(false);
+      }
+    },
+    [],
+  );
+
+  const handleSaveToken = useCallback(
+    (token: string) => runNotionCommand(() => saveNotionToken(token)),
+    [runNotionCommand],
+  );
+  const handleDeleteToken = useCallback(() => {
+    void runNotionCommand(deleteNotionToken);
+  }, [runNotionCommand]);
+  const handleSetDatabase = useCallback(
+    (input: string) => {
+      void runNotionCommand(() => setNotionDatabase(input));
+    },
+    [runNotionCommand],
+  );
+  const handleTestConnection = useCallback(() => {
+    void runNotionCommand(testNotionConnection);
+  }, [runNotionCommand]);
+
   return (
     <main className="popover">
       <TimerCard
@@ -101,6 +158,14 @@ function App() {
         config={config}
         disabled={snapshot.state !== "idle"}
         onChange={handleConfigChange}
+      />
+      <NotionCard
+        status={notionStatus}
+        isVerifying={notionVerifying}
+        onSaveToken={handleSaveToken}
+        onDeleteToken={handleDeleteToken}
+        onSetDatabase={handleSetDatabase}
+        onTestConnection={handleTestConnection}
       />
       {!notifGranted && (
         <p className="notif-hint" role="status">

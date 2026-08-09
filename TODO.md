@@ -7,11 +7,21 @@
 - [ ] 토큰 보관 방식 확정 (macOS Keychain 권장) — PRD Q2
 - [ ] 기존 Notion DB 스키마 확인: 상태 속성(완료/일부/미완/기타) 유무, 기존 데이터 호환 — PRD R3
 
+## 개발 환경
+- [x] 개발 워크플로우 정비: `CLAUDE.md`(상시 컨텍스트) + `develop` 스킬(플랜→PR 절차) (2026-08-09)
+
 ## M1 — 앱 골격 + 뽀모도로
 - [x] macOS 메뉴바 상주 앱 골격 (펭귄 아이콘 `penguin-icon.png`)
 - [x] 카드형 팝오버 UI 기본 레이아웃
 - [x] 뽀모도로 타이머 (25/5 기본, 시간 커스터마이즈)
 - [x] macOS 알림 권한 + 타이머 종료 알림
+
+## M1 후속 — 플랜에서 미룬 항목
+> M1 플랜의 "Deferred to Follow-Up Work". 급하지 않으나 잊지 않기 위해 옮겨둔다.
+
+- [ ] 멀티 모니터에서 팝오버 위치 보정 (positioner가 단일 모니터를 전제)
+- [ ] 흑백 템플릿 트레이 아이콘 (다크/라이트 메뉴바 자동 적응)
+- [ ] 로그인 시 자동 실행 (autostart)
 
 ## M2 — Notion TODO
 - [ ] Notion Integration 연결 및 대상 Database 지정

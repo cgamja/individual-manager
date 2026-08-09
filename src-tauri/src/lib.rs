@@ -133,6 +133,11 @@ pub fn run() {
             notion_bridge::notion_set_database,
             notion_bridge::notion_get_status,
             notion_bridge::notion_test_connection,
+            notion_bridge::notion_todo_list,
+            notion_bridge::notion_todo_create_page,
+            notion_bridge::notion_todo_add,
+            notion_bridge::notion_todo_toggle,
+            notion_bridge::notion_todo_edit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

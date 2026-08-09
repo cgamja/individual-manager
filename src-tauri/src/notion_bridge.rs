@@ -2,13 +2,14 @@
 //! store(`settings.json`) 설정 영속, 연결 커맨드 5종.
 //! 토큰 값은 Keychain에만 존재한다 — 응답·로그·store·에러 어디에도 넣지 않는다.
 
+use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 use crate::notion::{
     determine_connection_state, parse_database_id, ConnectError, ConnectionState, NotionClient,
-    NOTION_API_BASE,
+    TodoItem, NOTION_API_BASE,
 };
 
 /// Keychain service 이름 — 번들 ID(com.kangr.penguin) 기반.
@@ -250,6 +251,345 @@ pub async fn notion_test_connection(app: AppHandle) -> Result<ConnectionState, S
     }
 }
 
+// ---------------------------------------------------------------------------
+// todo 커맨드 5종 — 오늘 페이지의 to_do 블록 조회·생성·수정 (U4)
+// ---------------------------------------------------------------------------
+
+/// todo 커맨드가 웹뷰에 돌려주는 스냅샷 (`ConnectionState` 전례 — KTD5).
+#[derive(Clone, PartialEq, Eq, Debug, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum TodoSnapshot {
+    /// 토큰·DB·data source 중 무엇이 없는지 snake_case 문자열로 명시한다.
+    /// 기존 `Missing` enum은 data_source 부재를 표현하지 못해 재사용하지 않는다.
+    NotConnected {
+        missing: Vec<String>,
+    },
+    NoPage {
+        date: String,
+    },
+    Loaded {
+        date: String,
+        page_id: String,
+        title: String,
+        items: Vec<TodoItem>,
+    },
+}
+
+/// 쓰기 커맨드의 반환 — 재조회한 스냅샷(R6)과, 블록 소실·충돌을 오류 대신
+/// 안내로 처리할 때(R8)의 문구.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize)]
+pub struct TodoOutcome {
+    /// `None`이면 "재조회 실패 — 프론트는 기존 목록을 유지하고 notice만 표시"라는 뜻이다.
+    pub snapshot: Option<TodoSnapshot>,
+    pub notice: Option<String>,
+}
+
+/// 블록 소실(404)·편집 충돌(409) 시 자동 재조회와 함께 싣는 안내 문구.
+/// DB용 NotFound 메시지와 별개다 — 블록 수준 문제를 DB 연결 문제로 오독하게 하지 않는다.
+const TODO_STALE_NOTICE: &str =
+    "할 일이 원격에서 바뀌어 목록을 새로 불러왔습니다. 다시 시도해 주세요.";
+
+/// 쓰기 커맨드가 미연결 상태에서 호출됐을 때의 오류 메시지 (스냅샷 없는 오류 경로).
+const TODO_NOT_CONNECTED_ERROR: &str = "Notion 연결이 필요합니다. 설정을 확인해 주세요";
+
+/// 만들기 클릭 시 오늘 행이 이미 있을 때(stale no_page 화면) 기존 페이지를 불러오며 싣는 안내.
+const TODO_PAGE_EXISTS_NOTICE: &str = "오늘 페이지가 이미 있어 불러왔습니다.";
+
+/// 페이지 생성은 성공했지만 직후 목록 조회가 실패했을 때의 안내 —
+/// Err로 돌리면 프론트가 page_id를 잃고 만들기 버튼 재클릭이 페이지를 중복 생성한다.
+const TODO_CREATED_FETCH_FAILED_NOTICE: &str =
+    "페이지는 만들어졌지만 목록 조회에 실패했습니다. 새로고침해 주세요.";
+
+/// 쓰기(추가·토글·편집)는 반영됐지만 직후 재조회가 실패했을 때의 안내 —
+/// Err로 돌리면 프론트가 쓰기 실패로 오인하고, 재시도(append 비멱등)가 중복 항목을 만든다.
+const TODO_WRITE_REFRESH_FAILED_NOTICE: &str =
+    "변경은 반영됐지만 목록 조회에 실패했습니다. 새로고침해 주세요.";
+
+/// 미연결 판정 — 무엇이 없는지 snake_case 문자열 목록으로 돌려준다 (R7).
+/// `notion_get_status`의 캐시 기반 표시와 독립인 순수 판정.
+pub fn todo_missing(
+    token_present: bool,
+    database_present: bool,
+    data_source_present: bool,
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    if !token_present {
+        missing.push("token".to_string());
+    }
+    if !database_present {
+        missing.push("database".to_string());
+    }
+    if !data_source_present {
+        missing.push("data_source".to_string());
+    }
+    missing
+}
+
+/// "오늘"은 Rust가 소유한다 (KTD3) — 로컬 날짜 `YYYY-MM-DD`.
+/// 순수 로직은 전부 이 결과를 파라미터로 받는다.
+fn today_local() -> String {
+    chrono::Local::now()
+        .date_naive()
+        .format("%Y-%m-%d")
+        .to_string()
+}
+
+/// todo 커맨드 공통 자격 — 토큰과 data source ID.
+struct TodoAccess {
+    token: String,
+    data_source_id: String,
+}
+
+/// 토큰(Keychain)·설정(store)을 읽어 자격을 만든다.
+/// 바깥 Err = Keychain·store 접근 실패, 안쪽 Err = 미연결(missing 목록).
+async fn todo_access(app: &AppHandle) -> Result<Result<TodoAccess, Vec<String>>, String> {
+    let token = on_keychain(load_token_blocking).await?;
+    let settings = read_settings(app)?;
+    let missing = todo_missing(
+        token.is_some(),
+        settings.database_id.is_some(),
+        settings.data_source_id.is_some(),
+    );
+    match (token, settings.data_source_id) {
+        (Some(token), Some(data_source_id)) if missing.is_empty() => Ok(Ok(TodoAccess {
+            token,
+            data_source_id,
+        })),
+        _ => Ok(Err(missing)),
+    }
+}
+
+/// 날짜 쿼리 경로로 스냅샷을 만든다 — 행 없음 → no_page, 있음 → children 조회 → loaded.
+async fn snapshot_by_date(
+    base_url: &str,
+    access: &TodoAccess,
+    date: &str,
+) -> Result<TodoSnapshot, ConnectError> {
+    let client = NotionClient::new(base_url);
+    match client
+        .find_page_by_date(&access.token, &access.data_source_id, date)
+        .await?
+    {
+        None => Ok(TodoSnapshot::NoPage {
+            date: date.to_string(),
+        }),
+        Some((page_id, title)) => {
+            let items = client.fetch_todos(&access.token, &page_id).await?;
+            Ok(TodoSnapshot::Loaded {
+                date: date.to_string(),
+                page_id,
+                title,
+                items,
+            })
+        }
+    }
+}
+
+/// 쓰기 후 스냅샷 — 이미 아는 page_id의 children 재조회로 시작한다 (KTD5,
+/// 날짜 재쿼리는 페이지 자체가 사라진 404일 때의 폴백으로만).
+async fn snapshot_after_write(
+    base_url: &str,
+    access: &TodoAccess,
+    page_id: &str,
+    page_title: &str,
+    date: &str,
+) -> Result<TodoSnapshot, ConnectError> {
+    let client = NotionClient::new(base_url);
+    match client.fetch_todos(&access.token, page_id).await {
+        Ok(items) => Ok(TodoSnapshot::Loaded {
+            date: date.to_string(),
+            page_id: page_id.to_string(),
+            title: page_title.to_string(),
+            items,
+        }),
+        Err(ConnectError::NotFound) => snapshot_by_date(base_url, access, date).await,
+        Err(e) => Err(e),
+    }
+}
+
+/// 블록 쓰기 결과의 공통 종단 (R6·R8): 성공 → 재조회 스냅샷,
+/// 블록 소실(404)·충돌(409) → Err 대신 재조회 스냅샷 + 안내 문구,
+/// 그 외(네트워크·인증·한도·형식) → 스냅샷 없는 오류로 전달.
+async fn finish_write(
+    base_url: &str,
+    access: &TodoAccess,
+    page_id: &str,
+    page_title: &str,
+    date: &str,
+    write: Result<(), ConnectError>,
+) -> Result<TodoOutcome, String> {
+    let notice = match write {
+        Ok(()) => None,
+        Err(ConnectError::NotFound | ConnectError::Conflict) => Some(TODO_STALE_NOTICE.to_string()),
+        Err(e) => return Err(e.message()),
+    };
+    // 쓰기는 이미 반영됐다 — 재조회 실패를 Err로 돌리면 재클릭이 중복 쓰기를 만든다.
+    // snapshot 없이 안내만 싣고, 프론트는 기존 목록을 유지한다.
+    match snapshot_after_write(base_url, access, page_id, page_title, date).await {
+        Ok(snapshot) => Ok(TodoOutcome {
+            snapshot: Some(snapshot),
+            notice,
+        }),
+        Err(_) => Ok(TodoOutcome {
+            snapshot: None,
+            notice: Some(TODO_WRITE_REFRESH_FAILED_NOTICE.to_string()),
+        }),
+    }
+}
+
+/// 오늘 페이지의 to_do 목록 스냅샷을 돌려준다 (R1·R7).
+#[tauri::command]
+pub async fn notion_todo_list(app: AppHandle) -> Result<TodoSnapshot, String> {
+    match todo_access(&app).await? {
+        Err(missing) => Ok(TodoSnapshot::NotConnected { missing }),
+        Ok(access) => snapshot_by_date(NOTION_API_BASE, &access, &today_local())
+            .await
+            .map_err(|e| e.message()),
+    }
+}
+
+/// 페이지 생성의 코어 (`finish_write` 전례 — AppHandle 무의존, 날짜 주입, 테스트 가능).
+/// 생성 전에 날짜를 재확인한다 — stale no_page 화면에서의 클릭이 같은 날짜 행을
+/// 중복 생성하지 않게, 이미 행이 있으면 생성 없이 그 페이지를 불러온다.
+/// 생성 후 목록 조회 실패는 Err 대신 빈 목록 스냅샷 + 안내로 돌려준다 —
+/// 골격 페이지에는 to_do 블록이 없어 빈 목록이 정확하고, page_id를 보존해야
+/// 만들기 버튼 재클릭이 페이지를 중복 생성하지 않는다.
+async fn create_page_outcome(
+    base_url: &str,
+    access: &TodoAccess,
+    date: &str,
+) -> Result<TodoOutcome, String> {
+    let client = NotionClient::new(base_url);
+    // 사전 확인 실패는 그대로 Err — 아직 아무것도 만들지 않아 재시도가 안전하다
+    if let Some((page_id, title)) = client
+        .find_page_by_date(&access.token, &access.data_source_id, date)
+        .await
+        .map_err(|e| e.message())?
+    {
+        let items = client
+            .fetch_todos(&access.token, &page_id)
+            .await
+            .map_err(|e| e.message())?;
+        return Ok(TodoOutcome {
+            snapshot: Some(TodoSnapshot::Loaded {
+                date: date.to_string(),
+                page_id,
+                title,
+                items,
+            }),
+            notice: Some(TODO_PAGE_EXISTS_NOTICE.to_string()),
+        });
+    }
+    let page_id = client
+        .create_day_page(&access.token, &access.data_source_id, date)
+        .await
+        .map_err(|e| e.message())?;
+    let (items, notice) = match client.fetch_todos(&access.token, &page_id).await {
+        Ok(items) => (items, None),
+        Err(_) => (
+            Vec::new(),
+            Some(TODO_CREATED_FETCH_FAILED_NOTICE.to_string()),
+        ),
+    };
+    Ok(TodoOutcome {
+        snapshot: Some(TodoSnapshot::Loaded {
+            date: date.to_string(),
+            page_id,
+            title: "[TODO]".to_string(),
+            items,
+        }),
+        notice,
+    })
+}
+
+/// 오늘 행이 없을 때 `[TODO]` 골격 페이지를 만들고 그 페이지의 스냅샷을 돌려준다 (R3).
+/// 날짜 재쿼리 없이 POST 응답의 page ID로 곧장 children을 조회한다 (KTD5).
+#[tauri::command]
+pub async fn notion_todo_create_page(app: AppHandle) -> Result<TodoOutcome, String> {
+    let access = todo_access(&app)
+        .await?
+        .map_err(|_| TODO_NOT_CONNECTED_ERROR.to_string())?;
+    create_page_outcome(NOTION_API_BASE, &access, &today_local()).await
+}
+
+/// 페이지 본문 끝에 to_do를 추가하고 재조회 스냅샷을 돌려준다 (R4·R6).
+/// `page_title`은 프론트가 현재 스냅샷에서 넘긴다 — children 재조회는 페이지
+/// 제목을 주지 않고, 날짜 재쿼리는 KTD5가 금지한다.
+#[tauri::command]
+pub async fn notion_todo_add(
+    page_id: String,
+    text: String,
+    page_title: String,
+    app: AppHandle,
+) -> Result<TodoOutcome, String> {
+    let access = todo_access(&app)
+        .await?
+        .map_err(|_| TODO_NOT_CONNECTED_ERROR.to_string())?;
+    let client = NotionClient::new(NOTION_API_BASE);
+    let write = client.append_todo(&access.token, &page_id, &text).await;
+    finish_write(
+        NOTION_API_BASE,
+        &access,
+        &page_id,
+        &page_title,
+        &today_local(),
+        write,
+    )
+    .await
+}
+
+/// to_do 체크 상태를 토글하고 재조회 스냅샷을 돌려준다 (R5·R6·R8).
+#[tauri::command]
+pub async fn notion_todo_toggle(
+    page_id: String,
+    block_id: String,
+    checked: bool,
+    page_title: String,
+    app: AppHandle,
+) -> Result<TodoOutcome, String> {
+    let access = todo_access(&app)
+        .await?
+        .map_err(|_| TODO_NOT_CONNECTED_ERROR.to_string())?;
+    let client = NotionClient::new(NOTION_API_BASE);
+    let write = client
+        .set_todo_checked(&access.token, &block_id, checked)
+        .await;
+    finish_write(
+        NOTION_API_BASE,
+        &access,
+        &page_id,
+        &page_title,
+        &today_local(),
+        write,
+    )
+    .await
+}
+
+/// to_do 텍스트를 교체하고 재조회 스냅샷을 돌려준다 (R5·R6·R8).
+#[tauri::command]
+pub async fn notion_todo_edit(
+    page_id: String,
+    block_id: String,
+    text: String,
+    page_title: String,
+    app: AppHandle,
+) -> Result<TodoOutcome, String> {
+    let access = todo_access(&app)
+        .await?
+        .map_err(|_| TODO_NOT_CONNECTED_ERROR.to_string())?;
+    let client = NotionClient::new(NOTION_API_BASE);
+    let write = client.set_todo_text(&access.token, &block_id, &text).await;
+    finish_write(
+        NOTION_API_BASE,
+        &access,
+        &page_id,
+        &page_title,
+        &today_local(),
+        write,
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,5 +645,499 @@ mod tests {
         let v = settings_to_json(&NotionSettings::default());
         let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
         assert_eq!(keys, ["data_source_id", "database_id", "title"]);
+    }
+
+    // ------------------------------------------------------------------
+    // U4 — todo 커맨드 순수 로직 (missing 판정, 스냅샷·결과 직렬화 형태)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn 미연결_missing_목록이_부족한_항목만_순서대로_담는다() {
+        // (토큰, database_id, data_source_id) 존재 여부 조합 4가지
+        assert!(todo_missing(true, true, true).is_empty());
+        assert_eq!(todo_missing(false, true, true), vec!["token"]);
+        assert_eq!(
+            todo_missing(true, false, false),
+            vec!["database", "data_source"]
+        );
+        assert_eq!(
+            todo_missing(false, false, false),
+            vec!["token", "database", "data_source"]
+        );
+    }
+
+    #[test]
+    fn todo_snapshot이_state_태그와_snake_case로_직렬화된다() {
+        // not_connected — missing은 snake_case 문자열 배열 (기존 Missing enum 미사용)
+        let v = serde_json::to_value(TodoSnapshot::NotConnected {
+            missing: vec!["token".to_string(), "data_source".to_string()],
+        })
+        .unwrap();
+        assert_eq!(
+            v,
+            json!({ "state": "not_connected", "missing": ["token", "data_source"] })
+        );
+
+        // no_page — 날짜만 싣는다
+        let v = serde_json::to_value(TodoSnapshot::NoPage {
+            date: "2026-08-09".to_string(),
+        })
+        .unwrap();
+        assert_eq!(v, json!({ "state": "no_page", "date": "2026-08-09" }));
+
+        // loaded — date·page_id·title·items 전 필드
+        let v = serde_json::to_value(TodoSnapshot::Loaded {
+            date: "2026-08-09".to_string(),
+            page_id: "aaaabbbb-cccc-dddd-eeee-ffff00001111".to_string(),
+            title: "[TODO]".to_string(),
+            items: vec![TodoItem {
+                id: "block-1".to_string(),
+                text: "테스트 항목".to_string(),
+                checked: true,
+            }],
+        })
+        .unwrap();
+        assert_eq!(
+            v,
+            json!({
+                "state": "loaded",
+                "date": "2026-08-09",
+                "page_id": "aaaabbbb-cccc-dddd-eeee-ffff00001111",
+                "title": "[TODO]",
+                "items": [{ "id": "block-1", "text": "테스트 항목", "checked": true }]
+            })
+        );
+    }
+
+    #[test]
+    fn todo_outcome의_notice가_없으면_null_있으면_문자열로_직렬화된다() {
+        let ok = TodoOutcome {
+            snapshot: Some(TodoSnapshot::NoPage {
+                date: "2026-08-09".to_string(),
+            }),
+            notice: None,
+        };
+        let v = serde_json::to_value(&ok).unwrap();
+        assert_eq!(v.get("notice"), Some(&Value::Null));
+        assert_eq!(v["snapshot"]["state"], json!("no_page"));
+
+        let stale = TodoOutcome {
+            snapshot: Some(TodoSnapshot::NoPage {
+                date: "2026-08-09".to_string(),
+            }),
+            notice: Some(TODO_STALE_NOTICE.to_string()),
+        };
+        let v = serde_json::to_value(&stale).unwrap();
+        assert_eq!(v["notice"], json!(TODO_STALE_NOTICE));
+    }
+
+    #[test]
+    fn 블록_소실_안내문구는_db_notfound_메시지와_다르다() {
+        // DB용 NotFound 메시지("Integration 연결 확인…")를 블록 소실 안내에 재사용하지 않는다
+        assert_ne!(TODO_STALE_NOTICE, ConnectError::NotFound.message());
+    }
+
+    #[test]
+    fn 생성_경로_안내문구들도_db_notfound_메시지와_다르다() {
+        // 생성 경로의 두 안내(기존 행 불러옴·생성 후 조회 실패)도 오류 메시지와 구분된다
+        assert_ne!(TODO_PAGE_EXISTS_NOTICE, ConnectError::NotFound.message());
+        assert_ne!(
+            TODO_CREATED_FETCH_FAILED_NOTICE,
+            ConnectError::NotFound.message()
+        );
+        assert_ne!(TODO_PAGE_EXISTS_NOTICE, TODO_CREATED_FETCH_FAILED_NOTICE);
+    }
+}
+
+#[cfg(test)]
+mod http_tests {
+    // 한국어 테스트 이름에 포함된 404·notice 같은 소문자 아닌 조합 허용 (notion.rs 전례)
+    #![allow(non_snake_case)]
+
+    use super::*;
+    use serde_json::json;
+    use wiremock::matchers::{body_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // 픽스처 — 전부 가짜 값 (실제 토큰·워크스페이스 ID 아님)
+    const 가짜_토큰: &str = "secret_FAKE_TEST_TOKEN_0000";
+    const 가짜_DS_ID: &str = "ffffeeee-dddd-cccc-bbbb-aaaa00001111";
+    const 가짜_페이지_ID: &str = "77770000-1111-2222-3333-444455556666";
+    const 가짜_새_페이지_ID: &str = "aaaa0000-1111-2222-3333-444455556666";
+    const 가짜_날짜: &str = "2026-08-09";
+
+    fn 가짜_access() -> TodoAccess {
+        TodoAccess {
+            token: 가짜_토큰.to_string(),
+            data_source_id: 가짜_DS_ID.to_string(),
+        }
+    }
+
+    fn 쿼리_경로() -> String {
+        format!("/v1/data_sources/{가짜_DS_ID}/query")
+    }
+
+    fn children_경로(page_id: &str) -> String {
+        format!("/v1/blocks/{page_id}/children")
+    }
+
+    fn 에러_body(status: u16, code: &str) -> serde_json::Value {
+        json!({ "object": "error", "status": status, "code": code, "message": "fake" })
+    }
+
+    fn to_do_블록(id: &str, text: &str, checked: bool) -> serde_json::Value {
+        json!({
+            "object": "block", "id": id, "type": "to_do",
+            "has_children": false, "archived": false,
+            "to_do": {
+                "rich_text": [ { "type": "text", "plain_text": text } ],
+                "checked": checked
+            }
+        })
+    }
+
+    fn children_응답(blocks: Vec<serde_json::Value>) -> serde_json::Value {
+        json!({ "object": "list", "results": blocks, "has_more": false, "next_cursor": null })
+    }
+
+    fn 페이지_행(id: &str, 제목: &str) -> serde_json::Value {
+        json!({
+            "object": "page",
+            "id": id,
+            "properties": {
+                "날짜": { "id": "a%3Abc", "type": "date",
+                          "date": { "start": 가짜_날짜, "end": null } },
+                "이름": { "id": "title", "type": "title",
+                          "title": [ { "type": "text", "plain_text": 제목 } ] }
+            }
+        })
+    }
+
+    fn 쿼리_응답(rows: Vec<serde_json::Value>) -> serde_json::Value {
+        json!({ "object": "list", "results": rows, "has_more": false, "next_cursor": null })
+    }
+
+    async fn mount_children(server: &MockServer, page_id: &str, blocks: Vec<serde_json::Value>) {
+        Mock::given(method("GET"))
+            .and(path(children_경로(page_id)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(blocks)))
+            .mount(server)
+            .await;
+    }
+
+    // ------------------------------------------------------------------
+    // finish_write — 쓰기 결과 → 재조회·안내·오류 분기 (R6·R8)
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn 쓰기_성공_후_재조회_실패는_스냅샷_없이_안내를_돌려준다() {
+        let server = MockServer::start().await;
+        // children 조회가 500으로 실패 (404가 아니므로 날짜 폴백 없이 오류 전파)
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(ResponseTemplate::new(500).set_body_json(json!({})))
+            .mount(&server)
+            .await;
+
+        let outcome = finish_write(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "[TODO]",
+            가짜_날짜,
+            Ok(()),
+        )
+        .await
+        .unwrap();
+        // 쓰기는 반영됐으므로 Err가 아니다 — 재시도 유도(중복 추가)를 막는다
+        assert_eq!(outcome.snapshot, None);
+        assert_eq!(
+            outcome.notice,
+            Some(TODO_WRITE_REFRESH_FAILED_NOTICE.to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn 쓰기_성공은_재조회_스냅샷과_notice_없음을_돌려준다() {
+        let server = MockServer::start().await;
+        mount_children(
+            &server,
+            가짜_페이지_ID,
+            vec![to_do_블록("block-1", "첫째", true)],
+        )
+        .await;
+
+        let outcome = finish_write(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "[TODO]",
+            가짜_날짜,
+            Ok(()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.notice, None);
+        assert_eq!(
+            outcome.snapshot,
+            Some(TodoSnapshot::Loaded {
+                date: 가짜_날짜.to_string(),
+                page_id: 가짜_페이지_ID.to_string(),
+                title: "[TODO]".to_string(),
+                items: vec![TodoItem {
+                    id: "block-1".to_string(),
+                    text: "첫째".to_string(),
+                    checked: true,
+                }],
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn 블록_소실과_충돌_쓰기는_오류_대신_재조회_스냅샷과_안내를_돌려준다() {
+        let server = MockServer::start().await;
+        // 404·409 두 번 모두 재조회가 일어난다
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(vec![])))
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        for write_err in [ConnectError::NotFound, ConnectError::Conflict] {
+            let outcome = finish_write(
+                &server.uri(),
+                &가짜_access(),
+                가짜_페이지_ID,
+                "[TODO]",
+                가짜_날짜,
+                Err(write_err),
+            )
+            .await
+            .unwrap();
+            // 안내는 블록 수준 문구 — DB NotFound 오류 메시지와 다르다
+            assert_eq!(outcome.notice, Some(TODO_STALE_NOTICE.to_string()));
+            assert_ne!(outcome.notice, Some(ConnectError::NotFound.message()));
+            assert!(matches!(outcome.snapshot, Some(TodoSnapshot::Loaded { .. })));
+        }
+    }
+
+    #[tokio::test]
+    async fn 일시_오류_쓰기는_재조회_없이_곧장_오류로_끝난다() {
+        let server = MockServer::start().await;
+        // 재조회 요청이 한 번이라도 오면 실패해야 한다
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(vec![])))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        for write_err in [ConnectError::RateLimited, ConnectError::Network(None)] {
+            let message = write_err.message();
+            let err = finish_write(
+                &server.uri(),
+                &가짜_access(),
+                가짜_페이지_ID,
+                "[TODO]",
+                가짜_날짜,
+                Err(write_err),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(err, message);
+        }
+    }
+
+    #[tokio::test]
+    async fn 쓰기_후_재조회가_404면_날짜_쿼리로_폴백한다() {
+        let server = MockServer::start().await;
+        // 알던 page_id의 children은 404 — 페이지 자체가 사라진 상황
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(
+                ResponseTemplate::new(404).set_body_json(에러_body(404, "object_not_found")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        // 날짜 재쿼리가 새 행을 찾는다
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(쿼리_응답(vec![페이지_행(가짜_새_페이지_ID, "[TODO]")])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        mount_children(
+            &server,
+            가짜_새_페이지_ID,
+            vec![to_do_블록("block-9", "새 항목", false)],
+        )
+        .await;
+
+        let snapshot = snapshot_after_write(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "[TODO]",
+            가짜_날짜,
+        )
+        .await
+        .unwrap();
+        match snapshot {
+            TodoSnapshot::Loaded { page_id, items, .. } => {
+                assert_eq!(page_id, 가짜_새_페이지_ID);
+                assert_eq!(items.len(), 1);
+            }
+            other => panic!("Loaded가 아님: {other:?}"),
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // create_page_outcome — 생성 전 재확인·생성 후 조회 실패 (R3)
+    // ------------------------------------------------------------------
+
+    fn data_source_응답() -> serde_json::Value {
+        json!({
+            "object": "data_source",
+            "id": 가짜_DS_ID,
+            "properties": {
+                "이름": { "id": "title", "type": "title", "title": {} },
+                "날짜": { "id": "a%3Abc", "type": "date", "date": {} },
+                "수행도": { "id": "d%3Aef", "type": "select", "select": { "options": [] } }
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn 만들기_전_기존_행이_있으면_생성_없이_그_페이지를_불러온다() {
+        let server = MockServer::start().await;
+        // stale no_page 화면에서 클릭 — 사전 재확인이 기존 행을 찾는다
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(json!({
+                "filter": { "property": "날짜", "date": { "equals": 가짜_날짜 } },
+                "page_size": 5
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(쿼리_응답(vec![페이지_행(가짜_페이지_ID, "[TODO]")])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        mount_children(
+            &server,
+            가짜_페이지_ID,
+            vec![to_do_블록("block-1", "첫째", false)],
+        )
+        .await;
+        // 생성 요청은 한 번도 오면 안 된다 — 중복 행 방지가 이 테스트의 핵심
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let outcome = create_page_outcome(&server.uri(), &가짜_access(), 가짜_날짜)
+            .await
+            .unwrap();
+        assert_eq!(outcome.notice, Some(TODO_PAGE_EXISTS_NOTICE.to_string()));
+        match outcome.snapshot {
+            Some(TodoSnapshot::Loaded {
+                page_id,
+                title,
+                items,
+                ..
+            }) => {
+                assert_eq!(page_id, 가짜_페이지_ID);
+                assert_eq!(title, "[TODO]");
+                assert_eq!(items.len(), 1);
+            }
+            other => panic!("Loaded가 아님: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn 생성_후_조회_실패는_page_id를_보존한_빈_목록과_안내를_돌려준다() {
+        let server = MockServer::start().await;
+        // 오늘 행 없음 → 생성 진행
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // create_day_page의 스키마 조회 + 페이지 생성
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/data_sources/{가짜_DS_ID}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(data_source_응답()))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "page", "id": 가짜_새_페이지_ID })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        // 생성 직후 children 조회는 실패한다
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_새_페이지_ID)))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_json(에러_body(500, "internal_server_error")),
+            )
+            .mount(&server)
+            .await;
+
+        // 생성은 성공했으므로 Err가 아니다 — page_id를 잃으면 재클릭이 중복 생성한다
+        let outcome = create_page_outcome(&server.uri(), &가짜_access(), 가짜_날짜)
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome.notice,
+            Some(TODO_CREATED_FETCH_FAILED_NOTICE.to_string())
+        );
+        assert_eq!(
+            outcome.snapshot,
+            // 골격 페이지에는 to_do가 없으므로 빈 목록이 정확하다
+            Some(TodoSnapshot::Loaded {
+                date: 가짜_날짜.to_string(),
+                page_id: 가짜_새_페이지_ID.to_string(),
+                title: "[TODO]".to_string(),
+                items: vec![],
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn 사전_확인_조회가_실패하면_페이지를_생성하지_않고_오류를_돌려준다() {
+        let server = MockServer::start().await;
+        // 재확인 쿼리 자체가 실패 — 아직 아무것도 만들지 않았으므로 Err가 안전하다
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_json(에러_body(500, "internal_server_error")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let err = create_page_outcome(&server.uri(), &가짜_access(), 가짜_날짜)
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::Network(Some("HTTP 500".to_string())).message());
     }
 }

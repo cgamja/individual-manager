@@ -201,6 +201,127 @@ button:active {
   color: #d70015;
 }
 
+.todo-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.todo-header .settings-title {
+  margin: 0;
+}
+
+.todo-page-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #6e6e73;
+}
+
+.todo-header button {
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.todo-status {
+  margin: 0;
+  font-size: 11px;
+  color: #6e6e73;
+  min-height: 14px;
+}
+
+.todo-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.todo-empty button {
+  font-size: 12px;
+}
+
+/* 목록 자체 스크롤 영역 — 팝오버 전체 스크롤과 별개 (플랜 Assumptions) */
+.todo-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.todo-item input[type="checkbox"] {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.todo-text {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: #1d1d1f;
+  overflow-wrap: anywhere;
+}
+
+.todo-text:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.todo-text:active {
+  background: rgba(0, 0, 0, 0.09);
+}
+
+.todo-text.todo-done {
+  text-decoration: line-through;
+  color: #6e6e73; /* 12px — 카드 배경 위 4.5:1 이상 유지 */
+}
+
+.todo-edit,
+.todo-add {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.todo-edit input,
+.todo-add input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+}
+
+.todo-edit button,
+.todo-add button {
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f5f5f7;
@@ -266,5 +387,33 @@ button:active {
 
   .notion-error {
     color: #ff6961;
+  }
+
+  .todo-page-title,
+  .todo-status {
+    color: #a1a1a6;
+  }
+
+  .todo-text {
+    color: #f5f5f7;
+  }
+
+  .todo-text:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .todo-text:active {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .todo-text.todo-done {
+    color: #a1a1a6;
+  }
+
+  .todo-edit input,
+  .todo-add input {
+    background: #3a3a3e;
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #f5f5f7;
   }
 }

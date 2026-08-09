@@ -40,6 +40,18 @@ TODO는 이 서비스에서 관리하되, **기록은 계속 Notion Database에 
 
 대상 DB ID는 문서·코드에 하드코딩하지 않고 앱 설정에서 입력받는다.
 
+#### 연결 방식 (2026-08-09 구현, M2 첫 항목)
+
+- API 버전은 `2025-09-03`로 상수 고정. 이 버전부터 database는 컨테이너이고 스키마는 **data source**에
+  있어, 검증은 2단계다: `GET /v1/databases/:id` → `data_sources[0].id` → `GET /v1/data_sources/:id`의
+  `properties`에서 `날짜`(date)·`수행도`(select) 확인. 검증 성공 시 database_id와 **data_source_id**를
+  함께 로컬 설정(`settings.json`의 `notion` 키)에 저장한다 — 이후 조회/쓰기는 data_source ID를 쓴다.
+- DB 지정은 Notion URL/ID 붙여넣기(뷰 ID `?v=` 오인 방지, 32자 hex → UUID 정규화). 필수 스키마가
+  없으면 연결 실패로 처리한다. 404는 "미공유 또는 원본 링크 아님" 힌트로 안내한다.
+- 토큰은 Keychain(`keyring` crate)에만 저장하고 Rust 밖으로 내보내지 않는다. dev 빌드는 재빌드마다
+  Keychain 접근 프롬프트가 반복되는 것이 정상(ad-hoc 서명) — 최종 UX 검증은 번들 `.app`에서.
+- 429는 클라이언트 계층에서 `Retry-After` 준수 + 지수 백오프(3회 상한)로 처리한다.
+
 ### Google Calendar (일정 집결지)
 내 모든 일정(JIRA, Notion, Slack, Webex에서 나온 것 포함)을 Google Calendar에 모은다.
 일일이 사이트에 접속해 작성하지 않고, 다른 서비스의 내용을 보다가 "일정으로 등록" 액션으로 추가한다 (판단은 항상 사용자가, 자동 추출 없음).

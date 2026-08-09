@@ -22,6 +22,9 @@ pub enum ConnectError {
     RateLimited,
     /// 네트워크 오류 (선택적 설명)
     Network(Option<String>),
+    /// 응답 형태가 예상과 다름 (예: data source가 정확히 1개가 아님).
+    /// 상세에는 사용자 입력·토큰을 절대 넣지 않는다.
+    UnexpectedShape(String),
 }
 
 impl ConnectError {
@@ -45,6 +48,9 @@ impl ConnectError {
                 Some(d) => format!("네트워크 오류가 발생했습니다 ({d})"),
                 None => "네트워크 오류가 발생했습니다".to_string(),
             },
+            ConnectError::UnexpectedShape(detail) => {
+                format!("Notion 응답이 예상과 다릅니다 ({detail})")
+            }
         }
     }
 }
@@ -153,6 +159,169 @@ pub fn error_from_code(status: u16, code: &str) -> ConnectError {
             400 => ConnectError::InvalidId,
             _ => ConnectError::Network(Some(format!("HTTP {status}"))),
         },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP 클라이언트 (U2) — base URL 주입형, database → data source 2단계 조회
+// ---------------------------------------------------------------------------
+
+/// 실제 Notion API 기본 주소. 클라이언트는 항상 주입값을 쓰고,
+/// 브릿지(U3)가 이 상수를 넘긴다. 테스트는 wiremock 주소를 넘긴다.
+pub const NOTION_API_BASE: &str = "https://api.notion.com";
+
+/// Notion API 버전 헤더 값 (data source 2단계 조회를 지원하는 버전).
+pub const NOTION_VERSION: &str = "2025-09-03";
+
+/// 429 재시도 총 시도 상한.
+const MAX_ATTEMPTS: u32 = 3;
+
+/// 검증 성공 결과 — DB 제목과 이후 쿼리에 쓸 data source ID.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Verified {
+    pub title: String,
+    pub data_source_id: String,
+}
+
+/// base URL 주입형 Notion HTTP 클라이언트.
+/// 토큰은 요청 헤더로만 쓰고 어떤 로그·에러 메시지에도 남기지 않는다.
+pub struct NotionClient {
+    base_url: String,
+    http: reqwest::Client,
+}
+
+impl NotionClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+            http: reqwest::Client::new(),
+        }
+    }
+
+    /// database → data source 2단계 조회로 연결을 검증한다.
+    /// 1) `GET /v1/databases/{id}` — 제목과 data_sources 추출 (정확히 1개여야 함)
+    /// 2) `GET /v1/data_sources/{id}` — properties를 `validate_schema`로 판정
+    pub async fn verify_connection(
+        &self,
+        token: &str,
+        database_id: &str,
+    ) -> Result<Verified, ConnectError> {
+        let db = self
+            .get_json(&format!("/v1/databases/{database_id}"), token)
+            .await?;
+
+        let data_sources = db
+            .get("data_sources")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        if data_sources.len() != 1 {
+            return Err(ConnectError::UnexpectedShape(format!(
+                "data source가 {}개입니다",
+                data_sources.len()
+            )));
+        }
+        let source = &data_sources[0];
+        let data_source_id = source
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| ConnectError::UnexpectedShape("data source ID 없음".to_string()))?;
+
+        // DB 제목: title rich text의 plain_text 이어붙임, 비면 data source name으로 폴백
+        let title = rich_text_plain(db.get("title"))
+            .filter(|t| !t.is_empty())
+            .or_else(|| {
+                source
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_default();
+
+        let data_source = self
+            .get_json(&format!("/v1/data_sources/{data_source_id}"), token)
+            .await?;
+        let properties = data_source
+            .get("properties")
+            .ok_or_else(|| ConnectError::UnexpectedShape("properties 없음".to_string()))?;
+        validate_schema(properties)?;
+
+        Ok(Verified {
+            title,
+            data_source_id,
+        })
+    }
+
+    /// 공통 헤더로 GET을 보내고 JSON body를 돌려준다. 이후 마일스톤이 재사용한다.
+    /// 429는 `Retry-After`(없으면 지수 백오프)만큼 기다려 최대 `MAX_ATTEMPTS`회 재시도.
+    /// 오류 경로 어디에도 토큰 값·URL 전문을 넣지 않는다.
+    async fn get_json(&self, path: &str, token: &str) -> Result<Value, ConnectError> {
+        let url = format!("{}{}", self.base_url, path);
+        let mut attempt = 0;
+        loop {
+            let response = self
+                .http
+                .get(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Notion-Version", NOTION_VERSION)
+                .send()
+                .await
+                .map_err(|_| ConnectError::Network(None))?;
+
+            let status = response.status().as_u16();
+            if status == 429 {
+                attempt += 1;
+                if attempt >= MAX_ATTEMPTS {
+                    return Err(ConnectError::RateLimited);
+                }
+                let retry_after = response
+                    .headers()
+                    .get("Retry-After")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.trim().parse::<u64>().ok());
+                tokio::time::sleep(retry_delay(attempt - 1, retry_after)).await;
+                continue;
+            }
+            if !(200..300).contains(&status) {
+                // body의 `code`(안정 enum)로 매핑, 파싱 실패 시 status 폴백
+                let code = response
+                    .json::<Value>()
+                    .await
+                    .ok()
+                    .and_then(|body| {
+                        body.get("code")
+                            .and_then(|c| c.as_str())
+                            .map(str::to_string)
+                    })
+                    .unwrap_or_default();
+                return Err(error_from_code(status, &code));
+            }
+            return response
+                .json::<Value>()
+                .await
+                .map_err(|_| ConnectError::Network(None));
+        }
+    }
+}
+
+/// title rich text 배열의 `plain_text`를 이어붙인다. 배열이 아니면 None.
+fn rich_text_plain(value: Option<&Value>) -> Option<String> {
+    let items = value?.as_array()?;
+    Some(
+        items
+            .iter()
+            .filter_map(|item| item.get("plain_text").and_then(|t| t.as_str()))
+            .collect::<String>(),
+    )
+}
+
+/// 재시도 대기 시간 계산 — `Retry-After` 헤더(초)가 있으면 그 값,
+/// 없으면 지수 백오프(0.5s → 1s). 테스트는 Retry-After: 0으로 대기 없이 돈다.
+fn retry_delay(attempt: u32, retry_after_secs: Option<u64>) -> std::time::Duration {
+    match retry_after_secs {
+        Some(secs) => std::time::Duration::from_secs(secs),
+        None => std::time::Duration::from_millis(500 << attempt),
     }
 }
 
@@ -405,5 +574,307 @@ mod tests {
         .unwrap();
         assert_eq!(v["state"], "not_configured");
         assert_eq!(v["missing"], "both");
+    }
+}
+
+#[cfg(test)]
+mod http_tests {
+    // 한국어 테스트 이름에 포함된 DB·Retry_After 같은 대문자 약어 허용
+    #![allow(non_snake_case)]
+
+    use super::*;
+    use serde_json::json;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // 픽스처 — 전부 가짜 값 (실제 토큰·워크스페이스 ID 아님)
+    const 가짜_토큰: &str = "secret_FAKE_TEST_TOKEN_0000";
+    const 가짜_DB_ID: &str = "25b8f0d4-c2f9-8080-abcd-1234567890ab";
+    const 가짜_DS_ID: &str = "ffffeeee-dddd-cccc-bbbb-aaaa00001111";
+    const 가짜_DS_ID_2: &str = "11110000-aaaa-bbbb-cccc-ddddeeeeffff";
+
+    fn database_응답() -> serde_json::Value {
+        json!({
+            "object": "database",
+            "id": 가짜_DB_ID,
+            "title": [
+                { "type": "text", "plain_text": "계획", "text": { "content": "계획" } },
+                { "type": "text", "plain_text": "표", "text": { "content": "표" } }
+            ],
+            "data_sources": [ { "id": 가짜_DS_ID, "name": "계획표" } ]
+        })
+    }
+
+    fn data_source_응답() -> serde_json::Value {
+        json!({
+            "object": "data_source",
+            "id": 가짜_DS_ID,
+            "properties": {
+                "이름": { "id": "title", "type": "title", "title": {} },
+                "날짜": { "id": "a%3Abc", "type": "date", "date": {} },
+                "수행도": { "id": "d%3Aef", "type": "select", "select": { "options": [] } }
+            }
+        })
+    }
+
+    fn 에러_body(status: u16, code: &str) -> serde_json::Value {
+        json!({ "object": "error", "status": status, "code": code, "message": "fake" })
+    }
+
+    fn db_경로() -> String {
+        format!("/v1/databases/{가짜_DB_ID}")
+    }
+
+    fn ds_경로() -> String {
+        format!("/v1/data_sources/{가짜_DS_ID}")
+    }
+
+    async fn mount_정상_database(server: &MockServer) {
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(database_응답()))
+            .mount(server)
+            .await;
+    }
+
+    async fn mount_정상_data_source(server: &MockServer) {
+        Mock::given(method("GET"))
+            .and(path(ds_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(data_source_응답()))
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn 이단계_조회로_스키마_검증에_성공한다() {
+        let server = MockServer::start().await;
+        let auth = format!("Bearer {가짜_토큰}");
+        // 두 요청 모두 Authorization·Notion-Version 헤더를 요구한다
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .and(header("Authorization", auth.as_str()))
+            .and(header("Notion-Version", NOTION_VERSION))
+            .respond_with(ResponseTemplate::new(200).set_body_json(database_응답()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(ds_경로()))
+            .and(header("Authorization", auth.as_str()))
+            .and(header("Notion-Version", NOTION_VERSION))
+            .respond_with(ResponseTemplate::new(200).set_body_json(data_source_응답()))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let verified = client.verify_connection(가짜_토큰, 가짜_DB_ID).await.unwrap();
+        assert_eq!(verified.title, "계획표"); // rich text 조각 이어붙임
+        assert_eq!(verified.data_source_id, 가짜_DS_ID);
+    }
+
+    #[tokio::test]
+    async fn 미공유_DB는_404를_연결_힌트가_담긴_실패로_매핑한다() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .respond_with(
+                ResponseTemplate::new(404).set_body_json(에러_body(404, "object_not_found")),
+            )
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .verify_connection(가짜_토큰, 가짜_DB_ID)
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::NotFound);
+        assert!(
+            err.message().contains("Integration"),
+            "message = {}",
+            err.message()
+        );
+    }
+
+    #[tokio::test]
+    async fn 무효_토큰은_401을_토큰_실패로_매핑한다() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .respond_with(ResponseTemplate::new(401).set_body_json(에러_body(401, "unauthorized")))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .verify_connection(가짜_토큰, 가짜_DB_ID)
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::Unauthorized);
+    }
+
+    #[tokio::test]
+    async fn 스키마가_다른_DB는_누락_속성을_담아_실패한다() {
+        let server = MockServer::start().await;
+        mount_정상_database(&server).await;
+        // 수행도가 select가 아니라 status 타입인 data source
+        let mut ds = data_source_응답();
+        ds["properties"]["수행도"] = json!({ "id": "d%3Aef", "type": "status", "status": {} });
+        Mock::given(method("GET"))
+            .and(path(ds_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ds))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .verify_connection(가짜_토큰, 가짜_DB_ID)
+            .await
+            .unwrap_err();
+        match &err {
+            ConnectError::SchemaMismatch(issues) => {
+                assert!(
+                    issues.iter().any(|i| i.contains("수행도(select)")),
+                    "issues = {issues:?}"
+                );
+            }
+            other => panic!("SchemaMismatch가 아님: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn data_source가_하나가_아니면_오류로_처리한다() {
+        // 0개
+        let server = MockServer::start().await;
+        let mut db = database_응답();
+        db["data_sources"] = json!([]);
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(db))
+            .mount(&server)
+            .await;
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .verify_connection(가짜_토큰, 가짜_DB_ID)
+            .await
+            .unwrap_err();
+        match &err {
+            ConnectError::UnexpectedShape(detail) => {
+                assert!(detail.contains("0개"), "detail = {detail}")
+            }
+            other => panic!("UnexpectedShape가 아님: {other:?}"),
+        }
+
+        // 2개
+        let server = MockServer::start().await;
+        let mut db = database_응답();
+        db["data_sources"] = json!([
+            { "id": 가짜_DS_ID, "name": "계획표" },
+            { "id": 가짜_DS_ID_2, "name": "계획표2" }
+        ]);
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(db))
+            .mount(&server)
+            .await;
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .verify_connection(가짜_토큰, 가짜_DB_ID)
+            .await
+            .unwrap_err();
+        match &err {
+            ConnectError::UnexpectedShape(detail) => {
+                assert!(detail.contains("2개"), "detail = {detail}")
+            }
+            other => panic!("UnexpectedShape가 아님: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn http_429는_Retry_After를_기다렸다가_재시도해_성공한다() {
+        let server = MockServer::start().await;
+        // 첫 요청만 429 (Retry-After: 0 → 테스트가 실제로 기다리지 않는다)
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "0")
+                    .set_body_json(에러_body(429, "rate_limited")),
+            )
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(database_응답()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        mount_정상_data_source(&server).await;
+
+        let client = NotionClient::new(server.uri());
+        let verified = client.verify_connection(가짜_토큰, 가짜_DB_ID).await.unwrap();
+        assert_eq!(verified.data_source_id, 가짜_DS_ID);
+    }
+
+    #[tokio::test]
+    async fn 재시도_상한을_넘으면_실패한다() {
+        let server = MockServer::start().await;
+        // 항상 429 — 상한(3회)만큼 시도한 뒤 RateLimited로 끝나야 한다
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "0")
+                    .set_body_json(에러_body(429, "rate_limited")),
+            )
+            .expect(3)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .verify_connection(가짜_토큰, 가짜_DB_ID)
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::RateLimited);
+    }
+
+    #[tokio::test]
+    async fn 네트워크_오류는_네트워크_실패로_매핑된다() {
+        // 서버가 없는 포트 — 연결 거부는 상세 없는 Network 오류가 된다
+        let client = NotionClient::new("http://127.0.0.1:1");
+        let err = client
+            .verify_connection(가짜_토큰, 가짜_DB_ID)
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::Network(None));
+    }
+
+    #[tokio::test]
+    async fn 페이지_ID를_붙여넣으면_404_실패에_원본_링크_확인_안내가_포함된다() {
+        // 페이지 ID로 databases 조회 → Notion은 object_not_found를 돌려준다
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(db_경로()))
+            .respond_with(
+                ResponseTemplate::new(404).set_body_json(에러_body(404, "object_not_found")),
+            )
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .verify_connection(가짜_토큰, 가짜_DB_ID)
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::NotFound);
+        assert!(
+            err.message().contains("원본"),
+            "message = {}",
+            err.message()
+        );
     }
 }

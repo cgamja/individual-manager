@@ -25,4 +25,11 @@ serde_json = "1"
 tauri-plugin-positioner = { version = "2.3.3", features = ["tray-icon"] }
 tauri-plugin-store = "2.4.4"
 tauri-plugin-notification = "2.3.3"
+# TLS: 0.13에서 "rustls-tls"가 "rustls"로 개명됨 (rustls 백엔드 + OS 신뢰 저장소 검증)
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+wiremock = "0.6"
 

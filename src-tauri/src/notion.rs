@@ -337,14 +337,13 @@ impl NotionClient {
             "sorts": [ { "property": "날짜", "direction": "descending" } ],
             "page_size": 1
         });
-        let response = self
-            .request_json(
-                reqwest::Method::POST,
-                &format!("/v1/data_sources/{data_source_id}/query"),
-                token,
-                Some(&body),
-            )
+        // 재시도·백오프까지 다 기다리면 장식용 조회가 생성 클릭을 수십 초 붙들 수 있다 —
+        // 전체를 짧게 캡하고 초과하면 아이콘 없이 진행한다.
+        let path = format!("/v1/data_sources/{data_source_id}/query");
+        let request = self.request_json(reqwest::Method::POST, &path, token, Some(&body));
+        let response = tokio::time::timeout(std::time::Duration::from_secs(5), request)
             .await
+            .ok()?
             .ok()?;
         let row = response.get("results")?.as_array()?.first()?;
         page_icon_from_json(row.get("icon"))
@@ -464,7 +463,6 @@ impl NotionClient {
         date: &str,
         icon: Option<&PageIcon>,
     ) -> Result<String, ConnectError> {
-
         let data_source = self
             .get_json(&format!("/v1/data_sources/{data_source_id}"), token)
             .await?;

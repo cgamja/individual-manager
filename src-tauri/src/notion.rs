@@ -240,6 +240,17 @@ pub struct NewPage<'a> {
     pub skeleton: bool,
 }
 
+/// 창 조회의 원본 행 — 커버 판정 없이 제목과 `날짜` 범위를 그대로 싣는다.
+/// `find_rows_covering_date`의 원본층이자, 구간 겹침 검사(U4)의 입력.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RowInWindow {
+    pub page_id: String,
+    pub title: String,
+    /// `날짜` 시작 — datetime이 섞일 수 있어 소비자는 앞 10자리로만 비교한다
+    pub start: String,
+    pub end: Option<String>,
+}
+
 /// base URL 주입형 Notion HTTP 클라이언트.
 /// 토큰은 요청 헤더로만 쓰고 어떤 로그·에러 메시지에도 남기지 않는다.
 pub struct NotionClient {
@@ -333,15 +344,31 @@ impl NotionClient {
     /// 주어진 날짜를 기간에 포함하는 행들을 조회 순서대로 돌려준다 — `(page_id, 제목)`.
     /// Notion 날짜 필터의 범위 행(start+end) 평가는 문서화되지 않았고 통설은
     /// 시작일 비교라 equals는 기간 중간 날짜를 못 잡는다(KTD1) — 서버에는
-    /// 하한(31일 전)~조회일 창으로 넓게 묻고, 클라이언트에서
-    /// `start <= date <= (end ?? start)`로 판정한다. 필터는 date-only만 쓴다 —
-    /// datetime을 섞으면 타임존 드리프트가 생긴다(KTD3).
+    /// 하한(31일 전)~조회일 창으로 넓게 묻고(`find_rows_in_window`), 클라이언트에서
+    /// `start <= date <= (end ?? start)`로 판정한다.
     pub async fn find_rows_covering_date(
         &self,
         token: &str,
         data_source_id: &str,
         date: &str,
     ) -> Result<Vec<(String, String)>, ConnectError> {
+        let rows = self.find_rows_in_window(token, data_source_id, date).await?;
+        Ok(rows
+            .into_iter()
+            .filter(|row| covers_date(&row.start, row.end.as_deref(), date))
+            .map(|row| (row.page_id, row.title))
+            .collect())
+    }
+
+    /// 하한(31일 전)~조회일 창의 행을 커버 판정 없이 날짜 범위째 돌려준다 —
+    /// 새 행 생성 전 구간 겹침 검사(U4)처럼 창 안 행 전체의 범위가 필요한 소비자용.
+    /// 필터는 date-only만 쓴다 — datetime을 섞으면 타임존 드리프트가 생긴다(KTD3).
+    pub async fn find_rows_in_window(
+        &self,
+        token: &str,
+        data_source_id: &str,
+        date: &str,
+    ) -> Result<Vec<RowInWindow>, ConnectError> {
         let lower = lower_bound_date(date).ok_or_else(|| {
             // 날짜는 브릿지가 만든 값 — 원문 인용 없이 형식만 알린다 (모듈 규칙)
             ConnectError::UnexpectedShape("조회 날짜 형식이 YYYY-MM-DD가 아님".to_string())
@@ -369,9 +396,14 @@ impl NotionClient {
         Ok(results
             .iter()
             .filter_map(|page| {
-                let id = page.get("id")?.as_str()?.to_string();
+                let page_id = page.get("id")?.as_str()?.to_string();
                 let (start, end) = row_date_range(page)?;
-                covers_date(start, end, date).then(|| (id, page_title(page)))
+                Some(RowInWindow {
+                    page_id,
+                    title: page_title(page),
+                    start: start.to_string(),
+                    end: end.map(str::to_string),
+                })
             })
             .collect())
     }

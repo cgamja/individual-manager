@@ -29,7 +29,10 @@ const NOT_CONNECTED: TodoSnapshot = {
   missing: ["token", "database", "data_source"],
 };
 
-const outcome = (snapshot: TodoSnapshot, notice: string | null = null): TodoOutcome => ({
+const outcome = (
+  snapshot: TodoSnapshot | null,
+  notice: string | null = null,
+): TodoOutcome => ({
   snapshot,
   notice,
 });
@@ -168,6 +171,21 @@ describe("토글 플로", () => {
     await waitFor(() =>
       expect(screen.getByRole("checkbox", { name: "보고서 작성" })).toBeChecked(),
     );
+  });
+
+  it("쓰기_반영_후_재조회_실패는_목록을_유지하고_안내를_보여준다", async () => {
+    // snapshot: null = 쓰기는 반영됐지만 재조회만 실패 — 기존 목록 유지 + 안내 배너
+    const 안내 = "변경은 반영됐지만 목록 조회에 실패했습니다. 새로고침해 주세요.";
+    mockAppIPC({ notion_todo_toggle: () => outcome(null, 안내) });
+    render(<App />);
+
+    const box = await screen.findByRole("checkbox", { name: "보고서 작성" });
+    await userEvent.click(box);
+
+    await waitFor(() => expect(screen.getByText(안내)).toBeInTheDocument());
+    // 목록은 마지막 스냅샷 그대로 유지된다 (비워지지 않음)
+    expect(screen.getByRole("checkbox", { name: "아침 운동" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "이메일 정리" })).toBeInTheDocument();
   });
 });
 

@@ -227,12 +227,13 @@ function App() {
         const outcome = await command();
         // 더 새로운 작업이 시작됐으면 낡은 결과를 버린다 — 입력은 유지시킨다
         if (seq !== todoSeqRef.current) return false;
+        if (outcome.notice) setTodoError(outcome.notice);
+        // snapshot이 null이면 쓰기는 반영됐지만 재조회만 실패한 것 —
+        // 기존 목록을 유지하고, 입력은 비워(true) 중복 재시도를 막는다
+        if (outcome.snapshot === null) return true;
         setTodoSnapshot(outcome.snapshot);
-        if (outcome.notice) {
-          setTodoError(outcome.notice);
-          return false;
-        }
-        return true;
+        // 안내가 있는 스냅샷(블록 소실·충돌)은 쓰기가 반영되지 않은 것 — 입력 유지
+        return !outcome.notice;
       } catch (err) {
         if (seq !== todoSeqRef.current) return false;
         setTodoError(errorMessage(err));

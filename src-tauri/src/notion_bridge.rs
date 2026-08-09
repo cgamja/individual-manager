@@ -279,7 +279,8 @@ pub enum TodoSnapshot {
 /// 안내로 처리할 때(R8)의 문구.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize)]
 pub struct TodoOutcome {
-    pub snapshot: TodoSnapshot,
+    /// `None`이면 "재조회 실패 — 프론트는 기존 목록을 유지하고 notice만 표시"라는 뜻이다.
+    pub snapshot: Option<TodoSnapshot>,
     pub notice: Option<String>,
 }
 
@@ -298,6 +299,11 @@ const TODO_PAGE_EXISTS_NOTICE: &str = "오늘 페이지가 이미 있어 불러�
 /// Err로 돌리면 프론트가 page_id를 잃고 만들기 버튼 재클릭이 페이지를 중복 생성한다.
 const TODO_CREATED_FETCH_FAILED_NOTICE: &str =
     "페이지는 만들어졌지만 목록 조회에 실패했습니다. 새로고침해 주세요.";
+
+/// 쓰기(추가·토글·편집)는 반영됐지만 직후 재조회가 실패했을 때의 안내 —
+/// Err로 돌리면 프론트가 쓰기 실패로 오인하고, 재시도(append 비멱등)가 중복 항목을 만든다.
+const TODO_WRITE_REFRESH_FAILED_NOTICE: &str =
+    "변경은 반영됐지만 목록 조회에 실패했습니다. 새로고침해 주세요.";
 
 /// 미연결 판정 — 무엇이 없는지 snake_case 문자열 목록으로 돌려준다 (R7).
 /// `notion_get_status`의 캐시 기반 표시와 독립인 순수 판정.
@@ -417,10 +423,18 @@ async fn finish_write(
         Err(ConnectError::NotFound | ConnectError::Conflict) => Some(TODO_STALE_NOTICE.to_string()),
         Err(e) => return Err(e.message()),
     };
-    let snapshot = snapshot_after_write(base_url, access, page_id, page_title, date)
-        .await
-        .map_err(|e| e.message())?;
-    Ok(TodoOutcome { snapshot, notice })
+    // 쓰기는 이미 반영됐다 — 재조회 실패를 Err로 돌리면 재클릭이 중복 쓰기를 만든다.
+    // snapshot 없이 안내만 싣고, 프론트는 기존 목록을 유지한다.
+    match snapshot_after_write(base_url, access, page_id, page_title, date).await {
+        Ok(snapshot) => Ok(TodoOutcome {
+            snapshot: Some(snapshot),
+            notice,
+        }),
+        Err(_) => Ok(TodoOutcome {
+            snapshot: None,
+            notice: Some(TODO_WRITE_REFRESH_FAILED_NOTICE.to_string()),
+        }),
+    }
 }
 
 /// 오늘 페이지의 to_do 목록 스냅샷을 돌려준다 (R1·R7).
@@ -457,12 +471,12 @@ async fn create_page_outcome(
             .await
             .map_err(|e| e.message())?;
         return Ok(TodoOutcome {
-            snapshot: TodoSnapshot::Loaded {
+            snapshot: Some(TodoSnapshot::Loaded {
                 date: date.to_string(),
                 page_id,
                 title,
                 items,
-            },
+            }),
             notice: Some(TODO_PAGE_EXISTS_NOTICE.to_string()),
         });
     }
@@ -478,12 +492,12 @@ async fn create_page_outcome(
         ),
     };
     Ok(TodoOutcome {
-        snapshot: TodoSnapshot::Loaded {
+        snapshot: Some(TodoSnapshot::Loaded {
             date: date.to_string(),
             page_id,
             title: "[TODO]".to_string(),
             items,
-        },
+        }),
         notice,
     })
 }
@@ -698,9 +712,9 @@ mod tests {
     #[test]
     fn todo_outcome의_notice가_없으면_null_있으면_문자열로_직렬화된다() {
         let ok = TodoOutcome {
-            snapshot: TodoSnapshot::NoPage {
+            snapshot: Some(TodoSnapshot::NoPage {
                 date: "2026-08-09".to_string(),
-            },
+            }),
             notice: None,
         };
         let v = serde_json::to_value(&ok).unwrap();
@@ -708,9 +722,9 @@ mod tests {
         assert_eq!(v["snapshot"]["state"], json!("no_page"));
 
         let stale = TodoOutcome {
-            snapshot: TodoSnapshot::NoPage {
+            snapshot: Some(TodoSnapshot::NoPage {
                 date: "2026-08-09".to_string(),
-            },
+            }),
             notice: Some(TODO_STALE_NOTICE.to_string()),
         };
         let v = serde_json::to_value(&stale).unwrap();
@@ -816,6 +830,34 @@ mod http_tests {
     // ------------------------------------------------------------------
 
     #[tokio::test]
+    async fn 쓰기_성공_후_재조회_실패는_스냅샷_없이_안내를_돌려준다() {
+        let server = MockServer::start().await;
+        // children 조회가 500으로 실패 (404가 아니므로 날짜 폴백 없이 오류 전파)
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(ResponseTemplate::new(500).set_body_json(json!({})))
+            .mount(&server)
+            .await;
+
+        let outcome = finish_write(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "[TODO]",
+            가짜_날짜,
+            Ok(()),
+        )
+        .await
+        .unwrap();
+        // 쓰기는 반영됐으므로 Err가 아니다 — 재시도 유도(중복 추가)를 막는다
+        assert_eq!(outcome.snapshot, None);
+        assert_eq!(
+            outcome.notice,
+            Some(TODO_WRITE_REFRESH_FAILED_NOTICE.to_string())
+        );
+    }
+
+    #[tokio::test]
     async fn 쓰기_성공은_재조회_스냅샷과_notice_없음을_돌려준다() {
         let server = MockServer::start().await;
         mount_children(
@@ -838,7 +880,7 @@ mod http_tests {
         assert_eq!(outcome.notice, None);
         assert_eq!(
             outcome.snapshot,
-            TodoSnapshot::Loaded {
+            Some(TodoSnapshot::Loaded {
                 date: 가짜_날짜.to_string(),
                 page_id: 가짜_페이지_ID.to_string(),
                 title: "[TODO]".to_string(),
@@ -847,7 +889,7 @@ mod http_tests {
                     text: "첫째".to_string(),
                     checked: true,
                 }],
-            }
+            })
         );
     }
 
@@ -876,7 +918,7 @@ mod http_tests {
             // 안내는 블록 수준 문구 — DB NotFound 오류 메시지와 다르다
             assert_eq!(outcome.notice, Some(TODO_STALE_NOTICE.to_string()));
             assert_ne!(outcome.notice, Some(ConnectError::NotFound.message()));
-            assert!(matches!(outcome.snapshot, TodoSnapshot::Loaded { .. }));
+            assert!(matches!(outcome.snapshot, Some(TodoSnapshot::Loaded { .. })));
         }
     }
 
@@ -1006,12 +1048,12 @@ mod http_tests {
             .unwrap();
         assert_eq!(outcome.notice, Some(TODO_PAGE_EXISTS_NOTICE.to_string()));
         match outcome.snapshot {
-            TodoSnapshot::Loaded {
+            Some(TodoSnapshot::Loaded {
                 page_id,
                 title,
                 items,
                 ..
-            } => {
+            }) => {
                 assert_eq!(page_id, 가짜_페이지_ID);
                 assert_eq!(title, "[TODO]");
                 assert_eq!(items.len(), 1);
@@ -1065,12 +1107,12 @@ mod http_tests {
         assert_eq!(
             outcome.snapshot,
             // 골격 페이지에는 to_do가 없으므로 빈 목록이 정확하다
-            TodoSnapshot::Loaded {
+            Some(TodoSnapshot::Loaded {
                 date: 가짜_날짜.to_string(),
                 page_id: 가짜_새_페이지_ID.to_string(),
                 title: "[TODO]".to_string(),
                 items: vec![],
-            }
+            })
         );
     }
 

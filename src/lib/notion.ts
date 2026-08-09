@@ -43,9 +43,10 @@ export type TodoSnapshot =
       items: TodoItem[];
     };
 
-/** 쓰기 커맨드의 반환 — 재조회 스냅샷(R6)과 블록 소실·충돌 안내 문구(R8). */
+/** 쓰기 커맨드의 반환 — 재조회 스냅샷(R6)과 블록 소실·충돌 안내 문구(R8).
+ * snapshot이 null이면 쓰기는 반영됐지만 재조회가 실패한 경우다 — 기존 목록을 유지하고 notice만 표시한다. */
 export interface TodoOutcome {
-  snapshot: TodoSnapshot;
+  snapshot: TodoSnapshot | null;
   notice: string | null;
 }
 

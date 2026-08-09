@@ -179,10 +179,21 @@ pub async fn notion_save_token(token: String, app: AppHandle) -> Result<Connecti
 }
 
 /// Keychain에서 토큰을 삭제한다 (미저장이면 무시).
+/// 검증 캐시(data_source_id·title)는 지워진 토큰의 결과이므로 함께 비운다.
 #[tauri::command]
 pub async fn notion_delete_token(app: AppHandle) -> Result<ConnectionState, String> {
     on_keychain(delete_token_blocking).await?;
     let settings = read_settings(&app)?;
+    if settings.data_source_id.is_some() || settings.title.is_some() {
+        let _ = write_settings(
+            &app,
+            &NotionSettings {
+                database_id: settings.database_id.clone(),
+                data_source_id: None,
+                title: None,
+            },
+        );
+    }
     Ok(determine_connection_state(
         false,
         settings.database_id.is_some(),

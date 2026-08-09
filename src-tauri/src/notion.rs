@@ -1065,6 +1065,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(non_snake_case)]
     fn 아이콘_JSON_매핑은_emoji와_external만_복사하고_나머지는_폴백한다() {
         // emoji → 그대로 복사
         let icon = json!({ "type": "emoji", "emoji": "🌊" });
@@ -1100,6 +1101,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(non_snake_case)]
     fn 아이콘이_null이거나_없으면_None이다() {
         assert_eq!(page_icon_from_json(Some(&Value::Null)), None);
         assert_eq!(page_icon_from_json(None), None);

@@ -480,8 +480,13 @@ async fn create_page_outcome(
             notice: Some(TODO_PAGE_EXISTS_NOTICE.to_string()),
         });
     }
+    // 최신 [TODO] 행의 아이콘을 복사한다 — 부가 기능이라 조회 실패·아이콘 없음은
+    // None으로 수렴하고(latest_todo_icon 내부 보장) 아이콘 없이 생성한다.
+    let icon = client
+        .latest_todo_icon(&access.token, &access.data_source_id)
+        .await;
     let page_id = client
-        .create_day_page(&access.token, &access.data_source_id, date, None)
+        .create_day_page(&access.token, &access.data_source_id, date, icon.as_ref())
         .await
         .map_err(|e| e.message())?;
     let (items, notice) = match client.fetch_todos(&access.token, &page_id).await {
@@ -1065,11 +1070,19 @@ mod http_tests {
     #[tokio::test]
     async fn 생성_후_조회_실패는_page_id를_보존한_빈_목록과_안내를_돌려준다() {
         let server = MockServer::start().await;
-        // 오늘 행 없음 → 생성 진행
+        // 오늘 행 없음 → 생성 진행 (아이콘 조회와 경로가 같아 날짜 필터 body로만 매치)
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
+            .and(body_json(날짜_쿼리_body()))
             .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
             .expect(1)
+            .mount(&server)
+            .await;
+        // 아이콘 조회 — 이 테스트의 관심사가 아니므로 빈 결과(아이콘 없음)로 응답
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(아이콘_쿼리_body()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
             .mount(&server)
             .await;
         // create_day_page의 스키마 조회 + 페이지 생성
@@ -1139,5 +1152,156 @@ mod http_tests {
             .await
             .unwrap_err();
         assert_eq!(err, ConnectError::Network(Some("HTTP 500".to_string())).message());
+    }
+
+    // ------------------------------------------------------------------
+    // U2 — 생성 시 최신 [TODO] 행 아이콘 복사
+    // ------------------------------------------------------------------
+
+    /// 사전 재확인(날짜 equals)과 아이콘 조회(제목 title 필터)는 같은 쿼리 경로를
+    /// 쓴다 — body로만 구분해 매치한다.
+    fn 날짜_쿼리_body() -> serde_json::Value {
+        json!({
+            "filter": { "property": "날짜", "date": { "equals": 가짜_날짜 } },
+            "page_size": 5
+        })
+    }
+
+    fn 아이콘_쿼리_body() -> serde_json::Value {
+        json!({
+            "filter": { "property": "title", "title": { "equals": "[TODO]" } },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 1
+        })
+    }
+
+    /// data_source_응답()의 title 키("이름") 기준 생성 body — body_json 정확 일치라
+    /// icon이 None이면 icon 키 부재까지 검증된다.
+    fn 생성_body(icon: Option<serde_json::Value>) -> serde_json::Value {
+        let mut body = json!({
+            "parent": { "type": "data_source_id", "data_source_id": 가짜_DS_ID },
+            "properties": {
+                "이름": { "title": [ { "type": "text", "text": { "content": "[TODO]" } } ] },
+                "날짜": { "date": { "start": 가짜_날짜 } }
+            },
+            "children": [
+                { "object": "block", "type": "heading_3",
+                  "heading_3": { "rich_text": [ { "type": "text", "text": { "content": "공부" } } ] } },
+                { "object": "block", "type": "heading_3",
+                  "heading_3": { "rich_text": [ { "type": "text", "text": { "content": "기타" } } ] } }
+            ]
+        });
+        if let Some(icon) = icon {
+            body["icon"] = icon;
+        }
+        body
+    }
+
+    #[tokio::test]
+    async fn 생성_시_최신_TODO_아이콘이_복사된다() {
+        let server = MockServer::start().await;
+        // 오늘 행 없음 → 생성 진행 (날짜 필터 body로만 매치)
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(날짜_쿼리_body()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // 최신 [TODO] 행에 emoji 아이콘이 있다 (제목 필터 body로만 매치)
+        let mut 아이콘_있는_행 = 페이지_행(가짜_페이지_ID, "[TODO]");
+        아이콘_있는_행["icon"] = json!({ "type": "emoji", "emoji": "🌊" });
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(아이콘_쿼리_body()))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![아이콘_있는_행])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        // create_day_page의 스키마 조회
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/data_sources/{가짜_DS_ID}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(data_source_응답()))
+            .mount(&server)
+            .await;
+        // 생성 body에 복사된 아이콘이 그대로 실려야 한다
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .and(body_json(생성_body(Some(
+                json!({ "type": "emoji", "emoji": "🌊" }),
+            ))))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "page", "id": 가짜_새_페이지_ID })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        mount_children(&server, 가짜_새_페이지_ID, vec![]).await;
+
+        let outcome = create_page_outcome(&server.uri(), &가짜_access(), 가짜_날짜)
+            .await
+            .unwrap();
+        assert_eq!(outcome.notice, None);
+        assert_eq!(
+            outcome.snapshot,
+            Some(TodoSnapshot::Loaded {
+                date: 가짜_날짜.to_string(),
+                page_id: 가짜_새_페이지_ID.to_string(),
+                title: "[TODO]".to_string(),
+                items: vec![],
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn 아이콘_조회가_실패해도_페이지는_생성된다() {
+        // AE5 — 아이콘 조회는 부가 기능: 500이어도 icon 키 없이 생성은 진행된다
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(날짜_쿼리_body()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // 아이콘 조회(제목 필터)만 500으로 실패
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(아이콘_쿼리_body()))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_json(에러_body(500, "internal_server_error")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/data_sources/{가짜_DS_ID}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(data_source_응답()))
+            .mount(&server)
+            .await;
+        // icon 키 없는 정확 일치 body — 아이콘 없이 생성됐음을 증명한다
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .and(body_json(생성_body(None)))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "page", "id": 가짜_새_페이지_ID })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        mount_children(&server, 가짜_새_페이지_ID, vec![]).await;
+
+        let outcome = create_page_outcome(&server.uri(), &가짜_access(), 가짜_날짜)
+            .await
+            .unwrap();
+        assert_eq!(outcome.notice, None);
+        assert!(matches!(
+            outcome.snapshot,
+            Some(TodoSnapshot::Loaded { page_id, .. }) if page_id == 가짜_새_페이지_ID
+        ));
     }
 }

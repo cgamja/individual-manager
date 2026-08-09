@@ -68,7 +68,9 @@ TODO는 이 서비스에서 관리하되, **기록은 계속 Notion Database에 
   1회 재조회한다(입력값은 유지).
 - 오늘 페이지 생성은 `template` 파라미터(비동기 적용) 대신 `children` 골격 방식: 제목 `[TODO]`,
   `날짜`=오늘, `heading_3` 헤딩 2개(`공부`/`기타`). 제목 속성 키는 하드코딩하지 않고 생성 시점에
-  data source 스키마에서 `title` 타입 속성을 찾는다.
+  data source 스키마에서 `title` 타입 속성을 찾는다. 생성 시 가장 최근 `[TODO]` 행의 아이콘을
+  복사한다(제목 title 필터 + `날짜` 내림차순 1건). 이모지·외부 URL 타입만 복사하고
+  file·custom_emoji 타입은 기본 이모지(📝)로 폴백하며, 아이콘 조회 실패는 생성을 막지 않는다.
 - API 버전은 `2025-09-03` 유지. 최신 `2026-03-11`과의 차이는 이 표면에서 append `after`→`position`,
   `archived`→`in_trash` 뿐이다(승격은 별도 작업, TODO.md 후속 항목).
 

@@ -104,6 +104,27 @@ describe("토큰 저장 플로", () => {
     expect(tokenInput).toHaveValue("ntn_fake_token_123");
   });
 
+  it("커맨드_reject_시_실제_상태를_재조회해_저장됨_배지를_잘못_노출하지_않는다", async () => {
+    mockAppIPC({
+      notion_save_token: () => {
+        throw "Keychain 접근에 실패했습니다";
+      },
+      notion_get_status: () => ({ state: "not_configured", missing: "token" }),
+    });
+    render(<App />);
+
+    const tokenInput = await screen.findByLabelText("Integration 토큰");
+    await userEvent.type(tokenInput, "ntn_fake_token_123");
+    await userEvent.click(screen.getByRole("button", { name: "토큰 저장" }));
+
+    // 오류는 배너로 알리고, 상태는 재조회 결과(미설정)를 따른다 — 저장됨 배지·삭제 버튼 없음
+    await screen.findByText("Keychain 접근에 실패했습니다");
+    expect(screen.queryByText("저장됨")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "삭제" })).not.toBeInTheDocument();
+    // 입력값은 유지된다 (실패 시 비우지 않음)
+    expect(tokenInput).toHaveValue("ntn_fake_token_123");
+  });
+
   it("커맨드가_reject돼도_입력값이_유지된다", async () => {
     const { props } = renderCard({
       onSaveToken: vi.fn(async (): Promise<ConnectionState> => {

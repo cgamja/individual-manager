@@ -176,6 +176,12 @@ pub const NOTION_VERSION: &str = "2025-09-03";
 /// 429 재시도 총 시도 상한.
 const MAX_ATTEMPTS: u32 = 3;
 
+/// 요청당 타임아웃(초) — 응답이 멈춰도 커맨드·UI 잠금이 이 상한을 넘지 않는다.
+const REQUEST_TIMEOUT_SECS: u64 = 10;
+
+/// `Retry-After` 헤더 값의 상한(초) — 서버 값 하나로 장시간 잠기지 않게 클램프한다.
+const MAX_RETRY_AFTER_SECS: u64 = 30;
+
 /// 검증 성공 결과 — DB 제목과 이후 쿼리에 쓸 data source ID.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Verified {
@@ -194,7 +200,12 @@ impl NotionClient {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into(),
-            http: reqwest::Client::new(),
+            // 타임아웃 없는 기본 클라이언트는 응답이 멈추면 커맨드가 영원히 pending되고
+            // 프론트 isVerifying 잠금이 풀리지 않는다 — 요청당 상한을 강제한다.
+            http: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+                .build()
+                .expect("reqwest 클라이언트 생성 실패"),
         }
     }
 
@@ -267,7 +278,13 @@ impl NotionClient {
                 .header("Notion-Version", NOTION_VERSION)
                 .send()
                 .await
-                .map_err(|_| ConnectError::Network(None))?;
+                .map_err(|e| {
+                    if e.is_timeout() {
+                        ConnectError::Network(Some("응답 시간 초과".to_string()))
+                    } else {
+                        ConnectError::Network(None)
+                    }
+                })?;
 
             let status = response.status().as_u16();
             if status == 429 {
@@ -316,11 +333,12 @@ fn rich_text_plain(value: Option<&Value>) -> Option<String> {
     )
 }
 
-/// 재시도 대기 시간 계산 — `Retry-After` 헤더(초)가 있으면 그 값,
-/// 없으면 지수 백오프(0.5s → 1s). 테스트는 Retry-After: 0으로 대기 없이 돈다.
+/// 재시도 대기 시간 계산 — `Retry-After` 헤더(초)가 있으면 그 값(상한 30초 클램프 —
+/// 서버 값 하나로 커맨드·UI 잠금이 장시간 붙잡히지 않게), 없으면 지수 백오프(0.5s → 1s).
+/// 테스트는 Retry-After: 0으로 대기 없이 돈다.
 fn retry_delay(attempt: u32, retry_after_secs: Option<u64>) -> std::time::Duration {
     match retry_after_secs {
-        Some(secs) => std::time::Duration::from_secs(secs),
+        Some(secs) => std::time::Duration::from_secs(secs.min(MAX_RETRY_AFTER_SECS)),
         None => std::time::Duration::from_millis(500 << attempt),
     }
 }
@@ -556,6 +574,21 @@ mod tests {
             }
             other => panic!("Failed가 아님: {other:?}"),
         }
+    }
+
+    #[test]
+    fn 재시도_대기는_retry_after_상한을_클램프한다() {
+        // 서버가 보낸 큰 값은 상한(30초)으로 클램프, 작은 값은 그대로
+        assert_eq!(
+            retry_delay(0, Some(3600)),
+            std::time::Duration::from_secs(30)
+        );
+        assert_eq!(retry_delay(0, Some(5)), std::time::Duration::from_secs(5));
+        // 헤더 없으면 지수 백오프
+        assert_eq!(
+            retry_delay(1, None),
+            std::time::Duration::from_millis(1000)
+        );
     }
 
     #[test]

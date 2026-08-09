@@ -37,6 +37,7 @@ function App() {
     missing: "both",
   });
   const [notionVerifying, setNotionVerifying] = useState(false);
+  const [notionError, setNotionError] = useState<string | null>(null);
 
   useEffect(() => {
     let unlistenTick: UnlistenFn | undefined;
@@ -112,14 +113,17 @@ function App() {
       try {
         const next = await command();
         setNotionStatus(next);
+        setNotionError(null);
         return next;
       } catch (err) {
-        // 커맨드 reject 메시지는 한국어 문자열 — 카드 상태 배너로 표시한다
-        const failed: ConnectionState = {
-          state: "failed",
-          message: typeof err === "string" ? err : String(err),
-        };
-        setNotionStatus(failed);
+        // 커맨드 reject 시 실제 상태를 재조회해 파생 UI(저장됨 배지 등)가
+        // 어긋나지 않게 하고, 오류 메시지는 별도 배너로 알린다.
+        // 카드에는 failed를 돌려줘 입력값 유지(실패 시 비우지 않음)를 지킨다.
+        const message = typeof err === "string" ? err : String(err);
+        const failed: ConnectionState = { state: "failed", message };
+        const actual = await getNotionStatus().catch(() => null);
+        setNotionStatus(actual ?? failed);
+        setNotionError(message);
         return failed;
       } finally {
         setNotionVerifying(false);
@@ -175,6 +179,11 @@ function App() {
       {saveFailed && (
         <p className="notif-hint" role="status">
           설정 저장에 실패했어요 — 변경은 이번 실행에만 적용돼요
+        </p>
+      )}
+      {notionError && (
+        <p className="notif-hint" role="status">
+          {notionError}
         </p>
       )}
     </main>

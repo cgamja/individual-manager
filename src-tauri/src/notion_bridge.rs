@@ -7,7 +7,8 @@ use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 use crate::notion::{
-    determine_connection_state, parse_database_id, ConnectionState, NotionClient, NOTION_API_BASE,
+    determine_connection_state, parse_database_id, ConnectError, ConnectionState, NotionClient,
+    NOTION_API_BASE,
 };
 
 /// Keychain service 이름 — 번들 ID(com.kangr.penguin) 기반.
@@ -138,7 +139,23 @@ async fn verify_and_cache(
             )?;
             Some(Ok(verified.title))
         }
-        Err(err) => Some(Err(err)),
+        Err(err) => {
+            // 확정적 실패(토큰 무효·미공유·스키마 불일치 등)는 검증 캐시를 비워
+            // 재시작 후 stale '연결됨' 표시를 막는다. 일시 오류(네트워크·429)는
+            // 캐시를 유지해 오프라인 재시작이 연결 상태를 잃지 않게 한다.
+            let transient = matches!(err, ConnectError::Network(_) | ConnectError::RateLimited);
+            if !transient {
+                write_settings(
+                    app,
+                    &NotionSettings {
+                        database_id: Some(database_id.to_string()),
+                        data_source_id: None,
+                        title: None,
+                    },
+                )?;
+            }
+            Some(Err(err))
+        }
     };
     Ok(determine_connection_state(true, true, verified))
 }

@@ -292,6 +292,17 @@ describe("busy·새로고침", () => {
 
     expect(props.onRefresh).toHaveBeenCalled();
   });
+
+  it("스냅샷_도착_전에도_새로고침_버튼이_보인다", async () => {
+    // 첫 로드가 실패해 스냅샷이 null로 남아도 새로고침으로 재시도할 수 있어야 한다
+    const { props } = renderCard({ snapshot: null });
+
+    const refresh = screen.getByRole("button", { name: "새로고침" });
+    expect(refresh).toBeEnabled();
+    await userEvent.click(refresh);
+
+    expect(props.onRefresh).toHaveBeenCalled();
+  });
 });
 
 describe("오류·안내 배너", () => {
@@ -344,5 +355,40 @@ describe("재표시 재조회", () => {
     await waitFor(() =>
       expect(calls.filter((c) => c.cmd === "notion_todo_list").length).toBe(before + 1),
     );
+  });
+
+  it("팝오버_재표시_재조회는_진행_중_쓰기와_경쟁하지_않는다", async () => {
+    // 토글 쓰기를 미해결 promise로 붙잡아 둔 채 재표시 이벤트를 쏜다
+    let resolveToggle!: (value: TodoOutcome) => void;
+    const pendingToggle = new Promise<TodoOutcome>((resolve) => {
+      resolveToggle = resolve;
+    });
+    const written: TodoSnapshot = {
+      ...LOADED,
+      items: [
+        { id: "b1", text: "아침 운동", checked: true },
+        { id: "b2", text: "보고서 작성", checked: true },
+        { id: "b3", text: "이메일 정리", checked: false },
+      ],
+    };
+    const calls = mockAppIPC({ notion_todo_toggle: () => pendingToggle });
+    render(<App />);
+
+    const box = await screen.findByRole("checkbox", { name: "보고서 작성" });
+    await userEvent.click(box);
+    // 쓰기 진행 중(busy) — 재표시 재조회는 스킵된다
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "보고서 작성" })).toBeDisabled(),
+    );
+    const listCallsBefore = calls.filter((c) => c.cmd === "notion_todo_list").length;
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(calls.filter((c) => c.cmd === "notion_todo_list").length).toBe(listCallsBefore);
+
+    // 쓰기 완료 — 최종 목록은 쓰기의 스냅샷이다 (낡은 재조회 응답이 이기지 않는다)
+    resolveToggle(outcome(written));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "보고서 작성" })).toBeChecked(),
+    );
+    expect(calls.filter((c) => c.cmd === "notion_todo_list").length).toBe(listCallsBefore);
   });
 });

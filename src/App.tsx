@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { NotionCard } from "./components/NotionCard";
 import { SettingsCard } from "./components/SettingsCard";
@@ -59,17 +59,30 @@ function App() {
   const [todoBusy, setTodoBusy] = useState(false);
   // 오류와 성공 응답의 notice가 같은 배너 슬롯을 공유한다
   const [todoError, setTodoError] = useState<string | null>(null);
+  // todo 요청 순번 — 뒤늦게 도착한 오래된 응답(재조회 vs 쓰기 경쟁)이
+  // 최신 스냅샷·배너·busy를 덮어쓰지 않게 최신 순번만 결과를 반영한다
+  const todoSeqRef = useRef(0);
+  // 진행 중 여부 — visibilitychange 리스너 클로저에서는 todoBusy state가
+  // 낡은 값이라 ref로 판단한다
+  const todoInFlightRef = useRef(false);
 
   /** 목록 재조회 — 스냅샷이 이미 있으면 목록을 유지한 채 busy만 건다 (R2). */
   const refreshTodos = useCallback(async () => {
+    const seq = ++todoSeqRef.current;
+    todoInFlightRef.current = true;
     setTodoBusy(true);
     setTodoError(null);
     try {
-      setTodoSnapshot(await getTodoList());
+      const todos = await getTodoList();
+      if (seq === todoSeqRef.current) setTodoSnapshot(todos);
     } catch (err) {
-      setTodoError(errorMessage(err));
+      if (seq === todoSeqRef.current) setTodoError(errorMessage(err));
     } finally {
-      setTodoBusy(false);
+      // 더 새로운 작업이 시작됐다면 busy 해제는 그 작업의 몫이다
+      if (seq === todoSeqRef.current) {
+        todoInFlightRef.current = false;
+        setTodoBusy(false);
+      }
     }
   }, []);
 
@@ -90,13 +103,15 @@ function App() {
       const notion = await getNotionStatus().catch(() => null);
       if (!cancelled && notion) setNotionStatus(notion);
       // 오늘 할 일 로드 — Notion 상태 로드 뒤에 시작하되, 네트워크 대기가
-      // 알림 권한 확인을 막지 않게 결과만 비동기로 반영한다
+      // 알림 권한 확인을 막지 않게 결과만 비동기로 반영한다.
+      // 로드 중 사용자가 새로고침·쓰기를 시작했다면(순번 증가) 결과를 버린다
+      const mountSeq = todoSeqRef.current;
       getTodoList()
         .then((todos) => {
-          if (!cancelled) setTodoSnapshot(todos);
+          if (!cancelled && mountSeq === todoSeqRef.current) setTodoSnapshot(todos);
         })
         .catch((err) => {
-          if (!cancelled) setTodoError(errorMessage(err));
+          if (!cancelled && mountSeq === todoSeqRef.current) setTodoError(errorMessage(err));
         });
       // 알림 권한: 거부돼도 앱은 계속 동작하고 카드 내 표시로 대체한다 (R8)
       const granted = await ensureNotificationPermission();
@@ -107,7 +122,8 @@ function App() {
     const onVisibility = () => {
       if (!document.hidden) {
         getTimerState().then(setSnapshot).catch(() => {});
-        void refreshTodos();
+        // 쓰기·재조회가 진행 중이면 스킵 — 재조회 응답이 쓰기 결과를 덮어쓰지 않게
+        if (!todoInFlightRef.current) void refreshTodos();
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -203,10 +219,14 @@ function App() {
    */
   const runTodoCommand = useCallback(
     async (command: () => Promise<TodoOutcome>): Promise<boolean> => {
+      const seq = ++todoSeqRef.current;
+      todoInFlightRef.current = true;
       setTodoBusy(true);
       setTodoError(null);
       try {
         const outcome = await command();
+        // 더 새로운 작업이 시작됐으면 낡은 결과를 버린다 — 입력은 유지시킨다
+        if (seq !== todoSeqRef.current) return false;
         setTodoSnapshot(outcome.snapshot);
         if (outcome.notice) {
           setTodoError(outcome.notice);
@@ -214,13 +234,18 @@ function App() {
         }
         return true;
       } catch (err) {
+        if (seq !== todoSeqRef.current) return false;
         setTodoError(errorMessage(err));
         // 실패 시에도 목록을 1회 재조회한다 — 입력값은 카드가 유지한다 (R8)
         const actual = await getTodoList().catch(() => null);
-        if (actual) setTodoSnapshot(actual);
+        if (actual && seq === todoSeqRef.current) setTodoSnapshot(actual);
         return false;
       } finally {
-        setTodoBusy(false);
+        // 더 새로운 작업이 시작됐다면 busy 해제는 그 작업의 몫이다
+        if (seq === todoSeqRef.current) {
+          todoInFlightRef.current = false;
+          setTodoBusy(false);
+        }
       }
     },
     [],

@@ -70,11 +70,10 @@ export function TodoCard({
         {snapshot?.state === "loaded" && (
           <span className="todo-page-title">{snapshot.title}</span>
         )}
-        {snapshot !== null && (
-          <button type="button" disabled={isBusy} onClick={onRefresh}>
-            새로고침
-          </button>
-        )}
+        {/* 첫 로드 실패로 스냅샷이 null이어도 새로고침으로 재시도할 수 있어야 한다 */}
+        <button type="button" disabled={isBusy} onClick={onRefresh}>
+          새로고침
+        </button>
       </div>
 
       {snapshot === null ? (

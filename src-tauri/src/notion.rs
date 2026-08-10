@@ -24,6 +24,8 @@ pub enum ConnectError {
     Conflict,
     /// rich_text 한 조각의 2000자 상한 초과 — HTTP 호출 전에 거부한다
     TooLong,
+    /// `수행도`가 허용 옵션 4개 밖의 값 — HTTP 호출 전에 거부한다 (KTD2)
+    InvalidPerformance,
     /// 네트워크 오류 (선택적 설명)
     Network(Option<String>),
     /// 응답 형태가 예상과 다름 (예: data source가 정확히 1개가 아님).
@@ -53,6 +55,9 @@ impl ConnectError {
             }
             ConnectError::TooLong => {
                 format!("할 일 텍스트가 너무 깁니다 ({MAX_RICH_TEXT_CHARS}자 제한)")
+            }
+            ConnectError::InvalidPerformance => {
+                format!("수행도는 {} 중 하나여야 합니다", PERFORMANCE_OPTIONS.join("·"))
             }
             ConnectError::Network(detail) => match detail {
                 Some(d) => format!("네트워크 오류가 발생했습니다 ({d})"),
@@ -197,6 +202,12 @@ const MAX_RETRY_AFTER_SECS: u64 = 30;
 /// rich_text `text.content` 한 조각의 문자 수 상한 (Notion API 요청 제한).
 const MAX_RICH_TEXT_CHARS: usize = 2000;
 
+/// `수행도` select의 허용 옵션 — 달성도 순(완료·일부·미완·기타)이 표시 순서다.
+/// Notion select는 스키마에 없는 이름을 400으로 거부하지 않고 조용히 새 옵션을
+/// 만들어 DB 스키마를 오염시킨다(KTD2) — 이 상수가 권위이고, UI 목록은 표시용
+/// 사본이며, 쓰기 직전의 Rust 가드가 최종 방어선이다.
+pub const PERFORMANCE_OPTIONS: [&str; 4] = ["완료", "일부", "미완", "기타"];
+
 /// 검증 성공 결과 — DB 제목과 이후 쿼리에 쓸 data source ID.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Verified {
@@ -263,6 +274,18 @@ pub struct RowInWindow {
     /// `날짜` 시작 — datetime이 섞일 수 있어 소비자는 앞 10자리로만 비교한다
     pub start: String,
     pub end: Option<String>,
+    /// `수행도` select의 현재 이름 — 값이 비었거나 속성이 없으면 None
+    pub performance: Option<String>,
+}
+
+/// 하루의 행 하나 — 커버 판정을 통과한 후보이자 `find_page_by_date`의 결과.
+/// 날짜 범위는 이미 소비됐으므로 싣지 않고, 카드가 곧바로 쓰는 값만 남긴다.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct DayPage {
+    pub page_id: String,
+    pub title: String,
+    /// `수행도` select의 현재 이름 — 값이 비었거나 속성이 없으면 None
+    pub performance: Option<String>,
 }
 
 /// base URL 주입형 Notion HTTP 클라이언트.
@@ -342,20 +365,20 @@ impl NotionClient {
 
     /// 주어진 날짜(로컬 `YYYY-MM-DD`, 브릿지가 주입)의 행을 data source에서 찾는다.
     /// 범위 인식 조회(`find_rows_covering_date`) 위의 얇은 래퍼.
-    /// 반환: `Some((page_id, 제목))` 또는 행 없음 `None`. 복수 행이면 `[TODO]` 제목 우선.
+    /// 반환: `Some(DayPage)` 또는 행 없음 `None`. 복수 행이면 `[TODO]` 제목 우선.
     pub async fn find_page_by_date(
         &self,
         token: &str,
         data_source_id: &str,
         date: &str,
-    ) -> Result<Option<(String, String)>, ConnectError> {
+    ) -> Result<Option<DayPage>, ConnectError> {
         let rows = self
             .find_rows_covering_date(token, data_source_id, date)
             .await?;
         Ok(pick_day_page(&rows))
     }
 
-    /// 주어진 날짜를 기간에 포함하는 행들을 조회 순서대로 돌려준다 — `(page_id, 제목)`.
+    /// 주어진 날짜를 기간에 포함하는 행들을 조회 순서대로 돌려준다 — `DayPage`.
     /// Notion 날짜 필터의 범위 행(start+end) 평가는 문서화되지 않았고 통설은
     /// 시작일 비교라 equals는 기간 중간 날짜를 못 잡는다(KTD1) — 서버에는
     /// 하한(31일 전)~조회일 창으로 넓게 묻고(`find_rows_in_window`), 클라이언트에서
@@ -365,12 +388,16 @@ impl NotionClient {
         token: &str,
         data_source_id: &str,
         date: &str,
-    ) -> Result<Vec<(String, String)>, ConnectError> {
+    ) -> Result<Vec<DayPage>, ConnectError> {
         let rows = self.find_rows_in_window(token, data_source_id, date).await?;
         Ok(rows
             .into_iter()
             .filter(|row| covers_date(&row.start, row.end.as_deref(), date))
-            .map(|row| (row.page_id, row.title))
+            .map(|row| DayPage {
+                page_id: row.page_id,
+                title: row.title,
+                performance: row.performance,
+            })
             .collect())
     }
 
@@ -573,6 +600,32 @@ impl NotionClient {
         Ok(())
     }
 
+    /// 행(페이지)의 `수행도` select를 바꾼다 — 부분 properties만 보내면 제목·날짜 등
+    /// 나머지 속성은 그대로 유지된다 (`set_todo_checked`와 같은 골격).
+    /// 허용 목록(`PERFORMANCE_OPTIONS`) 밖의 값은 HTTP 호출 전에 거부한다(KTD2) —
+    /// Notion select는 모르는 이름을 거부하는 대신 새 옵션으로 만들어 스키마를 오염시킨다.
+    pub async fn set_page_performance(
+        &self,
+        token: &str,
+        page_id: &str,
+        performance: &str,
+    ) -> Result<(), ConnectError> {
+        if !PERFORMANCE_OPTIONS.contains(&performance) {
+            return Err(ConnectError::InvalidPerformance);
+        }
+        let body = serde_json::json!({
+            "properties": { "수행도": { "select": { "name": performance } } }
+        });
+        self.request_json(
+            reqwest::Method::PATCH,
+            &format!("/v1/pages/{page_id}"),
+            token,
+            Some(&body),
+        )
+        .await?;
+        Ok(())
+    }
+
     /// 그 날짜의 행이 없을 때 하루 골격 페이지를 만든다 — 제목 `[TODO]`,
     /// `날짜` date-only, 본문에 heading_3 `공부`/`기타` 두 섹션.
     /// icon은 값이 없으면 키 자체를 넣지 않는다 (null 아님).
@@ -764,6 +817,7 @@ fn rows_from_query_response(response: &Value) -> Result<Vec<RowInWindow>, Connec
                 title: page_title(page),
                 start: start.to_string(),
                 end: end.map(str::to_string),
+                performance: row_performance(page).map(str::to_string),
             })
         })
         .collect())
@@ -777,12 +831,23 @@ fn row_date_range(page: &Value) -> Option<(&str, Option<&str>)> {
     Some((start, end))
 }
 
-/// 후보 `(page_id, 제목)` 중 하루의 행 하나를 고른다 — 같은 날짜에 휴일·MT 행이
+/// 행 `properties.수행도.select.name`을 꺼낸다 (`row_date_range`와 같은 모양).
+/// 값이 비어 있으면 `select`가 null이고, 그 경우·속성 부재·형태 불일치 모두 None이다.
+/// 속성 키는 이름을 그대로 쓴다 — `validate_schema`가 이미 이름으로 검증한다(KTD6).
+fn row_performance(page: &Value) -> Option<&str> {
+    page.get("properties")?
+        .get("수행도")?
+        .get("select")?
+        .get("name")?
+        .as_str()
+}
+
+/// 후보 `DayPage` 중 하루의 행 하나를 고른다 — 같은 날짜에 휴일·MT 행이
 /// 섞일 수 있으므로 제목이 정확히 `[TODO]`인 행을 우선하고, 없으면 첫 행을 쓴다.
-fn pick_day_page(candidates: &[(String, String)]) -> Option<(String, String)> {
+fn pick_day_page(candidates: &[DayPage]) -> Option<DayPage> {
     candidates
         .iter()
-        .find(|(_, title)| title == "[TODO]")
+        .find(|row| row.title == "[TODO]")
         .or_else(|| candidates.first())
         .cloned()
 }
@@ -1243,31 +1308,82 @@ mod tests {
         assert_eq!(todo_from_block(&archived), None);
     }
 
+    /// 하루 행 후보 픽스처 — 수행도는 호출자가 필요하면 덮어쓴다.
+    fn 후보(page_id: &str, title: &str) -> DayPage {
+        DayPage {
+            page_id: page_id.to_string(),
+            title: title.to_string(),
+            performance: None,
+        }
+    }
+
     #[test]
     #[allow(non_snake_case)]
     fn TODO_제목_행이_없으면_첫_행을_선택한다() {
-        // 후보가 여럿이면 [TODO] 제목 행을 우선 선택한다
-        let 혼재 = vec![
-            ("page-holiday".to_string(), "휴일".to_string()),
-            ("page-todo".to_string(), "[TODO]".to_string()),
-        ];
-        assert_eq!(
-            pick_day_page(&혼재),
-            Some(("page-todo".to_string(), "[TODO]".to_string()))
-        );
+        // 후보가 여럿이면 [TODO] 제목 행을 우선 선택한다 — 수행도도 함께 실려 나온다
+        let mut todo_행 = 후보("page-todo", "[TODO]");
+        todo_행.performance = Some("일부".to_string());
+        let 혼재 = vec![후보("page-holiday", "휴일"), todo_행.clone()];
+        assert_eq!(pick_day_page(&혼재), Some(todo_행));
 
         // [TODO] 행이 없는 날 (휴일만 있는 날) — 첫 행 폴백
-        let rows = vec![
-            ("page-holiday".to_string(), "휴일".to_string()),
-            ("page-mt".to_string(), "MT".to_string()),
-        ];
-        assert_eq!(
-            pick_day_page(&rows),
-            Some(("page-holiday".to_string(), "휴일".to_string()))
-        );
+        let rows = vec![후보("page-holiday", "휴일"), 후보("page-mt", "MT")];
+        assert_eq!(pick_day_page(&rows), Some(후보("page-holiday", "휴일")));
 
         // 빈 결과 → None
         assert_eq!(pick_day_page(&[]), None);
+    }
+
+    #[test]
+    fn 행에서_수행도_이름을_뽑는다() {
+        let page = json!({
+            "object": "page",
+            "id": "row-1",
+            "properties": {
+                "수행도": { "id": "d%3Aef", "type": "select",
+                            "select": { "id": "opt-2", "name": "일부", "color": "yellow" } }
+            }
+        });
+        assert_eq!(row_performance(&page), Some("일부"));
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn select가_null이거나_속성이_없으면_None이다() {
+        // 값이 비어 있는 행 — select가 null
+        let page = json!({
+            "properties": { "수행도": { "id": "d%3Aef", "type": "select", "select": null } }
+        });
+        assert_eq!(row_performance(&page), None);
+
+        // 속성 자체가 없는 행
+        let page = json!({ "properties": { "날짜": { "type": "date", "date": null } } });
+        assert_eq!(row_performance(&page), None);
+
+        // properties 자체가 없음
+        assert_eq!(row_performance(&json!({ "id": "row-1" })), None);
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn select_구조가_예상과_다르면_None이다() {
+        // name이 문자열이 아님
+        let page = json!({
+            "properties": { "수행도": { "type": "select", "select": { "name": 42 } } }
+        });
+        assert_eq!(row_performance(&page), None);
+
+        // name 키 자체가 없음
+        let page = json!({
+            "properties": { "수행도": { "type": "select", "select": { "id": "opt-1" } } }
+        });
+        assert_eq!(row_performance(&page), None);
+    }
+
+    #[test]
+    fn 허용_수행도_목록은_달성도_순_네_개다() {
+        // Rust 상수가 권위 — UI 목록은 표시용 사본이다 (KTD2)
+        assert_eq!(PERFORMANCE_OPTIONS, ["완료", "일부", "미완", "기타"]);
     }
 
     #[test]
@@ -1806,6 +1922,15 @@ mod http_tests {
         기간_페이지_행(id, 제목, 가짜_날짜, None)
     }
 
+    /// 하루 행 후보 기대값 — `find_page_by_date`·`find_rows_covering_date`의 반환 모양.
+    fn 하루_행(id: &str, 제목: &str, 수행도: Option<&str>) -> DayPage {
+        DayPage {
+            page_id: id.to_string(),
+            title: 제목.to_string(),
+            performance: 수행도.map(str::to_string),
+        }
+    }
+
     fn 쿼리_응답(rows: Vec<serde_json::Value>) -> serde_json::Value {
         json!({ "object": "list", "results": rows, "has_more": false, "next_cursor": null })
     }
@@ -1865,10 +1990,49 @@ mod http_tests {
             .find_page_by_date(가짜_토큰, 가짜_DS_ID, 가짜_날짜)
             .await
             .unwrap();
+        assert_eq!(found, Some(하루_행(가짜_페이지_ID, "[TODO]", None)));
+    }
+
+    #[tokio::test]
+    async fn 조회한_행이_현재_수행도를_함께_싣는다() {
+        // 수행도까지 한 번의 쿼리로 실어 와야 카드가 추가 조회 없이 표시할 수 있다.
+        // 값이 비어 있는 행(select: null)은 None으로 수렴한다.
+        let server = MockServer::start().await;
+        let mut 수행도_있는_행 = 페이지_행(가짜_페이지_ID, "[TODO]");
+        수행도_있는_행["properties"]["수행도"] =
+            json!({ "id": "d%3Aef", "type": "select",
+                    "select": { "id": "opt-2", "name": "일부", "color": "yellow" } });
+        let mut 수행도_빈_행 = 페이지_행(가짜_휴일_페이지_ID, "휴일");
+        수행도_빈_행["properties"]["수행도"] =
+            json!({ "id": "d%3Aef", "type": "select", "select": null });
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(쿼리_응답(vec![수행도_빈_행, 수행도_있는_행])),
+            )
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let rows = client
+            .find_rows_covering_date(가짜_토큰, 가짜_DS_ID, 가짜_날짜)
+            .await
+            .unwrap();
         assert_eq!(
-            found,
-            Some((가짜_페이지_ID.to_string(), "[TODO]".to_string()))
+            rows,
+            vec![
+                하루_행(가짜_휴일_페이지_ID, "휴일", None),
+                하루_행(가짜_페이지_ID, "[TODO]", Some("일부")),
+            ]
         );
+
+        // [TODO] 우선 선택 경로도 수행도를 그대로 전달한다
+        let found = client
+            .find_page_by_date(가짜_토큰, 가짜_DS_ID, 가짜_날짜)
+            .await
+            .unwrap();
+        assert_eq!(found, Some(하루_행(가짜_페이지_ID, "[TODO]", Some("일부"))));
     }
 
     #[tokio::test]
@@ -1888,10 +2052,7 @@ mod http_tests {
             .find_rows_covering_date(가짜_토큰, 가짜_DS_ID, "2026-08-13")
             .await
             .unwrap();
-        assert_eq!(
-            rows,
-            vec![("row-range".to_string(), "휴가".to_string())]
-        );
+        assert_eq!(rows, vec![하루_행("row-range", "휴가", None)]);
     }
 
     #[tokio::test]
@@ -1913,10 +2074,7 @@ mod http_tests {
             .find_rows_covering_date(가짜_토큰, 가짜_DS_ID, "2026-08-13")
             .await
             .unwrap();
-        assert_eq!(
-            rows,
-            vec![("row-today".to_string(), "[TODO]".to_string())]
-        );
+        assert_eq!(rows, vec![하루_행("row-today", "[TODO]", None)]);
     }
 
     #[tokio::test]
@@ -1972,12 +2130,14 @@ mod http_tests {
                     title: "휴가".to_string(),
                     start: "2026-06-25".to_string(),
                     end: Some("2026-09-20".to_string()),
+                    performance: None,
                 },
                 RowInWindow {
                     page_id: "row-single".to_string(),
                     title: "휴가".to_string(),
                     start: "2026-05-01".to_string(),
                     end: None,
+                    performance: None,
                 },
             ]
         );
@@ -2002,10 +2162,7 @@ mod http_tests {
             .find_page_by_date(가짜_토큰, 가짜_DS_ID, 가짜_날짜)
             .await
             .unwrap();
-        assert_eq!(
-            found,
-            Some((가짜_페이지_ID.to_string(), "[TODO]".to_string()))
-        );
+        assert_eq!(found, Some(하루_행(가짜_페이지_ID, "[TODO]", None)));
     }
 
     #[tokio::test]
@@ -2620,6 +2777,96 @@ mod http_tests {
         let client = NotionClient::new(server.uri());
         let err = client
             .set_todo_checked(가짜_토큰, 가짜_블록_ID, false)
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::NotFound);
+    }
+
+    // --- U1(M2 수행도). 페이지 `수행도` select 부분 업데이트 ---
+
+    fn 페이지_속성_경로() -> String {
+        format!("/v1/pages/{가짜_페이지_ID}")
+    }
+
+    #[tokio::test]
+    async fn 수행도_쓰기_body가_부분_properties로_전송된다() {
+        let server = MockServer::start().await;
+        // body_json은 정확 일치 — 다른 속성(날짜·제목)이 섞이면 매치가 실패한다.
+        // 부분 properties만 보내야 나머지 속성이 그대로 보존된다 (set_todo_checked 전례).
+        Mock::given(method("PATCH"))
+            .and(path(페이지_속성_경로()))
+            .and(header("Notion-Version", NOTION_VERSION))
+            .and(body_json(
+                json!({ "properties": { "수행도": { "select": { "name": "완료" } } } }),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        client
+            .set_page_performance(가짜_토큰, 가짜_페이지_ID, "완료")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn 허용되지_않은_수행도_값은_요청_없이_거부된다() {
+        // Notion select는 스키마에 없는 이름을 400이 아니라 "새 옵션 생성"으로 처리한다(KTD2) —
+        // 가드가 HTTP보다 먼저 동작해야 DB 스키마가 오염되지 않는다. expect(0)이 이를 증명한다.
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path(페이지_속성_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        for 값 in ["보통", "", "완료 ", "done"] {
+            let err = client
+                .set_page_performance(가짜_토큰, 가짜_페이지_ID, 값)
+                .await
+                .unwrap_err();
+            assert_eq!(err, ConnectError::InvalidPerformance);
+            // 메시지는 허용 목록만 안내하고 입력 원문을 인용하지 않는다 (모듈 규칙)
+            let msg = err.message();
+            assert!(msg.contains("수행도"), "message = {msg}");
+            assert!(!msg.contains("done"), "메시지에 입력 원문이 포함됨: {msg}");
+        }
+    }
+
+    #[tokio::test]
+    async fn 수행도_쓰기_실패는_기존_오류_매핑을_따른다() {
+        // 409 conflict_error → Conflict (다른 곳에서 같은 행을 먼저 수정)
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path(페이지_속성_경로()))
+            .respond_with(
+                ResponseTemplate::new(409).set_body_json(에러_body(409, "conflict_error")),
+            )
+            .mount(&server)
+            .await;
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .set_page_performance(가짜_토큰, 가짜_페이지_ID, "일부")
+            .await
+            .unwrap_err();
+        assert_eq!(err, ConnectError::Conflict);
+
+        // 404 object_not_found → NotFound (행이 사라짐)
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path(페이지_속성_경로()))
+            .respond_with(
+                ResponseTemplate::new(404).set_body_json(에러_body(404, "object_not_found")),
+            )
+            .mount(&server)
+            .await;
+        let client = NotionClient::new(server.uri());
+        let err = client
+            .set_page_performance(가짜_토큰, 가짜_페이지_ID, "미완")
             .await
             .unwrap_err();
         assert_eq!(err, ConnectError::NotFound);

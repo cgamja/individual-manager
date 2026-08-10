@@ -9,7 +9,7 @@ use tauri_plugin_store::StoreExt;
 
 use crate::notion::{
     date_only, determine_connection_state, parse_database_id, ConnectError, ConnectionState,
-    NotionClient, RowInWindow, TodoItem, NOTION_API_BASE,
+    DayPage, NotionClient, RowInWindow, TodoItem, NOTION_API_BASE,
 };
 
 /// Keychain service 이름 — 번들 ID(com.kangr.penguin) 기반.
@@ -383,7 +383,9 @@ async fn snapshot_by_date(
             date: date.to_string(),
             is_today: date == today,
         }),
-        Some((page_id, title)) => {
+        Some(DayPage {
+            page_id, title, ..
+        }) => {
             let items = client.fetch_todos(&access.token, &page_id).await?;
             Ok(TodoSnapshot::Loaded {
                 date: date.to_string(),
@@ -479,7 +481,9 @@ async fn create_page_outcome(
 ) -> Result<TodoOutcome, String> {
     let client = NotionClient::new(base_url);
     // 사전 확인 실패는 그대로 Err — 아직 아무것도 만들지 않아 재시도가 안전하다
-    if let Some((page_id, title)) = client
+    if let Some(DayPage {
+        page_id, title, ..
+    }) = client
         .find_page_by_date(&access.token, &access.data_source_id, date)
         .await
         .map_err(|e| e.message())?

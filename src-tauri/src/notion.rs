@@ -212,6 +212,18 @@ pub struct TodoItem {
     pub checked: bool,
 }
 
+/// 새 페이지 생성에 실을 페이지 아이콘 — 최신 `[TODO]` 행에서 복사한다.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum PageIcon {
+    /// 유니코드 이모지 아이콘 — 그대로 복사 가능
+    Emoji(String),
+    /// 외부 URL 아이콘 — URL로 복사 가능
+    External(String),
+}
+
+/// 복사할 수 없는 아이콘(file·custom_emoji)의 폴백 이모지.
+pub const DEFAULT_PAGE_ICON: &str = "📝";
+
 /// base URL 주입형 Notion HTTP 클라이언트.
 /// 토큰은 요청 헤더로만 쓰고 어떤 로그·에러 메시지에도 남기지 않는다.
 pub struct NotionClient {
@@ -313,6 +325,28 @@ impl NotionClient {
             .and_then(|v| v.as_array())
             .ok_or_else(|| ConnectError::UnexpectedShape("results가 배열이 아님".to_string()))?;
         Ok(pick_day_page(results))
+    }
+
+    /// 가장 최근 `[TODO]` 행의 페이지 아이콘을 읽는다 — 새 페이지 생성 시 복사용.
+    /// 부가 기능이므로 HTTP·파싱 오류는 전파하지 않고 None으로 수렴한다.
+    pub async fn latest_todo_icon(&self, token: &str, data_source_id: &str) -> Option<PageIcon> {
+        // 제목 필터의 property는 표시 이름이 아니라 title 속성의 고정 id "title"을 쓴다
+        // (title 키를 하드코딩하지 않는다는 모듈 규칙과 같은 이유).
+        let body = serde_json::json!({
+            "filter": { "property": "title", "title": { "equals": "[TODO]" } },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 1
+        });
+        // 재시도·백오프까지 다 기다리면 장식용 조회가 생성 클릭을 수십 초 붙들 수 있다 —
+        // 전체를 짧게 캡하고 초과하면 아이콘 없이 진행한다.
+        let path = format!("/v1/data_sources/{data_source_id}/query");
+        let request = self.request_json(reqwest::Method::POST, &path, token, Some(&body));
+        let response = tokio::time::timeout(std::time::Duration::from_secs(5), request)
+            .await
+            .ok()?
+            .ok()?;
+        let row = response.get("results")?.as_array()?.first()?;
+        page_icon_from_json(row.get("icon"))
     }
 
     /// 페이지 본문의 최상위 to_do 블록을 페이지 순서대로 모두 수집한다(KTD6).
@@ -420,12 +454,14 @@ impl NotionClient {
     /// 오늘 행이 없을 때 하루 골격 페이지를 만든다 — 제목 `[TODO]`,
     /// `날짜` date-only, 본문에 heading_3 `공부`/`기타` 두 섹션.
     /// title 속성 키는 DB마다 다르므로 스키마를 먼저 조회해 알아낸다.
+    /// `icon`이 Some이면 페이지 아이콘으로 싣고, None이면 icon 키를 생략한다.
     /// 반환: 생성된 페이지 ID.
     pub async fn create_day_page(
         &self,
         token: &str,
         data_source_id: &str,
         date: &str,
+        icon: Option<&PageIcon>,
     ) -> Result<String, ConnectError> {
         let data_source = self
             .get_json(&format!("/v1/data_sources/{data_source_id}"), token)
@@ -436,7 +472,7 @@ impl NotionClient {
         let title_key = title_property_key(properties)
             .ok_or_else(|| ConnectError::UnexpectedShape("title 속성 없음".to_string()))?;
 
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "parent": { "type": "data_source_id", "data_source_id": data_source_id },
             "properties": {
                 title_key: { "title": plain_rich_text("[TODO]")? },
@@ -444,6 +480,10 @@ impl NotionClient {
             },
             "children": [ heading_3_block("공부"), heading_3_block("기타") ]
         });
+        // 아이콘은 선택 — None이면 icon 키 자체를 넣지 않는다
+        if let Some(icon) = icon {
+            body["icon"] = page_icon_json(icon);
+        }
         let page = self
             .request_json(reqwest::Method::POST, "/v1/pages", token, Some(&body))
             .await?;
@@ -584,6 +624,38 @@ fn page_title(page: &Value) -> String {
         })
         .and_then(|p| rich_text_plain(p.get("title")))
         .unwrap_or_default()
+}
+
+/// 페이지 JSON의 `icon` 값 → PageIcon 매핑 (순수 함수).
+/// emoji는 그대로, external은 URL로 복사한다. file은 URL이 1시간 만료라 복사 불가,
+/// custom_emoji는 복사 범위 밖이므로 둘 다 기본 이모지로 폴백한다.
+/// icon이 null·없음이거나 형태를 모르면 None.
+fn page_icon_from_json(icon: Option<&Value>) -> Option<PageIcon> {
+    let icon = icon?;
+    match icon.get("type").and_then(|t| t.as_str())? {
+        "emoji" => icon
+            .get("emoji")
+            .and_then(|e| e.as_str())
+            .map(|e| PageIcon::Emoji(e.to_string())),
+        "external" => icon
+            .get("external")
+            .and_then(|x| x.get("url"))
+            .and_then(|u| u.as_str())
+            .map(|u| PageIcon::External(u.to_string())),
+        "file" | "custom_emoji" => Some(PageIcon::Emoji(DEFAULT_PAGE_ICON.to_string())),
+        // 미지의 아이콘 타입은 복사하지 않는다 (부가 기능 — 조용히 생략)
+        _ => None,
+    }
+}
+
+/// PageIcon → 페이지 생성 body의 최상위 `icon` JSON.
+fn page_icon_json(icon: &PageIcon) -> Value {
+    match icon {
+        PageIcon::Emoji(emoji) => serde_json::json!({ "type": "emoji", "emoji": emoji }),
+        PageIcon::External(url) => {
+            serde_json::json!({ "type": "external", "external": { "url": url } })
+        }
+    }
 }
 
 /// 블록 JSON → TodoItem 변환. `type == "to_do"`이고 archived가 아닌 블록만 변환한다.
@@ -988,6 +1060,49 @@ mod tests {
         // title 타입이 없으면 None
         let props = json!({ "날짜": { "type": "date", "date": {} } });
         assert_eq!(title_property_key(&props), None);
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn 아이콘_JSON_매핑은_emoji와_external만_복사하고_나머지는_폴백한다() {
+        // emoji → 그대로 복사
+        let icon = json!({ "type": "emoji", "emoji": "🌊" });
+        assert_eq!(
+            page_icon_from_json(Some(&icon)),
+            Some(PageIcon::Emoji("🌊".to_string()))
+        );
+
+        // external → URL로 복사
+        let icon = json!({ "type": "external",
+                           "external": { "url": "https://example.com/icon.png" } });
+        assert_eq!(
+            page_icon_from_json(Some(&icon)),
+            Some(PageIcon::External("https://example.com/icon.png".to_string()))
+        );
+
+        // file → 기본 이모지 폴백 (URL 1시간 만료라 복사 불가)
+        let icon = json!({ "type": "file",
+                           "file": { "url": "https://s3.example.com/x.png",
+                                     "expiry_time": "2026-08-10T00:00:00.000Z" } });
+        assert_eq!(
+            page_icon_from_json(Some(&icon)),
+            Some(PageIcon::Emoji(DEFAULT_PAGE_ICON.to_string()))
+        );
+
+        // custom_emoji → 기본 이모지 폴백 (복사 범위 밖)
+        let icon = json!({ "type": "custom_emoji",
+                           "custom_emoji": { "id": "ce-1", "name": "펭귄" } });
+        assert_eq!(
+            page_icon_from_json(Some(&icon)),
+            Some(PageIcon::Emoji(DEFAULT_PAGE_ICON.to_string()))
+        );
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn 아이콘이_null이거나_없으면_None이다() {
+        assert_eq!(page_icon_from_json(Some(&Value::Null)), None);
+        assert_eq!(page_icon_from_json(None), None);
     }
 
     #[test]
@@ -1767,7 +1882,270 @@ mod http_tests {
 
         let client = NotionClient::new(server.uri());
         let page_id = client
-            .create_day_page(가짜_토큰, 가짜_DS_ID, 가짜_날짜)
+            .create_day_page(가짜_토큰, 가짜_DS_ID, 가짜_날짜, None)
+            .await
+            .unwrap();
+        assert_eq!(page_id, 가짜_새_페이지_ID);
+    }
+
+    // --- U1(M2 확장). 아이콘 복사 — 최신 [TODO] 행 아이콘 조회 + 생성 body icon ---
+
+    fn 아이콘_쿼리_body() -> serde_json::Value {
+        json!({
+            "filter": { "property": "title", "title": { "equals": "[TODO]" } },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 1
+        })
+    }
+
+    fn 아이콘_행(icon: serde_json::Value) -> serde_json::Value {
+        let mut row = 페이지_행(가짜_페이지_ID, "[TODO]");
+        row["icon"] = icon;
+        row
+    }
+
+    async fn mount_아이콘_쿼리(server: &MockServer, rows: Vec<serde_json::Value>) {
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(아이콘_쿼리_body()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(rows)))
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn 최신_TODO_행_쿼리_body가_제목_필터와_날짜_내림차순으로_전송된다() {
+        let server = MockServer::start().await;
+        // 제목 필터는 표시 이름("이름")이 아니라 고정 id "title"을 써야 한다.
+        // body_json은 정확 일치 — 필터·정렬·page_size가 다르면 매치가 실패한다.
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(header("Notion-Version", NOTION_VERSION))
+            .and(body_json(아이콘_쿼리_body()))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![아이콘_행(
+                    json!({ "type": "emoji", "emoji": "🌊" }),
+                )])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let icon = client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await;
+        assert_eq!(icon, Some(PageIcon::Emoji("🌊".to_string())));
+    }
+
+    #[tokio::test]
+    async fn emoji_아이콘은_그대로_복사된다() {
+        let server = MockServer::start().await;
+        mount_아이콘_쿼리(
+            &server,
+            vec![아이콘_행(json!({ "type": "emoji", "emoji": "✅" }))],
+        )
+        .await;
+
+        let client = NotionClient::new(server.uri());
+        let icon = client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await;
+        assert_eq!(icon, Some(PageIcon::Emoji("✅".to_string())));
+    }
+
+    #[tokio::test]
+    async fn external_아이콘은_url로_복사된다() {
+        let server = MockServer::start().await;
+        mount_아이콘_쿼리(
+            &server,
+            vec![아이콘_행(json!({
+                "type": "external",
+                "external": { "url": "https://example.com/icon.png" }
+            }))],
+        )
+        .await;
+
+        let client = NotionClient::new(server.uri());
+        let icon = client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await;
+        assert_eq!(
+            icon,
+            Some(PageIcon::External("https://example.com/icon.png".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn file_아이콘은_기본_이모지로_폴백한다() {
+        // file 아이콘의 URL은 1시간 만료라 복사할 수 없다 — 기본 이모지로 폴백
+        let server = MockServer::start().await;
+        mount_아이콘_쿼리(
+            &server,
+            vec![아이콘_행(json!({
+                "type": "file",
+                "file": { "url": "https://s3.example.com/x.png",
+                          "expiry_time": "2026-08-10T00:00:00.000Z" }
+            }))],
+        )
+        .await;
+
+        let client = NotionClient::new(server.uri());
+        let icon = client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await;
+        assert_eq!(icon, Some(PageIcon::Emoji(DEFAULT_PAGE_ICON.to_string())));
+    }
+
+    #[tokio::test]
+    async fn custom_emoji_아이콘도_기본_이모지로_폴백한다() {
+        // custom_emoji는 워크스페이스 종속이라 복사 범위 밖 — 기본 이모지로 폴백
+        let server = MockServer::start().await;
+        mount_아이콘_쿼리(
+            &server,
+            vec![아이콘_행(json!({
+                "type": "custom_emoji",
+                "custom_emoji": { "id": "ce-1", "name": "펭귄" }
+            }))],
+        )
+        .await;
+
+        let client = NotionClient::new(server.uri());
+        let icon = client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await;
+        assert_eq!(icon, Some(PageIcon::Emoji(DEFAULT_PAGE_ICON.to_string())));
+    }
+
+    #[tokio::test]
+    async fn 아이콘_없는_행과_빈_결과는_None을_돌려준다() {
+        // 행은 있지만 icon이 null
+        let server = MockServer::start().await;
+        mount_아이콘_쿼리(&server, vec![아이콘_행(json!(null))]).await;
+        let client = NotionClient::new(server.uri());
+        assert_eq!(client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await, None);
+
+        // 결과가 아예 없음
+        let server = MockServer::start().await;
+        mount_아이콘_쿼리(&server, vec![]).await;
+        let client = NotionClient::new(server.uri());
+        assert_eq!(client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await, None);
+    }
+
+    #[tokio::test]
+    async fn 조회_실패는_오류_대신_None으로_수렴한다() {
+        // 아이콘 복사는 부가 기능 — 500이어도 페이지 생성을 막지 않게 None으로 수렴
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_json(에러_body(500, "internal_server_error")),
+            )
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        assert_eq!(client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await, None);
+    }
+
+    #[tokio::test]
+    async fn 지연되는_응답은_5초_캡에서_None으로_수렴한다() {
+        // 5초 캡이 이 diff의 핵심 신뢰성 장치 — 지연 응답을 기다리지 않고 아이콘 없이 진행함을 증명
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(쿼리_응답(vec![아이콘_행(
+                        serde_json::json!({ "type": "emoji", "emoji": "🌊" }),
+                    )]))
+                    .set_delay(std::time::Duration::from_secs(6)),
+            )
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let 시작 = std::time::Instant::now();
+        let icon = client.latest_todo_icon(가짜_토큰, 가짜_DS_ID).await;
+        // 6초 지연 응답이 오기 전에 캡이 발동해야 한다 — 응답을 기다렸다면 Some이 됐을 것
+        assert_eq!(icon, None);
+        assert!(시작.elapsed() < std::time::Duration::from_secs(6));
+    }
+
+    #[tokio::test]
+    async fn 아이콘이_있으면_생성_body에_icon이_포함되고_없으면_생략된다() {
+        let 생성_body_공통 = json!({
+            "parent": { "type": "data_source_id", "data_source_id": 가짜_DS_ID },
+            "properties": {
+                "이름": {
+                    "title": [ { "type": "text", "text": { "content": "[TODO]" } } ]
+                },
+                "날짜": { "date": { "start": 가짜_날짜 } }
+            },
+            "children": [
+                { "object": "block", "type": "heading_3",
+                  "heading_3": { "rich_text": [ { "type": "text", "text": { "content": "공부" } } ] } },
+                { "object": "block", "type": "heading_3",
+                  "heading_3": { "rich_text": [ { "type": "text", "text": { "content": "기타" } } ] } }
+            ]
+        });
+
+        // Some(emoji) → 최상위 icon 포함 (body_json 정확 일치)
+        let server = MockServer::start().await;
+        mount_정상_data_source(&server).await;
+        let mut icon_포함_body = 생성_body_공통.clone();
+        icon_포함_body["icon"] = json!({ "type": "emoji", "emoji": "🌊" });
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .and(body_json(icon_포함_body))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "page", "id": 가짜_새_페이지_ID })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let icon = PageIcon::Emoji("🌊".to_string());
+        let page_id = client
+            .create_day_page(가짜_토큰, 가짜_DS_ID, 가짜_날짜, Some(&icon))
+            .await
+            .unwrap();
+        assert_eq!(page_id, 가짜_새_페이지_ID);
+
+        // Some(external) → external icon 포함
+        let server = MockServer::start().await;
+        mount_정상_data_source(&server).await;
+        let mut external_포함_body = 생성_body_공통.clone();
+        external_포함_body["icon"] =
+            json!({ "type": "external", "external": { "url": "https://example.com/i.png" } });
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .and(body_json(external_포함_body))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "page", "id": 가짜_새_페이지_ID })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let icon = PageIcon::External("https://example.com/i.png".to_string());
+        let page_id = client
+            .create_day_page(가짜_토큰, 가짜_DS_ID, 가짜_날짜, Some(&icon))
+            .await
+            .unwrap();
+        assert_eq!(page_id, 가짜_새_페이지_ID);
+
+        // None → icon 키 자체가 없어야 한다 (body_json 정확 일치가 이를 보장)
+        let server = MockServer::start().await;
+        mount_정상_data_source(&server).await;
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .and(body_json(생성_body_공통))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "page", "id": 가짜_새_페이지_ID })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let page_id = client
+            .create_day_page(가짜_토큰, 가짜_DS_ID, 가짜_날짜, None)
             .await
             .unwrap();
         assert_eq!(page_id, 가짜_새_페이지_ID);

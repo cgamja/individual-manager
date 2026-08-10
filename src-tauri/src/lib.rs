@@ -140,6 +140,7 @@ pub fn run() {
             notion_bridge::notion_todo_add,
             notion_bridge::notion_todo_toggle,
             notion_bridge::notion_todo_edit,
+            notion_bridge::notion_todo_set_performance,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

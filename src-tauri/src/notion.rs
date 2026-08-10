@@ -210,6 +210,36 @@ pub struct TodoItem {
     pub id: String,
     pub text: String,
     pub checked: bool,
+    /// 직전 heading_1/2/3의 plain_text (공부/기타 등) — 첫 헤딩 전 블록이면 None.
+    pub category: Option<String>,
+}
+
+/// 페이지 본문 최상위 순회 결과 — to_do 목록(카테고리 태깅)과 카테고리 삽입 앵커.
+/// 조회(`fetch_todos`)와 카테고리 삽입의 앵커 탐색이 같은 순회 한 번을 공유한다.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct PageBlocks {
+    pub items: Vec<TodoItem>,
+    sections: Vec<Section>,
+}
+
+/// 헤딩 하나가 여는 섹션 — 순회 중 앵커가 그 섹션의 마지막 최상위 블록으로 갱신된다.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct Section {
+    heading: String,
+    /// 섹션의 마지막 최상위 블록 id — 섹션이 비었으면 헤딩 블록 자신의 id
+    anchor_id: String,
+}
+
+impl PageBlocks {
+    /// 카테고리 섹션의 삽입 앵커 — 그 섹션 마지막 최상위 블록 id
+    /// (섹션이 비었으면 헤딩 블록 자신). 같은 텍스트 헤딩이 여럿이면 첫 섹션.
+    /// 헤딩이 없으면 None — 호출자는 끝에 append로 폴백한다.
+    pub fn anchor_for(&self, category: &str) -> Option<&str> {
+        self.sections
+            .iter()
+            .find(|s| s.heading == category)
+            .map(|s| s.anchor_id.as_str())
+    }
 }
 
 /// 새 페이지 생성에 실을 페이지 아이콘 — 최신 `[TODO]` 행에서 복사한다.
@@ -223,6 +253,17 @@ pub enum PageIcon {
 
 /// 복사할 수 없는 아이콘(file·custom_emoji)의 폴백 이모지.
 pub const DEFAULT_PAGE_ICON: &str = "📝";
+
+/// 창 조회의 원본 행 — 커버 판정 없이 제목과 `날짜` 범위를 그대로 싣는다.
+/// `find_rows_covering_date`의 원본층이자, 구간 겹침 검사(U4)의 입력.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RowInWindow {
+    pub page_id: String,
+    pub title: String,
+    /// `날짜` 시작 — datetime이 섞일 수 있어 소비자는 앞 10자리로만 비교한다
+    pub start: String,
+    pub end: Option<String>,
+}
 
 /// base URL 주입형 Notion HTTP 클라이언트.
 /// 토큰은 요청 헤더로만 쓰고 어떤 로그·에러 메시지에도 남기지 않는다.
@@ -300,7 +341,7 @@ impl NotionClient {
     }
 
     /// 주어진 날짜(로컬 `YYYY-MM-DD`, 브릿지가 주입)의 행을 data source에서 찾는다.
-    /// date-only `equals` 필터만 쓴다 — datetime을 섞으면 타임존 드리프트가 생긴다(KTD3).
+    /// 범위 인식 조회(`find_rows_covering_date`) 위의 얇은 래퍼.
     /// 반환: `Some((page_id, 제목))` 또는 행 없음 `None`. 복수 행이면 `[TODO]` 제목 우선.
     pub async fn find_page_by_date(
         &self,
@@ -308,9 +349,51 @@ impl NotionClient {
         data_source_id: &str,
         date: &str,
     ) -> Result<Option<(String, String)>, ConnectError> {
+        let rows = self
+            .find_rows_covering_date(token, data_source_id, date)
+            .await?;
+        Ok(pick_day_page(&rows))
+    }
+
+    /// 주어진 날짜를 기간에 포함하는 행들을 조회 순서대로 돌려준다 — `(page_id, 제목)`.
+    /// Notion 날짜 필터의 범위 행(start+end) 평가는 문서화되지 않았고 통설은
+    /// 시작일 비교라 equals는 기간 중간 날짜를 못 잡는다(KTD1) — 서버에는
+    /// 하한(31일 전)~조회일 창으로 넓게 묻고(`find_rows_in_window`), 클라이언트에서
+    /// `start <= date <= (end ?? start)`로 판정한다.
+    pub async fn find_rows_covering_date(
+        &self,
+        token: &str,
+        data_source_id: &str,
+        date: &str,
+    ) -> Result<Vec<(String, String)>, ConnectError> {
+        let rows = self.find_rows_in_window(token, data_source_id, date).await?;
+        Ok(rows
+            .into_iter()
+            .filter(|row| covers_date(&row.start, row.end.as_deref(), date))
+            .map(|row| (row.page_id, row.title))
+            .collect())
+    }
+
+    /// 하한(31일 전)~조회일 창의 행을 커버 판정 없이 날짜 범위째 돌려준다 —
+    /// 새 행 생성 전 구간 겹침 검사(U4)처럼 창 안 행 전체의 범위가 필요한 소비자용.
+    /// 필터는 date-only만 쓴다 — datetime을 섞으면 타임존 드리프트가 생긴다(KTD3).
+    pub async fn find_rows_in_window(
+        &self,
+        token: &str,
+        data_source_id: &str,
+        date: &str,
+    ) -> Result<Vec<RowInWindow>, ConnectError> {
+        let lower = lower_bound_date(date).ok_or_else(|| {
+            // 날짜는 브릿지가 만든 값 — 원문 인용 없이 형식만 알린다 (모듈 규칙)
+            ConnectError::UnexpectedShape("조회 날짜 형식이 YYYY-MM-DD가 아님".to_string())
+        })?;
         let body = serde_json::json!({
-            "filter": { "property": "날짜", "date": { "equals": date } },
-            "page_size": 5
+            "filter": { "and": [
+                { "property": "날짜", "date": { "on_or_after": lower } },
+                { "property": "날짜", "date": { "on_or_before": date } }
+            ] },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
         });
         let response = self
             .request_json(
@@ -320,11 +403,34 @@ impl NotionClient {
                 Some(&body),
             )
             .await?;
-        let results = response
-            .get("results")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| ConnectError::UnexpectedShape("results가 배열이 아님".to_string()))?;
-        Ok(pick_day_page(results))
+        rows_from_query_response(&response)
+    }
+
+    /// 같은 제목 행 전체를 날짜 내림차순으로 돌려준다 — 새 행 생성 전 중복 검사(U4)용.
+    /// 날짜 창 조회(`find_rows_in_window`)는 31일 하한이 있어 훨씬 전에 시작한 범위
+    /// 행을 놓친다 — 제목 필터는 하한 없이 같은 제목 행을 전부 받는다.
+    /// 제목 필터의 property는 표시 이름이 아니라 title 속성의 고정 id "title"을 쓴다
+    /// (`latest_todo_icon`과 같은 이유 — title 키를 하드코딩하지 않는 모듈 규칙).
+    pub async fn find_rows_by_title(
+        &self,
+        token: &str,
+        data_source_id: &str,
+        title: &str,
+    ) -> Result<Vec<RowInWindow>, ConnectError> {
+        let body = serde_json::json!({
+            "filter": { "property": "title", "title": { "equals": title } },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
+        });
+        let response = self
+            .request_json(
+                reqwest::Method::POST,
+                &format!("/v1/data_sources/{data_source_id}/query"),
+                token,
+                Some(&body),
+            )
+            .await?;
+        rows_from_query_response(&response)
     }
 
     /// 가장 최근 `[TODO]` 행의 페이지 아이콘을 읽는다 — 새 페이지 생성 시 복사용.
@@ -349,14 +455,25 @@ impl NotionClient {
         page_icon_from_json(row.get("icon"))
     }
 
-    /// 페이지 본문의 최상위 to_do 블록을 페이지 순서대로 모두 수집한다(KTD6).
-    /// `has_more`/`next_cursor` 페이지네이션 루프(100개/페이지)로 끝까지 돈다.
+    /// 페이지 본문의 최상위 to_do 블록을 페이지 순서대로 모두 수집한다(KTD6) —
+    /// `fetch_page_blocks` 위의 얇은 뷰(items만).
     pub async fn fetch_todos(
         &self,
         token: &str,
         page_id: &str,
     ) -> Result<Vec<TodoItem>, ConnectError> {
-        let mut items = Vec::new();
+        Ok(self.fetch_page_blocks(token, page_id).await?.items)
+    }
+
+    /// 페이지 본문 최상위 블록을 한 번 순회해 to_do 목록(카테고리 태깅)과
+    /// 섹션 앵커를 함께 모은다. `has_more`/`next_cursor` 페이지네이션 루프
+    /// (100개/페이지)로 끝까지 돈다 — 헤딩 컨텍스트는 페이지 경계를 넘어 유지된다.
+    pub async fn fetch_page_blocks(
+        &self,
+        token: &str,
+        page_id: &str,
+    ) -> Result<PageBlocks, ConnectError> {
+        let mut blocks = PageBlocks::default();
         let mut cursor: Option<String> = None;
         loop {
             let path = match &cursor {
@@ -370,13 +487,13 @@ impl NotionClient {
                 .ok_or_else(|| {
                     ConnectError::UnexpectedShape("results가 배열이 아님".to_string())
                 })?;
-            items.extend(results.iter().filter_map(todo_from_block));
+            collect_blocks(results, &mut blocks);
             if !response
                 .get("has_more")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false)
             {
-                return Ok(items);
+                return Ok(blocks);
             }
             cursor = response
                 .get("next_cursor")
@@ -390,20 +507,25 @@ impl NotionClient {
         }
     }
 
-    /// 페이지 본문 끝에 미체크 to_do 블록 하나를 추가한다(KTD6 — 위치 지정 없음).
+    /// 미체크 to_do 블록 하나를 추가한다(KTD6). `after`가 Some이면 그 블록 뒤에
+    /// 삽입하고(API 2025-09-03 children append의 `after`), None이면 끝에 붙는다.
     pub async fn append_todo(
         &self,
         token: &str,
         page_id: &str,
         text: &str,
+        after: Option<&str>,
     ) -> Result<(), ConnectError> {
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "children": [ {
                 "object": "block",
                 "type": "to_do",
                 "to_do": { "rich_text": plain_rich_text(text)?, "checked": false }
             } ]
         });
+        if let Some(after) = after {
+            body["after"] = serde_json::json!(after);
+        }
         self.request_json(
             reqwest::Method::PATCH,
             &format!("/v1/blocks/{page_id}/children"),
@@ -451,10 +573,10 @@ impl NotionClient {
         Ok(())
     }
 
-    /// 오늘 행이 없을 때 하루 골격 페이지를 만든다 — 제목 `[TODO]`,
+    /// 그 날짜의 행이 없을 때 하루 골격 페이지를 만든다 — 제목 `[TODO]`,
     /// `날짜` date-only, 본문에 heading_3 `공부`/`기타` 두 섹션.
+    /// icon은 값이 없으면 키 자체를 넣지 않는다 (null 아님).
     /// title 속성 키는 DB마다 다르므로 스키마를 먼저 조회해 알아낸다.
-    /// `icon`이 Some이면 페이지 아이콘으로 싣고, None이면 icon 키를 생략한다.
     /// 반환: 생성된 페이지 ID.
     pub async fn create_day_page(
         &self,
@@ -478,16 +600,16 @@ impl NotionClient {
                 title_key: { "title": plain_rich_text("[TODO]")? },
                 "날짜": { "date": { "start": date } }
             },
-            "children": [ heading_3_block("공부"), heading_3_block("기타") ]
+            "children": [heading_3_block("공부"), heading_3_block("기타")]
         });
-        // 아이콘은 선택 — None이면 icon 키 자체를 넣지 않는다
         if let Some(icon) = icon {
             body["icon"] = page_icon_json(icon);
         }
-        let page = self
+        let created = self
             .request_json(reqwest::Method::POST, "/v1/pages", token, Some(&body))
             .await?;
-        page.get("id")
+        created
+            .get("id")
             .and_then(|v| v.as_str())
             .map(str::to_string)
             .ok_or_else(|| ConnectError::UnexpectedShape("생성된 페이지 ID 없음".to_string()))
@@ -595,16 +717,69 @@ fn heading_3_block(text: &str) -> Value {
     })
 }
 
-/// query 결과에서 하루의 행 하나를 고른다 — 같은 날짜에 휴일·MT 행이 섞일 수 있으므로
-/// 제목이 정확히 `[TODO]`인 행을 우선하고, 없으면 첫 행을 쓴다. 반환: (page_id, 제목).
-fn pick_day_page(results: &[Value]) -> Option<(String, String)> {
-    let candidates: Vec<(String, String)> = results
+/// 범위 조회 하한 일수 — 하한 없는 on_or_before는 page_size 창 밖으로 긴 범위
+/// 행을 밀어낼 수 있어, 31일 창 + 큰 page_size(100)로 조회한다.
+const QUERY_LOOKBACK_DAYS: u64 = 31;
+
+/// 조회 하한 — 날짜(`YYYY-MM-DD`)에서 31일을 뺀 date-only 문자열. 형식 오류면 None.
+/// chrono는 자릿수 없는 "2026-8-9"도 허용하지만, date-only 문자열 비교가 전제인
+/// 이 모듈에서는 정확히 10자(`YYYY-MM-DD`)만 유효하다.
+fn lower_bound_date(date: &str) -> Option<String> {
+    if date.len() != 10 {
+        return None;
+    }
+    let parsed = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
+    let lower = parsed.checked_sub_days(chrono::Days::new(QUERY_LOOKBACK_DAYS))?;
+    Some(lower.format("%Y-%m-%d").to_string())
+}
+
+/// 날짜 문자열의 앞 10자리(date-only) — 행 날짜에는 datetime이 섞일 수 있어
+/// 날짜 비교는 항상 이 값으로 한다 (`YYYY-MM-DD`는 사전순 == 시간순).
+pub(crate) fn date_only(s: &str) -> &str {
+    s.get(..10).unwrap_or(s)
+}
+
+/// 행의 날짜 범위가 조회일을 포함하는가 — `start <= date <= (end ?? start)`.
+/// 비교는 `date_only` 규칙을 따른다.
+fn covers_date(start: &str, end: Option<&str>, date: &str) -> bool {
+    let start_day = date_only(start);
+    let end_day = date_only(end.unwrap_or(start));
+    start_day <= date && date <= end_day
+}
+
+/// 쿼리 응답의 `results` 배열 → `RowInWindow` 목록 (창·제목 조회 공용 추출층).
+/// 형태가 어긋난 행은 오류 대신 조용히 제외한다 (`todo_from_block`과 같은 정책).
+fn rows_from_query_response(response: &Value) -> Result<Vec<RowInWindow>, ConnectError> {
+    let results = response
+        .get("results")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| ConnectError::UnexpectedShape("results가 배열이 아님".to_string()))?;
+    Ok(results
         .iter()
         .filter_map(|page| {
-            let id = page.get("id")?.as_str()?.to_string();
-            Some((id, page_title(page)))
+            let page_id = page.get("id")?.as_str()?.to_string();
+            let (start, end) = row_date_range(page)?;
+            Some(RowInWindow {
+                page_id,
+                title: page_title(page),
+                start: start.to_string(),
+                end: end.map(str::to_string),
+            })
         })
-        .collect();
+        .collect())
+}
+
+/// 행 `properties.날짜.date`에서 `(start, end)`를 꺼낸다. 형태가 다르면 None.
+fn row_date_range(page: &Value) -> Option<(&str, Option<&str>)> {
+    let date = page.get("properties")?.get("날짜")?.get("date")?;
+    let start = date.get("start")?.as_str()?;
+    let end = date.get("end").and_then(|e| e.as_str());
+    Some((start, end))
+}
+
+/// 후보 `(page_id, 제목)` 중 하루의 행 하나를 고른다 — 같은 날짜에 휴일·MT 행이
+/// 섞일 수 있으므로 제목이 정확히 `[TODO]`인 행을 우선하고, 없으면 첫 행을 쓴다.
+fn pick_day_page(candidates: &[(String, String)]) -> Option<(String, String)> {
     candidates
         .iter()
         .find(|(_, title)| title == "[TODO]")
@@ -658,8 +833,47 @@ fn page_icon_json(icon: &PageIcon) -> Value {
     }
 }
 
+/// 최상위 블록 한 페이지 분량을 순서대로 접는다 — heading_1/2/3을 만나면 새 섹션을
+/// 열고, 이후의 최상위 블록마다 그 섹션의 앵커를 갱신한다. to_do는 현재 섹션의
+/// 헤딩 텍스트를 카테고리로 태깅해 수집한다(첫 헤딩 전이면 None). archived 블록은
+/// 목록·앵커 모두에서 제외한다 — 지워진 블록 뒤에 삽입하면 안 된다.
+fn collect_blocks(results: &[Value], blocks: &mut PageBlocks) {
+    for block in results {
+        if block.get("archived").and_then(|a| a.as_bool()) == Some(true) {
+            continue;
+        }
+        let Some(id) = block.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let block_type = block
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or_default();
+        if matches!(block_type, "heading_1" | "heading_2" | "heading_3") {
+            let heading = rich_text_plain(block.get(block_type).and_then(|h| h.get("rich_text")))
+                .unwrap_or_default();
+            blocks.sections.push(Section {
+                heading,
+                anchor_id: id.to_string(),
+            });
+            continue;
+        }
+        // 헤딩이 아닌 모든 최상위 블록(단락·to_do 등)이 섹션의 마지막 블록 후보다
+        if let Some(section) = blocks.sections.last_mut() {
+            section.anchor_id = id.to_string();
+        }
+        if let Some(item) = todo_from_block(block) {
+            blocks.items.push(TodoItem {
+                category: blocks.sections.last().map(|s| s.heading.clone()),
+                ..item
+            });
+        }
+    }
+}
+
 /// 블록 JSON → TodoItem 변환. `type == "to_do"`이고 archived가 아닌 블록만 변환한다.
 /// 오류 대신 None — 형태가 어긋난 블록은 목록에서 조용히 제외된다.
+/// 카테고리는 순회 문맥이 결정하므로(`collect_blocks`) 여기서는 항상 None이다.
 fn todo_from_block(block: &Value) -> Option<TodoItem> {
     if block.get("type").and_then(|t| t.as_str()) != Some("to_do") {
         return None;
@@ -674,7 +888,12 @@ fn todo_from_block(block: &Value) -> Option<TodoItem> {
         .get("checked")
         .and_then(|c| c.as_bool())
         .unwrap_or(false);
-    Some(TodoItem { id, text, checked })
+    Some(TodoItem {
+        id,
+        text,
+        checked,
+        category: None,
+    })
 }
 
 /// title rich text 배열의 `plain_text`를 이어붙인다. 배열이 아니면 None.
@@ -946,17 +1165,36 @@ mod tests {
         );
     }
 
-    fn 가짜_페이지_행(id: &str, 제목: &str) -> Value {
-        json!({
-            "object": "page",
-            "id": id,
-            "properties": {
-                "날짜": { "id": "a%3Abc", "type": "date",
-                          "date": { "start": "2026-08-09", "end": null } },
-                "이름": { "id": "title", "type": "title",
-                          "title": [ { "type": "text", "plain_text": 제목 } ] }
-            }
-        })
+    #[test]
+    fn 하한_계산이_월초를_넘어가도_정확하다() {
+        // 31일 전 — 월 경계를 넘는다
+        assert_eq!(lower_bound_date("2026-08-09").as_deref(), Some("2026-07-09"));
+        // 연초 경계 — 연도가 바뀐다
+        assert_eq!(lower_bound_date("2026-01-15").as_deref(), Some("2025-12-15"));
+        // 짧은 달(2월)을 건너는 경계
+        assert_eq!(lower_bound_date("2026-03-05").as_deref(), Some("2026-02-02"));
+        // 형식 오류는 None
+        assert_eq!(lower_bound_date("2026-8-9"), None);
+        assert_eq!(lower_bound_date(""), None);
+    }
+
+    #[test]
+    fn 끝_없는_행은_시작일에만_매칭된다() {
+        assert!(covers_date("2026-08-12", None, "2026-08-12"));
+        assert!(!covers_date("2026-08-12", None, "2026-08-13"));
+        assert!(!covers_date("2026-08-12", None, "2026-08-11"));
+    }
+
+    #[test]
+    fn datetime이_섞인_날짜도_앞_10자리로_판정한다() {
+        // Notion 행에는 datetime이 섞일 수 있다 — 앞 10자리(date-only)로만 판정한다
+        assert!(covers_date(
+            "2026-08-12T09:00:00.000+09:00",
+            Some("2026-08-14T21:00:00.000+09:00"),
+            "2026-08-13"
+        ));
+        assert!(covers_date("2026-08-12T09:00:00.000+09:00", None, "2026-08-12"));
+        assert!(!covers_date("2026-08-12T09:00:00.000+09:00", None, "2026-08-13"));
     }
 
     #[test]
@@ -981,6 +1219,8 @@ mod tests {
                 id: "block-1".to_string(),
                 text: "10:00 알고리즘 1문제".to_string(),
                 checked: true,
+                // 카테고리는 children 순회(collect_blocks)가 태깅한다 — 블록 단독 변환은 None
+                category: None,
             })
         );
     }
@@ -1006,10 +1246,20 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn TODO_제목_행이_없으면_첫_행을_선택한다() {
+        // 후보가 여럿이면 [TODO] 제목 행을 우선 선택한다
+        let 혼재 = vec![
+            ("page-holiday".to_string(), "휴일".to_string()),
+            ("page-todo".to_string(), "[TODO]".to_string()),
+        ];
+        assert_eq!(
+            pick_day_page(&혼재),
+            Some(("page-todo".to_string(), "[TODO]".to_string()))
+        );
+
         // [TODO] 행이 없는 날 (휴일만 있는 날) — 첫 행 폴백
         let rows = vec![
-            가짜_페이지_행("page-holiday", "휴일"),
-            가짜_페이지_행("page-mt", "MT"),
+            ("page-holiday".to_string(), "휴일".to_string()),
+            ("page-mt".to_string(), "MT".to_string()),
         ];
         assert_eq!(
             pick_day_page(&rows),
@@ -1520,24 +1770,40 @@ mod http_tests {
         format!("/v1/blocks/{가짜_페이지_ID}/children")
     }
 
+    /// 가짜_날짜에서 31일을 뺀 조회 하한 (2026-08-09 → 2026-07-09).
+    const 가짜_하한_날짜: &str = "2026-07-09";
+
     fn 날짜_쿼리_body() -> serde_json::Value {
         json!({
-            "filter": { "property": "날짜", "date": { "equals": 가짜_날짜 } },
-            "page_size": 5
+            "filter": { "and": [
+                { "property": "날짜", "date": { "on_or_after": 가짜_하한_날짜 } },
+                { "property": "날짜", "date": { "on_or_before": 가짜_날짜 } }
+            ] },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
         })
     }
 
-    fn 페이지_행(id: &str, 제목: &str) -> serde_json::Value {
+    fn 기간_페이지_행(
+        id: &str,
+        제목: &str,
+        start: &str,
+        end: Option<&str>,
+    ) -> serde_json::Value {
         json!({
             "object": "page",
             "id": id,
             "properties": {
                 "날짜": { "id": "a%3Abc", "type": "date",
-                          "date": { "start": 가짜_날짜, "end": null } },
+                          "date": { "start": start, "end": end } },
                 "이름": { "id": "title", "type": "title",
                           "title": [ { "type": "text", "plain_text": 제목 } ] }
             }
         })
+    }
+
+    fn 페이지_행(id: &str, 제목: &str) -> serde_json::Value {
+        기간_페이지_행(id, 제목, 가짜_날짜, None)
     }
 
     fn 쿼리_응답(rows: Vec<serde_json::Value>) -> serde_json::Value {
@@ -1567,10 +1833,21 @@ mod http_tests {
         })
     }
 
+    /// heading 블록 픽스처 — level은 "heading_1"~"heading_3" (전부 카테고리 경계다).
+    fn heading_블록(id: &str, level: &str, text: &str) -> serde_json::Value {
+        let mut block = json!({
+            "object": "block", "id": id, "type": level,
+            "has_children": false, "archived": false
+        });
+        block[level] = json!({ "rich_text": [ { "type": "text", "plain_text": text } ] });
+        block
+    }
+
     #[tokio::test]
-    async fn 날짜_필터_쿼리_body가_date_only_equals로_전송된다() {
+    async fn 조회_body가_31일_하한과_내림차순_정렬로_전송된다() {
         let server = MockServer::start().await;
-        // 필터는 date-only equals 하나 + page_size — 그 외 필드가 붙으면 매치 실패한다
+        // equals는 기간(start~end) 중간 날짜 행을 못 잡는다 — 하한(31일 전)~조회일 창으로
+        // 넓게 받는다. body_json은 정확 일치 — 필터·정렬·page_size가 다르면 매치 실패한다.
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
             .and(header("Notion-Version", NOTION_VERSION))
@@ -1595,6 +1872,54 @@ mod http_tests {
     }
 
     #[tokio::test]
+    async fn 범위_행은_기간_중간_날짜에도_후보에_포함된다() {
+        // 조회일(8/13)이 행의 기간(8/12~8/14) 중간 — equals 필터라면 놓쳤을 행
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                기간_페이지_행("row-range", "휴가", "2026-08-12", Some("2026-08-14")),
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let rows = client
+            .find_rows_covering_date(가짜_토큰, 가짜_DS_ID, "2026-08-13")
+            .await
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![("row-range".to_string(), "휴가".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn 기간이_끝난_과거_행은_후보에서_제외된다() {
+        // 서버 필터는 시작일 기준이라 이미 끝난 범위 행도 응답에 섞인다 —
+        // 클라이언트 판정(start <= date <= end)이 걸러내야 한다
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                기간_페이지_행("row-today", "[TODO]", "2026-08-13", None),
+                기간_페이지_행("row-past", "지난주", "2026-08-01", Some("2026-08-05")),
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let rows = client
+            .find_rows_covering_date(가짜_토큰, 가짜_DS_ID, "2026-08-13")
+            .await
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![("row-today".to_string(), "[TODO]".to_string())]
+        );
+    }
+
+    #[tokio::test]
     async fn 결과가_없으면_None을_돌려준다() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1609,6 +1934,53 @@ mod http_tests {
             .await
             .unwrap();
         assert_eq!(found, None);
+    }
+
+    #[tokio::test]
+    async fn 제목_필터_조회가_고정_id_body로_같은_제목_행_전체를_돌려준다() {
+        let server = MockServer::start().await;
+        // 제목 필터의 property는 표시 이름("이름")이 아니라 고정 id "title"을 쓴다.
+        // 날짜 창 조회(31일 하한)와 달리 하한이 없어 오래전에 시작한 행도 받는다.
+        // body_json은 정확 일치 — 필터·정렬·page_size가 다르면 매치가 실패한다.
+        let 제목_쿼리_body = json!({
+            "filter": { "property": "title", "title": { "equals": "휴가" } },
+            "sorts": [ { "property": "날짜", "direction": "descending" } ],
+            "page_size": 100
+        });
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(header("Notion-Version", NOTION_VERSION))
+            .and(body_json(제목_쿼리_body))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                기간_페이지_행("row-old", "휴가", "2026-06-25", Some("2026-09-20")),
+                기간_페이지_행("row-single", "휴가", "2026-05-01", None),
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let rows = client
+            .find_rows_by_title(가짜_토큰, 가짜_DS_ID, "휴가")
+            .await
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                RowInWindow {
+                    page_id: "row-old".to_string(),
+                    title: "휴가".to_string(),
+                    start: "2026-06-25".to_string(),
+                    end: Some("2026-09-20".to_string()),
+                },
+                RowInWindow {
+                    page_id: "row-single".to_string(),
+                    title: "휴가".to_string(),
+                    start: "2026-05-01".to_string(),
+                    end: None,
+                },
+            ]
+        );
     }
 
     #[tokio::test]
@@ -1722,6 +2094,55 @@ mod http_tests {
     }
 
     #[tokio::test]
+    async fn 헤딩_아래_to_do가_카테고리로_태깅된다() {
+        let server = MockServer::start().await;
+        // 페이지 경계를 넘어도 직전 헤딩이 유지돼야 한다 — 공부 섹션이 두 페이지에 걸친다.
+        // 커서 있는 요청 매처를 먼저 등록한다 (두_페이지 병합 테스트 전례).
+        Mock::given(method("GET"))
+            .and(path(children_경로()))
+            .and(query_param("page_size", "100"))
+            .and(query_param("start_cursor", "cursor-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(
+                vec![
+                    to_do_블록("block-b", "알고리즘 1문제", false),
+                    // heading_1도 카테고리 경계다 (heading_1/2/3 모두)
+                    heading_블록("block-h2", "heading_1", "기타"),
+                    to_do_블록("block-c", "장보기", false),
+                ],
+                None,
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(children_경로()))
+            .and(query_param("page_size", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(
+                vec![
+                    // 첫 헤딩 전 to_do — 카테고리 없음
+                    to_do_블록("block-pre", "헤딩 전 항목", false),
+                    heading_블록("block-h1", "heading_3", "공부"),
+                    to_do_블록("block-a", "영어 단어", true),
+                ],
+                Some("cursor-1"),
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let todos = client.fetch_todos(가짜_토큰, 가짜_페이지_ID).await.unwrap();
+        assert_eq!(
+            todos.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            vec!["block-pre", "block-a", "block-b", "block-c"]
+        );
+        assert_eq!(
+            todos.iter().map(|t| t.category.as_deref()).collect::<Vec<_>>(),
+            vec![None, Some("공부"), Some("공부"), Some("기타")]
+        );
+    }
+
+    #[tokio::test]
     async fn 페이지_ID를_붙여넣으면_404_실패에_원본_링크_확인_안내가_포함된다() {
         // 페이지 ID로 databases 조회 → Notion은 object_not_found를 돌려준다
         let server = MockServer::start().await;
@@ -1783,7 +2204,40 @@ mod http_tests {
 
         let client = NotionClient::new(server.uri());
         client
-            .append_todo(가짜_토큰, 가짜_페이지_ID, "10:00 알고리즘 1문제")
+            .append_todo(가짜_토큰, 가짜_페이지_ID, "10:00 알고리즘 1문제", None)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn after_지정_추가는_body_최상위에_after_블록_id를_싣는다() {
+        let server = MockServer::start().await;
+        // 카테고리 섹션 삽입 — after에 앵커 블록 id가 실려야 한다 (API 2025-09-03)
+        let 추가_body = json!({
+            "children": [ {
+                "object": "block",
+                "type": "to_do",
+                "to_do": {
+                    "rich_text": [ { "type": "text", "text": { "content": "영어 단어" } } ],
+                    "checked": false
+                }
+            } ],
+            "after": "block-anchor"
+        });
+        Mock::given(method("PATCH"))
+            .and(path(children_경로()))
+            .and(body_json(추가_body))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "list", "results": [] })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        client
+            .append_todo(가짜_토큰, 가짜_페이지_ID, "영어 단어", Some("block-anchor"))
             .await
             .unwrap();
     }
@@ -2179,7 +2633,7 @@ mod http_tests {
         let 긴_텍스트 = "가".repeat(2001);
 
         let err = client
-            .append_todo(가짜_토큰, 가짜_페이지_ID, &긴_텍스트)
+            .append_todo(가짜_토큰, 가짜_페이지_ID, &긴_텍스트, None)
             .await
             .unwrap_err();
         assert_eq!(err, ConnectError::TooLong);

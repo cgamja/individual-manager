@@ -44,6 +44,10 @@ export type TodoSnapshot =
       title: string;
       items: TodoItem[];
       is_today: boolean;
+      /** 이 행의 `수행도` — null이면 "미지정" (R1). */
+      performance: string | null;
+      /** 행이 날짜 범위를 덮을 때의 끝 날짜 — 하루 행이면 null (R10). */
+      range_end: string | null;
     };
 
 /** 쓰기 커맨드의 반환 — 재조회 스냅샷(R6)과 블록 소실·충돌 안내 문구(R8).
@@ -57,7 +61,14 @@ export interface TodoOutcome {
  * 같은 제목 행이 기간과 겹쳐 생성하지 않은 경우(exists)를 state로 구분한다. */
 export type CreateRowOutcome =
   | { state: "created"; snapshot: TodoSnapshot | null; notice: string | null }
-  | { state: "exists"; page_id: string; title: string; date: string };
+  | {
+      state: "exists";
+      page_id: string;
+      title: string;
+      date: string;
+      /** 겹친 행의 현재 수행도 — "기존 행 열기"가 그대로 넘긴다. */
+      performance: string | null;
+    };
 
 export const getTodoList = (): Promise<TodoSnapshot> =>
   invoke("notion_todo_list");
@@ -70,12 +81,22 @@ export const createTodoRow = (params: {
   start: string;
 }): Promise<CreateRowOutcome> => invoke("notion_todo_create_row", { ...params });
 
+/** 쓰기 커맨드는 재조회가 주지 않는 페이지 메타를 프론트가 되실어 준다 —
+ * `pageTitle`과 같은 방식이다. 모르면 생략하고, 그러면 스냅샷도 null로 돌아온다. */
 export const openTodoPage = (
   pageId: string,
   pageTitle: string,
   date: string,
+  performance?: string,
+  rangeEnd?: string,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_open_page", { pageId, pageTitle, date });
+  invoke("notion_todo_open_page", {
+    pageId,
+    pageTitle,
+    date,
+    performance,
+    rangeEnd,
+  });
 
 export const addTodo = (
   pageId: string,
@@ -84,8 +105,18 @@ export const addTodo = (
   date?: string,
   /** 삽입할 헤딩 텍스트 (공부/기타) — 미지정이면 백엔드가 끝에 append. */
   category?: string,
+  performance?: string,
+  rangeEnd?: string,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_add", { pageId, text, pageTitle, date, category });
+  invoke("notion_todo_add", {
+    pageId,
+    text,
+    pageTitle,
+    date,
+    category,
+    performance,
+    rangeEnd,
+  });
 
 export const toggleTodo = (
   pageId: string,
@@ -93,8 +124,18 @@ export const toggleTodo = (
   checked: boolean,
   pageTitle: string,
   date?: string,
+  performance?: string,
+  rangeEnd?: string,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_toggle", { pageId, blockId, checked, pageTitle, date });
+  invoke("notion_todo_toggle", {
+    pageId,
+    blockId,
+    checked,
+    pageTitle,
+    date,
+    performance,
+    rangeEnd,
+  });
 
 export const editTodo = (
   pageId: string,
@@ -102,5 +143,36 @@ export const editTodo = (
   text: string,
   pageTitle: string,
   date?: string,
+  performance?: string,
+  rangeEnd?: string,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_edit", { pageId, blockId, text, pageTitle, date });
+  invoke("notion_todo_edit", {
+    pageId,
+    blockId,
+    text,
+    pageTitle,
+    date,
+    performance,
+    rangeEnd,
+  });
+
+/** 보고 있는 행의 `수행도`를 바꾼다 (R3). 옵션 4개(완료/일부/미완/기타) 가드는
+ * Rust가 갖고 있다(KTD2) — 여기서는 값을 그대로 넘긴다.
+ * `previousPerformance`는 화면에 지금 보이는 값 — 저장이 확인되지 않은 경로에서
+ * 시도값 대신 이 값이 되실린다 (R9). */
+export const setTodoPerformance = (
+  pageId: string,
+  pageTitle: string,
+  date: string | undefined,
+  performance: string,
+  previousPerformance?: string,
+  rangeEnd?: string,
+): Promise<TodoOutcome> =>
+  invoke("notion_todo_set_performance", {
+    pageId,
+    pageTitle,
+    date,
+    performance,
+    previousPerformance,
+    rangeEnd,
+  });

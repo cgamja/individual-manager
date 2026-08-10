@@ -3,15 +3,21 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { NotionCard } from "./components/NotionCard";
 import { SettingsCard } from "./components/SettingsCard";
 import { TimerCard } from "./components/TimerCard";
-import { TodoCard } from "./components/TodoCard";
+import {
+  TodoCard,
+  type CreateRowFormParams,
+  type CreateRowFormResult,
+} from "./components/TodoCard";
 import { ensureNotificationPermission } from "./lib/notification";
 import {
   addTodo,
   createTodoPage,
+  createTodoRow,
   deleteNotionToken,
   editTodo,
   getNotionStatus,
   getTodoList,
+  openTodoPage,
   saveNotionToken,
   setNotionDatabase,
   testNotionConnection,
@@ -65,6 +71,32 @@ function App() {
   // 진행 중 여부 — visibilitychange 리스너 클로저에서는 todoBusy state가
   // 낡은 값이라 ref로 판단한다
   const todoInFlightRef = useRef(false);
+  // 현재 스냅샷 — runTodoCommand의 실패 재조회가 (낡은 클로저가 아닌) 최신
+  // 날짜를 보고 재조회 경로를 고르도록 state와 함께 항상 갱신한다
+  const todoSnapshotRef = useRef<TodoSnapshot | null>(null);
+
+  /** 스냅샷 반영 — ref를 state와 같은 시점에 갱신한다 (실패 재조회 경로 판단용). */
+  const applyTodoSnapshot = useCallback((next: TodoSnapshot) => {
+    todoSnapshotRef.current = next;
+    setTodoSnapshot(next);
+  }, []);
+
+  /** todo 작업 시작 부기 — 새 순번 발급, in-flight·busy 표시, 오류 초기화. */
+  const beginTodoTurn = useCallback((): number => {
+    const seq = ++todoSeqRef.current;
+    todoInFlightRef.current = true;
+    setTodoBusy(true);
+    setTodoError(null);
+    return seq;
+  }, []);
+
+  /** todo 작업 종료 부기 — 더 새로운 작업이 시작됐다면 busy 해제는 그 작업의 몫이다. */
+  const endTodoTurnIfCurrent = useCallback((seq: number) => {
+    if (seq === todoSeqRef.current) {
+      todoInFlightRef.current = false;
+      setTodoBusy(false);
+    }
+  }, []);
 
   /** 목록 재조회 — 스냅샷이 이미 있으면 목록을 유지한 채 busy만 건다 (R2). */
   const refreshTodos = useCallback(async () => {
@@ -74,7 +106,7 @@ function App() {
     setTodoError(null);
     try {
       const todos = await getTodoList();
-      if (seq === todoSeqRef.current) setTodoSnapshot(todos);
+      if (seq === todoSeqRef.current) applyTodoSnapshot(todos);
     } catch (err) {
       if (seq === todoSeqRef.current) setTodoError(errorMessage(err));
     } finally {
@@ -84,7 +116,7 @@ function App() {
         setTodoBusy(false);
       }
     }
-  }, []);
+  }, [applyTodoSnapshot]);
 
   useEffect(() => {
     let unlistenTick: UnlistenFn | undefined;
@@ -108,7 +140,7 @@ function App() {
       const mountSeq = todoSeqRef.current;
       getTodoList()
         .then((todos) => {
-          if (!cancelled && mountSeq === todoSeqRef.current) setTodoSnapshot(todos);
+          if (!cancelled && mountSeq === todoSeqRef.current) applyTodoSnapshot(todos);
         })
         .catch((err) => {
           if (!cancelled && mountSeq === todoSeqRef.current) setTodoError(errorMessage(err));
@@ -133,7 +165,7 @@ function App() {
       unlistenTick?.();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [refreshTodos]);
+  }, [refreshTodos, applyTodoSnapshot]);
 
   const handleStart = useCallback((phase: Phase) => {
     startTimer(phase).then(setSnapshot).catch(() => {});
@@ -212,6 +244,26 @@ function App() {
   }, [runNotionCommand]);
 
   /**
+   * 쓰기 실패 후 1회 재조회 — 타임아웃 뒤 실제로 반영됐다면 재조회가 그 결과를
+   * 드러낸다. 날짜 전환 중(loaded && !is_today)이면 그 날짜(openTodoPage)로
+   * 재조회해 오늘로 튕기지 않게 하고, 오늘이면 getTodoList. 결과는 순번이
+   * 여전히 최신일 때만 반영하고 재조회 자체의 실패는 삼킨다.
+   */
+  const refetchAfterTodoFailure = useCallback(
+    async (seq: number) => {
+      const current = todoSnapshotRef.current;
+      const actual =
+        current?.state === "loaded" && !current.is_today
+          ? await openTodoPage(current.page_id, current.title, current.date)
+              .then((o) => o.snapshot)
+              .catch(() => null)
+          : await getTodoList().catch(() => null);
+      if (actual && seq === todoSeqRef.current) applyTodoSnapshot(actual);
+    },
+    [applyTodoSnapshot],
+  );
+
+  /**
    * todo 쓰기 커맨드 공통 실행 (runNotionCommand 전례) — busy 플래그 관리,
    * 성공 시 재조회 스냅샷 반영. notice(블록 소실·충돌)는 쓰기가 반영되지 않은
    * 것이므로 배너로 알리고 false를 돌려줘 입력을 유지시킨다 (R8).
@@ -219,10 +271,7 @@ function App() {
    */
   const runTodoCommand = useCallback(
     async (command: () => Promise<TodoOutcome>): Promise<boolean> => {
-      const seq = ++todoSeqRef.current;
-      todoInFlightRef.current = true;
-      setTodoBusy(true);
-      setTodoError(null);
+      const seq = beginTodoTurn();
       try {
         const outcome = await command();
         // 더 새로운 작업이 시작됐으면 낡은 결과를 버린다 — 입력은 유지시킨다
@@ -231,25 +280,20 @@ function App() {
         // snapshot이 null이면 쓰기는 반영됐지만 재조회만 실패한 것 —
         // 기존 목록을 유지하고, 입력은 비워(true) 중복 재시도를 막는다
         if (outcome.snapshot === null) return true;
-        setTodoSnapshot(outcome.snapshot);
+        applyTodoSnapshot(outcome.snapshot);
         // 안내가 있는 스냅샷(블록 소실·충돌)은 쓰기가 반영되지 않은 것 — 입력 유지
         return !outcome.notice;
       } catch (err) {
         if (seq !== todoSeqRef.current) return false;
         setTodoError(errorMessage(err));
         // 실패 시에도 목록을 1회 재조회한다 — 입력값은 카드가 유지한다 (R8)
-        const actual = await getTodoList().catch(() => null);
-        if (actual && seq === todoSeqRef.current) setTodoSnapshot(actual);
+        await refetchAfterTodoFailure(seq);
         return false;
       } finally {
-        // 더 새로운 작업이 시작됐다면 busy 해제는 그 작업의 몫이다
-        if (seq === todoSeqRef.current) {
-          todoInFlightRef.current = false;
-          setTodoBusy(false);
-        }
+        endTodoTurnIfCurrent(seq);
       }
     },
-    [],
+    [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent, refetchAfterTodoFailure],
   );
 
   const handleTodoRefresh = useCallback(() => {
@@ -259,28 +303,74 @@ function App() {
     void runTodoCommand(createTodoPage);
   }, [runTodoCommand]);
   const handleTodoAdd = useCallback(
-    (text: string): Promise<boolean> => {
+    (text: string, category: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
-      const { page_id, title } = todoSnapshot;
-      return runTodoCommand(() => addTodo(page_id, text, title));
+      const { page_id, title, date } = todoSnapshot;
+      // category = 선택된 헤딩 텍스트 — 백엔드가 해당 헤딩 아래에 삽입한다
+      return runTodoCommand(() => addTodo(page_id, text, title, date, category));
     },
     [todoSnapshot, runTodoCommand],
   );
   const handleTodoToggle = useCallback(
     (blockId: string, checked: boolean) => {
       if (todoSnapshot?.state !== "loaded") return;
-      const { page_id, title } = todoSnapshot;
-      void runTodoCommand(() => toggleTodo(page_id, blockId, checked, title));
+      const { page_id, title, date } = todoSnapshot;
+      void runTodoCommand(() => toggleTodo(page_id, blockId, checked, title, date));
     },
     [todoSnapshot, runTodoCommand],
   );
   const handleTodoEdit = useCallback(
     (blockId: string, text: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
-      const { page_id, title } = todoSnapshot;
-      return runTodoCommand(() => editTodo(page_id, blockId, text, title));
+      const { page_id, title, date } = todoSnapshot;
+      return runTodoCommand(() => editTodo(page_id, blockId, text, title, date));
     },
     [todoSnapshot, runTodoCommand],
+  );
+  /**
+   * 행 만들기(미래 [TODO] 전용 — start만 받는다) — CreateRowOutcome은
+   * TodoOutcome이 아니라 runTodoCommand를 못 탄다. busy·seq 관리는 동일하게
+   * 하되, exists는 스냅샷을 건드리지 않고 카드에 그대로 돌려줘
+   * "기존 행 열기" 안내를 띄우게 한다 (스펙 5).
+   */
+  const handleTodoCreateRow = useCallback(
+    async (params: CreateRowFormParams): Promise<CreateRowFormResult> => {
+      const seq = beginTodoTurn();
+      try {
+        const created = await createTodoRow(params);
+        // 더 새로운 작업이 시작됐으면 낡은 결과를 버린다 — 폼·입력은 유지시킨다
+        if (seq !== todoSeqRef.current) return { state: "failed" };
+        if (created.state === "exists") {
+          return {
+            state: "exists",
+            page_id: created.page_id,
+            title: created.title,
+            date: created.date,
+          };
+        }
+        // created — snapshot이 null이면 생성은 됐지만 재조회만 실패한 것 (notice로 안내)
+        if (created.notice) setTodoError(created.notice);
+        if (created.snapshot !== null) applyTodoSnapshot(created.snapshot);
+        return { state: "created" };
+      } catch (err) {
+        // 실패 — 배너를 띄우고 폼 입력은 카드가 유지한다 (R10).
+        // runTodoCommand와 동일하게 1회 재조회한다 — 타임아웃 뒤 실제로
+        // 생성됐다면 재조회가 그 행/exists 상태를 드러낸다
+        if (seq !== todoSeqRef.current) return { state: "failed" };
+        setTodoError(errorMessage(err));
+        await refetchAfterTodoFailure(seq);
+        return { state: "failed" };
+      } finally {
+        endTodoTurnIfCurrent(seq);
+      }
+    },
+    [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent, refetchAfterTodoFailure],
+  );
+  /** exists의 기존 행 열기 — openTodoPage는 TodoOutcome을 돌려줘 공통 경로를 탄다. */
+  const handleTodoOpenPage = useCallback(
+    (pageId: string, title: string, date: string): Promise<boolean> =>
+      runTodoCommand(() => openTodoPage(pageId, title, date)),
+    [runTodoCommand],
   );
 
   return (
@@ -300,6 +390,8 @@ function App() {
         onAdd={handleTodoAdd}
         onToggle={handleTodoToggle}
         onEdit={handleTodoEdit}
+        onCreateRow={handleTodoCreateRow}
+        onOpenPage={handleTodoOpenPage}
       />
       <SettingsCard
         config={config}

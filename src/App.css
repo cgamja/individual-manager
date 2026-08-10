@@ -204,12 +204,14 @@ button:active {
 .todo-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap; /* 날짜 전환 시 버튼이 늘어나도 360px에서 넘치지 않게 줄바꿈 */
+  gap: 6px 8px;
   margin-bottom: 10px;
 }
 
 .todo-header .settings-title {
-  margin: 0;
+  /* 유연한 요소(page-title)가 없을 때도 버튼 무리를 오른쪽으로 민다 */
+  margin: 0 auto 0 0;
 }
 
 .todo-page-title {
@@ -222,8 +224,14 @@ button:active {
   color: #6e6e73;
 }
 
+.todo-date {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #6e6e73;
+  white-space: nowrap;
+}
+
 .todo-header button {
-  margin-left: auto;
   padding: 2px 10px;
   font-size: 11px;
   white-space: nowrap;
@@ -245,6 +253,38 @@ button:active {
 
 .todo-empty button {
   font-size: 12px;
+}
+
+/* 카테고리 섹션 라벨 — 페이지 헤딩(공부/기타)을 목록 안에 작은 라벨로 표시 */
+.todo-section-label {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6e6e73;
+}
+
+.todo-section-label:first-child {
+  margin-top: 0;
+}
+
+/* 추가 카테고리 세그먼트 — 선택된 쪽이 눌린(pressed) 상태로 표시된다 */
+.todo-cats {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.todo-cat {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.todo-cat[aria-pressed="true"] {
+  background: #e4e4e8;
+  border-color: rgba(0, 0, 0, 0.3);
+  font-weight: 600;
 }
 
 /* 목록 자체 스크롤 영역 — 팝오버 전체 스크롤과 별개 (플랜 Assumptions) */
@@ -322,6 +362,56 @@ button:active {
   white-space: nowrap;
 }
 
+/* 행 만들기 인라인 폼 — 카드 하단에 구분선으로 펼쳐진다 (A안) */
+.row-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.row-form input[type="date"] {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.row-exists {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.row-exists-hint {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 11px;
+  color: #6e6e73;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-exists button,
+.row-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f5f5f7;
@@ -390,8 +480,15 @@ button:active {
   }
 
   .todo-page-title,
-  .todo-status {
+  .todo-date,
+  .todo-status,
+  .todo-section-label {
     color: #a1a1a6;
+  }
+
+  .todo-cat[aria-pressed="true"] {
+    background: #525257;
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .todo-text {
@@ -415,5 +512,19 @@ button:active {
     background: #3a3a3e;
     border-color: rgba(255, 255, 255, 0.16);
     color: #f5f5f7;
+  }
+
+  .row-form {
+    border-top-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .row-form input[type="date"] {
+    background: #3a3a3e;
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #f5f5f7;
+  }
+
+  .row-exists-hint {
+    color: #a1a1a6;
   }
 }

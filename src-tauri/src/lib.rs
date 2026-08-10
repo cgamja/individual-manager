@@ -135,6 +135,8 @@ pub fn run() {
             notion_bridge::notion_test_connection,
             notion_bridge::notion_todo_list,
             notion_bridge::notion_todo_create_page,
+            notion_bridge::notion_todo_create_row,
+            notion_bridge::notion_todo_open_page,
             notion_bridge::notion_todo_add,
             notion_bridge::notion_todo_toggle,
             notion_bridge::notion_todo_edit,

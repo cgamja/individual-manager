@@ -26,6 +26,8 @@ export interface TodoItem {
   id: string;
   text: string;
   checked: boolean;
+  /** 직전 heading_1/2/3의 텍스트 (공부/기타 등) — 첫 헤딩 전 블록이면 null. */
+  category: string | null;
 }
 
 /** Rust TodoSnapshot(serde tagged)을 그대로 미러링한 판별 유니언. */
@@ -63,12 +65,9 @@ export const getTodoList = (): Promise<TodoSnapshot> =>
 export const createTodoPage = (): Promise<TodoOutcome> =>
   invoke("notion_todo_create_page");
 
+/** 미래 [TODO] 행 생성 — 날짜 하나만 받는다 (제목·아이콘은 백엔드가 채운다). */
 export const createTodoRow = (params: {
-  title: string;
   start: string;
-  end?: string;
-  icon?: string;
-  performance?: string;
 }): Promise<CreateRowOutcome> => invoke("notion_todo_create_row", { ...params });
 
 export const openTodoPage = (
@@ -83,8 +82,10 @@ export const addTodo = (
   text: string,
   pageTitle: string,
   date?: string,
+  /** 삽입할 헤딩 텍스트 (공부/기타) — 미지정이면 백엔드가 끝에 append. */
+  category?: string,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_add", { pageId, text, pageTitle, date });
+  invoke("notion_todo_add", { pageId, text, pageTitle, date, category });
 
 export const toggleTodo = (
   pageId: string,

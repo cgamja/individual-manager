@@ -303,10 +303,11 @@ function App() {
     void runTodoCommand(createTodoPage);
   }, [runTodoCommand]);
   const handleTodoAdd = useCallback(
-    (text: string): Promise<boolean> => {
+    (text: string, category: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
       const { page_id, title, date } = todoSnapshot;
-      return runTodoCommand(() => addTodo(page_id, text, title, date));
+      // category = 선택된 헤딩 텍스트 — 백엔드가 해당 헤딩 아래에 삽입한다
+      return runTodoCommand(() => addTodo(page_id, text, title, date, category));
     },
     [todoSnapshot, runTodoCommand],
   );
@@ -327,9 +328,10 @@ function App() {
     [todoSnapshot, runTodoCommand],
   );
   /**
-   * 행 만들기 — CreateRowOutcome은 TodoOutcome이 아니라 runTodoCommand를 못 탄다.
-   * busy·seq 관리는 동일하게 하되, exists는 스냅샷을 건드리지 않고 카드에
-   * 그대로 돌려줘 "기존 행 열기" 안내를 띄우게 한다 (스펙 5).
+   * 행 만들기(미래 [TODO] 전용 — start만 받는다) — CreateRowOutcome은
+   * TodoOutcome이 아니라 runTodoCommand를 못 탄다. busy·seq 관리는 동일하게
+   * 하되, exists는 스냅샷을 건드리지 않고 카드에 그대로 돌려줘
+   * "기존 행 열기" 안내를 띄우게 한다 (스펙 5).
    */
   const handleTodoCreateRow = useCallback(
     async (params: CreateRowFormParams): Promise<CreateRowFormResult> => {

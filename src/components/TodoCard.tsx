@@ -1,13 +1,10 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { TodoItem, TodoSnapshot } from "../lib/notion";
 
-/** 행 만들기 폼이 제출하는 파라미터 — lib/notion createTodoRow와 동일 형태. */
+/** 행 만들기 폼이 제출하는 파라미터 — lib/notion createTodoRow와 동일 형태.
+ * 행 생성은 미래 [TODO] 전용이라 날짜 하나만 받는다. */
 export interface CreateRowFormParams {
-  title: string;
   start: string;
-  end?: string;
-  icon?: string;
-  performance?: string;
 }
 
 /** 행 만들기 제출 결과 — 카드가 폼 접힘/유지·기존 행 안내를 결정하는 데 쓴다. */
@@ -16,32 +13,9 @@ export type CreateRowFormResult =
   | { state: "exists"; page_id: string; title: string; date: string }
   | { state: "failed" };
 
-const TODO_TITLE = "[TODO]";
-const TITLE_CHIPS = [TODO_TITLE, "휴일", "MT"];
-const PERFORMANCE_OPTIONS = ["완료", "일부", "미완", "기타"];
-const DEFAULT_PERFORMANCE = "기타";
-
-// tsconfig lib(ES2020)에는 Intl.Segmenter 타입이 없다 — 런타임(WKWebView·
-// jsdom 모두 지원)에는 존재하므로 필요한 형태만 로컬로 좁혀 쓴다
-const GraphemeSegmenter = (
-  Intl as unknown as {
-    Segmenter: new (
-      locale: string,
-      options: { granularity: "grapheme" },
-    ) => { segment(input: string): Iterable<unknown> };
-  }
-).Segmenter;
-
-const graphemeSegmenter = new GraphemeSegmenter("ko", { granularity: "grapheme" });
-
-/** 그래프임(사용자 지각 문자) 개수 — 결합 이모지(👍🏽)도 1로 센다. */
-function graphemeCount(value: string): number {
-  let count = 0;
-  for (const _ of graphemeSegmenter.segment(value)) {
-    count += 1;
-  }
-  return count;
-}
+/** 추가 시 고를 수 있는 카테고리 — 페이지 본문의 헤딩 텍스트와 일치해야 한다. */
+const ADD_CATEGORIES = ["공부", "기타"];
+const DEFAULT_CATEGORY = "공부";
 
 interface TodoCardProps {
   /** null = 첫 로드 전 ("불러오는 중…"). 스냅샷이 있으면 busy 중에도 목록을 유지한다. */
@@ -50,8 +24,9 @@ interface TodoCardProps {
   isBusy: boolean;
   onRefresh: () => void;
   onCreatePage: () => void;
-  /** resolve가 true(반영 성공)일 때만 입력을 비운다 — 실패·안내(notice) 시 유지. */
-  onAdd: (text: string) => Promise<boolean>;
+  /** resolve가 true(반영 성공)일 때만 입력을 비운다 — 실패·안내(notice) 시 유지.
+   * category는 선택된 헤딩 텍스트 — 해당 헤딩 아래에 삽입된다. */
+  onAdd: (text: string, category: string) => Promise<boolean>;
   /** checked는 토글 후 원하는 값이다. */
   onToggle: (blockId: string, checked: boolean) => void;
   /** resolve가 true일 때만 편집 모드를 닫는다 — 실패 시 입력을 유지해 재시도. */
@@ -62,7 +37,7 @@ interface TodoCardProps {
   onOpenPage: (pageId: string, title: string, date: string) => Promise<boolean>;
 }
 
-/** 오늘 할 일 카드 — 오늘 페이지의 to_do 블록 조회·추가·토글·편집 + 행 만들기·날짜 전환. */
+/** 오늘 할 일 카드 — 오늘 페이지의 to_do 블록 조회·추가·토글·편집 + [TODO] 행 만들기·날짜 전환. */
 export function TodoCard({
   snapshot,
   isBusy,
@@ -75,17 +50,13 @@ export function TodoCard({
   onOpenPage,
 }: TodoCardProps) {
   const [addRaw, setAddRaw] = useState("");
+  const [addCategory, setAddCategory] = useState(DEFAULT_CATEGORY);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRaw, setEditRaw] = useState("");
 
   // 행 만들기 폼 — 입력 초안만 로컬 state로 둔다
   const [formOpen, setFormOpen] = useState(false);
-  const [rowTitle, setRowTitle] = useState("");
-  const [rowIcon, setRowIcon] = useState("");
   const [rowStart, setRowStart] = useState("");
-  const [rowRange, setRowRange] = useState(false);
-  const [rowEnd, setRowEnd] = useState("");
-  const [rowPerf, setRowPerf] = useState(DEFAULT_PERFORMANCE);
   const [existsInfo, setExistsInfo] = useState<{
     page_id: string;
     title: string;
@@ -104,7 +75,7 @@ export function TodoCard({
     // 빈 텍스트는 no-op — 삭제가 비목표라 앱에서 지울 수 없는 빈 항목을 만들지 않는다
     if (text === "") return;
     try {
-      if (await onAdd(text)) setAddRaw("");
+      if (await onAdd(text, addCategory)) setAddRaw("");
     } catch {
       // 커맨드 reject — 입력을 유지해 재시도할 수 있게 둔다
     }
@@ -131,15 +102,10 @@ export function TodoCard({
     }
   };
 
-  /** 폼을 접으며 입력을 전부 버린다 — 재열림은 항상 초기 상태다. */
+  /** 폼을 접으며 입력을 버린다 — 재열림은 항상 초기 상태다. */
   const closeForm = () => {
     setFormOpen(false);
-    setRowTitle("");
-    setRowIcon("");
     setRowStart("");
-    setRowRange(false);
-    setRowEnd("");
-    setRowPerf(DEFAULT_PERFORMANCE);
     setExistsInfo(null);
   };
 
@@ -150,33 +116,16 @@ export function TodoCard({
     }
     // 기본 날짜는 스냅샷의 date — 프론트는 오늘을 계산하지 않는다
     setRowStart(snapshotDate ?? "");
-    setRowEnd(snapshotDate ?? "");
     setFormOpen(true);
   };
 
-  // 분류·전송 모두 트림된 제목 기준 — 추가·편집 핸들러의 trim 전례와 일치
-  const trimmedTitle = rowTitle.trim();
-  // 분류 기준은 "현재 제목 입력값"(트림 후) — 클릭한 칩이 아니다
-  const isTodoTitle = trimmedTitle === TODO_TITLE;
-  const iconInvalid =
-    !isTodoTitle && rowIcon !== "" && graphemeCount(rowIcon) !== 1;
-  const dateInvalid =
-    !isTodoTitle && rowRange && rowEnd !== "" && rowEnd < rowStart;
-  const canSubmit =
-    trimmedTitle !== "" && rowStart !== "" && !iconInvalid && !dateInvalid;
+  const canSubmit = rowStart !== "";
 
   const submitRow = async () => {
     if (isBusy || !canSubmit) return;
-    const params: CreateRowFormParams = { title: trimmedTitle, start: rowStart };
-    if (!isTodoTitle) {
-      // [TODO]에는 end·icon·performance를 절대 실지 않는다 (아이콘은 백엔드가 복사)
-      if (rowRange && rowEnd !== "") params.end = rowEnd;
-      if (rowIcon !== "") params.icon = rowIcon;
-      params.performance = rowPerf;
-    }
     setExistsInfo(null);
     try {
-      const result = await onCreateRow(params);
+      const result = await onCreateRow({ start: rowStart });
       if (result.state === "created") {
         closeForm();
       } else if (result.state === "exists") {
@@ -263,57 +212,87 @@ export function TodoCard({
             </p>
           ) : (
             <ul className="todo-list">
-              {snapshot.items.map((item) => (
-                <li key={item.id} className="todo-item">
-                  {editingId === item.id ? (
-                    <div className="todo-edit">
-                      <input
-                        type="text"
-                        autoComplete="off"
-                        aria-label="할 일 편집"
-                        disabled={isBusy}
-                        value={editRaw}
-                        autoFocus
-                        onChange={(e) => setEditRaw(e.target.value)}
-                        // blur는 자동 커밋하지 않는다 (NotionCard의 onBlur 금지 전례)
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") void commitEdit();
-                          if (e.key === "Escape") cancelEdit();
-                        }}
-                      />
-                      <button type="button" disabled={isBusy} onClick={() => void commitEdit()}>
-                        저장
-                      </button>
-                      <button type="button" disabled={isBusy} onClick={cancelEdit}>
-                        취소
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <input
-                        type="checkbox"
-                        aria-label={item.text}
-                        checked={item.checked}
-                        disabled={isBusy}
-                        onChange={() => onToggle(item.id, !item.checked)}
-                      />
-                      <button
-                        type="button"
-                        className={item.checked ? "todo-text todo-done" : "todo-text"}
-                        aria-label={`${item.text} 편집`}
-                        disabled={isBusy}
-                        onClick={() => startEdit(item)}
-                      >
-                        {item.text}
-                      </button>
-                    </>
-                  )}
-                </li>
-              ))}
+              {/* 페이지 순서를 유지한 채 category가 바뀌는 지점에 섹션 라벨을 삽입한다.
+                  첫 헤딩 전(category null) 항목은 라벨 없이 맨 앞 그대로 둔다 */}
+              {snapshot.items.map((item, i) => {
+                const prev = i > 0 ? snapshot.items[i - 1].category : null;
+                const showLabel = item.category !== null && item.category !== prev;
+                return (
+                  <Fragment key={item.id}>
+                    {showLabel && (
+                      <li className="todo-section-label">{item.category}</li>
+                    )}
+                    <li className="todo-item">
+                      {editingId === item.id ? (
+                        <div className="todo-edit">
+                          <input
+                            type="text"
+                            autoComplete="off"
+                            aria-label="할 일 편집"
+                            disabled={isBusy}
+                            value={editRaw}
+                            autoFocus
+                            onChange={(e) => setEditRaw(e.target.value)}
+                            // blur는 자동 커밋하지 않는다 (NotionCard의 onBlur 금지 전례)
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void commitEdit();
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                          />
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => void commitEdit()}
+                          >
+                            저장
+                          </button>
+                          <button type="button" disabled={isBusy} onClick={cancelEdit}>
+                            취소
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <input
+                            type="checkbox"
+                            aria-label={item.text}
+                            checked={item.checked}
+                            disabled={isBusy}
+                            onChange={() => onToggle(item.id, !item.checked)}
+                          />
+                          <button
+                            type="button"
+                            className={item.checked ? "todo-text todo-done" : "todo-text"}
+                            aria-label={`${item.text} 편집`}
+                            disabled={isBusy}
+                            onClick={() => startEdit(item)}
+                          >
+                            {item.text}
+                          </button>
+                        </>
+                      )}
+                    </li>
+                  </Fragment>
+                );
+              })}
             </ul>
           )}
 
           <div className="todo-add">
+            {/* 카테고리 세그먼트 — 선택된 헤딩 아래에 삽입된다 (기본 공부) */}
+            <div className="todo-cats" role="group" aria-label="추가 카테고리">
+              {ADD_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  className="todo-cat"
+                  aria-pressed={addCategory === cat}
+                  disabled={isBusy}
+                  onClick={() => setAddCategory(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
             <input
               type="text"
               autoComplete="off"
@@ -341,98 +320,13 @@ export function TodoCard({
             if (e.key === "Escape") closeForm();
           }}
         >
-          <div className="row-chips">
-            {TITLE_CHIPS.map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                className="row-chip"
-                disabled={isBusy}
-                onClick={() => setRowTitle(chip)}
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
-
           <input
-            type="text"
-            autoComplete="off"
-            aria-label="행 제목"
-            placeholder="제목"
+            type="date"
+            aria-label="날짜"
             disabled={isBusy}
-            value={rowTitle}
-            onChange={(e) => setRowTitle(e.target.value)}
+            value={rowStart}
+            onChange={(e) => setRowStart(e.target.value)}
           />
-
-          {!isTodoTitle && (
-            <input
-              type="text"
-              autoComplete="off"
-              aria-label="아이콘"
-              placeholder="아이콘 (이모지 1자, 비워도 됨)"
-              disabled={isBusy}
-              value={rowIcon}
-              onChange={(e) => setRowIcon(e.target.value)}
-            />
-          )}
-
-          <div className="row-dates">
-            <input
-              type="date"
-              aria-label="날짜"
-              disabled={isBusy}
-              value={rowStart}
-              onChange={(e) => setRowStart(e.target.value)}
-            />
-            {!isTodoTitle && (
-              <label className="row-range">
-                <input
-                  type="checkbox"
-                  aria-label="범위"
-                  disabled={isBusy}
-                  checked={rowRange}
-                  onChange={(e) => setRowRange(e.target.checked)}
-                />
-                범위
-              </label>
-            )}
-            {!isTodoTitle && rowRange && (
-              <input
-                type="date"
-                aria-label="끝 날짜"
-                disabled={isBusy}
-                value={rowEnd}
-                onChange={(e) => setRowEnd(e.target.value)}
-              />
-            )}
-          </div>
-
-          {!isTodoTitle && (
-            <select
-              aria-label="수행도"
-              disabled={isBusy}
-              value={rowPerf}
-              onChange={(e) => setRowPerf(e.target.value)}
-            >
-              {PERFORMANCE_OPTIONS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {iconInvalid && (
-            <p className="row-hint" role="status">
-              아이콘은 이모지 1자만 넣을 수 있어요
-            </p>
-          )}
-          {dateInvalid && (
-            <p className="row-hint" role="status">
-              끝 날짜는 시작 이후여야 해요
-            </p>
-          )}
 
           {existsInfo !== null && (
             <div className="row-exists">
@@ -451,7 +345,10 @@ export function TodoCard({
               disabled={isBusy || !canSubmit}
               onClick={() => void submitRow()}
             >
-              행 추가
+              만들기
+            </button>
+            <button type="button" disabled={isBusy} onClick={closeForm}>
+              취소
             </button>
           </div>
         </div>

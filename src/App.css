@@ -255,6 +255,38 @@ button:active {
   font-size: 12px;
 }
 
+/* 카테고리 섹션 라벨 — 페이지 헤딩(공부/기타)을 목록 안에 작은 라벨로 표시 */
+.todo-section-label {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6e6e73;
+}
+
+.todo-section-label:first-child {
+  margin-top: 0;
+}
+
+/* 추가 카테고리 세그먼트 — 선택된 쪽이 눌린(pressed) 상태로 표시된다 */
+.todo-cats {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.todo-cat {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.todo-cat[aria-pressed="true"] {
+  background: #e4e4e8;
+  border-color: rgba(0, 0, 0, 0.3);
+  font-weight: 600;
+}
+
 /* 목록 자체 스크롤 영역 — 팝오버 전체 스크롤과 별개 (플랜 Assumptions) */
 .todo-list {
   list-style: none;
@@ -340,20 +372,7 @@ button:active {
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.row-chips {
-  display: flex;
-  gap: 6px;
-}
-
-.row-chip {
-  padding: 2px 10px;
-  font-size: 11px;
-  border-radius: 999px;
-}
-
-.row-form input[type="text"],
-.row-form input[type="date"],
-.row-form select {
+.row-form input[type="date"] {
   font: inherit;
   font-size: 12px;
   padding: 4px 8px;
@@ -362,32 +381,6 @@ button:active {
   background: #ffffff;
   min-width: 0;
   box-sizing: border-box;
-}
-
-.row-dates {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap; /* 범위 체크 시 끝 날짜가 360px에서 넘치면 줄바꿈 */
-}
-
-.row-range {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: #3a3a3c;
-  white-space: nowrap;
-}
-
-.row-range input[type="checkbox"] {
-  margin: 0;
-}
-
-.row-hint {
-  margin: 0;
-  font-size: 11px;
-  color: #d70015;
 }
 
 .row-exists {
@@ -488,8 +481,14 @@ button:active {
 
   .todo-page-title,
   .todo-date,
-  .todo-status {
+  .todo-status,
+  .todo-section-label {
     color: #a1a1a6;
+  }
+
+  .todo-cat[aria-pressed="true"] {
+    background: #525257;
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .todo-text {
@@ -519,20 +518,10 @@ button:active {
     border-top-color: rgba(255, 255, 255, 0.1);
   }
 
-  .row-form input[type="text"],
-  .row-form input[type="date"],
-  .row-form select {
+  .row-form input[type="date"] {
     background: #3a3a3e;
     border-color: rgba(255, 255, 255, 0.16);
     color: #f5f5f7;
-  }
-
-  .row-range {
-    color: #d1d1d6;
-  }
-
-  .row-hint {
-    color: #ff6961;
   }
 
   .row-exists-hint {

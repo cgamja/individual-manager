@@ -18,9 +18,9 @@ const LOADED: TodoSnapshot = {
   page_id: "page-1",
   title: "[TODO]",
   items: [
-    { id: "b1", text: "아침 운동", checked: true },
-    { id: "b2", text: "보고서 작성", checked: false },
-    { id: "b3", text: "이메일 정리", checked: false },
+    { id: "b1", text: "아침 운동", checked: true, category: "공부" },
+    { id: "b2", text: "보고서 작성", checked: false, category: "공부" },
+    { id: "b3", text: "이메일 정리", checked: false, category: "기타" },
   ],
   is_today: true,
 };
@@ -33,13 +33,13 @@ const NOT_CONNECTED: TodoSnapshot = {
   state: "not_connected",
   missing: ["token", "database", "data_source"],
 };
-/** 날짜 전환 후 스냅샷 — 특수 행(휴일)을 열어 둔 상태. */
+/** 날짜 전환 후 스냅샷 — 과거 [TODO] 행을 열어 둔 상태. */
 const NOT_TODAY: TodoSnapshot = {
   state: "loaded",
   date: "2026-08-08",
   page_id: "page-0",
-  title: "휴일",
-  items: [{ id: "c1", text: "쉬기", checked: false }],
+  title: "[TODO]",
+  items: [{ id: "c1", text: "쉬기", checked: false, category: null }],
   is_today: false,
 };
 
@@ -116,8 +116,45 @@ describe("목록 표시", () => {
     expect(boxes[0]).toBeChecked();
     expect(boxes[1]).not.toBeChecked();
     expect(boxes[2]).not.toBeChecked();
-    // 헤더에 로드된 페이지 제목 표시 (비-[TODO] 행 대비)
+    // 헤더에 로드된 페이지 제목 표시
     expect(screen.getByText("[TODO]")).toBeInTheDocument();
+  });
+
+  it("목록이_카테고리_라벨로_나뉘어_보인다", () => {
+    // 공부 2 + 기타 1 — 페이지 순서를 유지한 채 category가 바뀌는 지점에 라벨 삽입
+    const { view } = renderCard();
+
+    const rows = screen.getAllByRole("listitem");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "공부",
+      "아침 운동",
+      "보고서 작성",
+      "기타",
+      "이메일 정리",
+    ]);
+    // 라벨은 체크박스가 없는 순수 라벨이다
+    expect(screen.getAllByRole("checkbox")).toHaveLength(3);
+    view.unmount();
+
+    // 첫 헤딩 전(category null) 항목은 라벨 없이 맨 앞 그대로
+    renderCard({
+      snapshot: {
+        ...LOADED,
+        items: [
+          { id: "b0", text: "머리말 항목", checked: false, category: null },
+          ...LOADED.items,
+        ],
+      },
+    });
+    const rows2 = screen.getAllByRole("listitem");
+    expect(rows2.map((r) => r.textContent)).toEqual([
+      "머리말 항목",
+      "공부",
+      "아침 운동",
+      "보고서 작성",
+      "기타",
+      "이메일 정리",
+    ]);
   });
 
   it("스냅샷_도착_전에는_불러오는_중_안내를_표시한다", () => {
@@ -166,9 +203,9 @@ describe("토글 플로", () => {
     const toggled: TodoSnapshot = {
       ...LOADED,
       items: [
-        { id: "b1", text: "아침 운동", checked: true },
-        { id: "b2", text: "보고서 작성", checked: true },
-        { id: "b3", text: "이메일 정리", checked: false },
+        { id: "b1", text: "아침 운동", checked: true, category: "공부" },
+        { id: "b2", text: "보고서 작성", checked: true, category: "공부" },
+        { id: "b3", text: "이메일 정리", checked: false, category: "기타" },
       ],
     };
     const calls = mockAppIPC({ notion_todo_toggle: () => outcome(toggled) });
@@ -216,7 +253,7 @@ describe("추가 플로", () => {
     const input = screen.getByRole("textbox", { name: "새 할 일" });
     await userEvent.type(input, "새 항목");
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
-    expect(ok.onAdd).toHaveBeenCalledWith("새 항목");
+    expect(ok.onAdd).toHaveBeenCalledWith("새 항목", "공부");
     await waitFor(() => expect(input).toHaveValue(""));
     view.unmount();
 
@@ -229,6 +266,35 @@ describe("추가 플로", () => {
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
     await waitFor(() => expect(fail.onAdd).toHaveBeenCalled());
     expect(input2).toHaveValue("새 항목");
+  });
+
+  it("추가_시_선택한_카테고리가_전달된다", async () => {
+    const calls = mockAppIPC({ notion_todo_add: () => outcome(LOADED) });
+    render(<App />);
+    const input = await screen.findByRole("textbox", { name: "새 할 일" });
+
+    // 기본 선택은 공부다
+    expect(screen.getByRole("button", { name: "공부" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await userEvent.type(input, "단어 암기");
+    await userEvent.click(screen.getByRole("button", { name: "추가" }));
+    await waitFor(() => {
+      const first = calls.find((c) => c.cmd === "notion_todo_add");
+      expect(first).toBeDefined();
+      expect(first!.args).toMatchObject({ text: "단어 암기", category: "공부" });
+    });
+
+    // 기타 선택 후 추가 → category "기타"
+    await userEvent.click(screen.getByRole("button", { name: "기타" }));
+    await userEvent.type(input, "짐 정리");
+    await userEvent.click(screen.getByRole("button", { name: "추가" }));
+    await waitFor(() => {
+      const adds = calls.filter((c) => c.cmd === "notion_todo_add");
+      expect(adds).toHaveLength(2);
+      expect(adds[1].args).toMatchObject({ text: "짐 정리", category: "기타" });
+    });
   });
 
   it("빈_텍스트_저장은_커맨드를_invoke하지_않는다", async () => {
@@ -310,6 +376,9 @@ describe("busy·새로고침", () => {
     expect(screen.getByRole("button", { name: "추가" })).toBeDisabled();
     // 텍스트 입력도 잠근다 — 진행 중 타이핑이 성공 시 setAddRaw("")/cancelEdit()로 유실되는 것 방지
     expect(screen.getByRole("textbox", { name: "새 할 일" })).toBeDisabled();
+    // 카테고리 세그먼트도 잠근다
+    expect(screen.getByRole("button", { name: "공부" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "기타" })).toBeDisabled();
     for (const box of screen.getAllByRole("checkbox")) {
       expect(box).toBeDisabled();
     }
@@ -404,9 +473,9 @@ describe("재표시 재조회", () => {
     const written: TodoSnapshot = {
       ...LOADED,
       items: [
-        { id: "b1", text: "아침 운동", checked: true },
-        { id: "b2", text: "보고서 작성", checked: true },
-        { id: "b3", text: "이메일 정리", checked: false },
+        { id: "b1", text: "아침 운동", checked: true, category: "공부" },
+        { id: "b2", text: "보고서 작성", checked: true, category: "공부" },
+        { id: "b3", text: "이메일 정리", checked: false, category: "기타" },
       ],
     };
     const calls = mockAppIPC({ notion_todo_toggle: () => pendingToggle });
@@ -464,127 +533,73 @@ describe("행 만들기 폼", () => {
     return result;
   }
 
-  it("TODO_제목에서는_아이콘과_수행도_필드가_숨겨진다", async () => {
+  it("행_만들기_폼은_날짜만_받는다", async () => {
     const { props } = await renderOpenForm();
 
-    // 휴일 칩으로 특수 필드를 먼저 노출시킨다
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
-    expect(screen.getByRole("textbox", { name: "아이콘" })).toBeInTheDocument();
+    // 기본 날짜는 스냅샷의 date — 폼에는 날짜 입력 하나뿐이다
+    expect(screen.getByLabelText("날짜")).toHaveValue("2026-08-09");
+    expect(screen.queryByRole("textbox", { name: "행 제목" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
 
-    // 칩이 아니라 "현재 제목 입력값"이 기준 — 직접 [TODO]로 고쳐도 숨겨진다
-    const title = screen.getByRole("textbox", { name: "행 제목" });
-    await userEvent.clear(title);
-    await userEvent.type(title, "[[TODO]"); // "[["는 userEvent의 리터럴 "[" 이스케이프
-    expect(title).toHaveValue("[TODO]");
-    expect(screen.queryByRole("textbox", { name: "아이콘" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: "범위" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "수행도" })).not.toBeInTheDocument();
-
-    // [TODO] 제출에는 end·icon·performance가 실리지 않는다
-    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
     await waitFor(() =>
-      expect(props.onCreateRow).toHaveBeenCalledWith({
-        title: "[TODO]",
-        start: "2026-08-09",
-      }),
-    );
-  });
-
-  it("특수_제목에서는_아이콘_범위_수행도가_보인다", async () => {
-    await renderOpenForm();
-
-    await userEvent.click(screen.getByRole("button", { name: "MT" }));
-
-    expect(screen.getByRole("textbox", { name: "행 제목" })).toHaveValue("MT");
-    expect(screen.getByRole("textbox", { name: "아이콘" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "범위" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "수행도" })).toHaveValue("기타");
-  });
-
-  it("여러_그래프임_아이콘은_제출을_막고_안내를_보여준다", async () => {
-    await renderOpenForm();
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
-
-    const icon = screen.getByRole("textbox", { name: "아이콘" });
-    await userEvent.type(icon, "ab");
-    expect(screen.getByRole("button", { name: "행 추가" })).toBeDisabled();
-    expect(screen.getByText(/이모지 1자/)).toBeInTheDocument();
-
-    // 결합 이모지(멀티 코드포인트)는 1 그래프임 — 통과해야 한다
-    await userEvent.clear(icon);
-    await userEvent.type(icon, "👍🏽");
-    expect(screen.getByRole("button", { name: "행 추가" })).toBeEnabled();
-    expect(screen.queryByText(/이모지 1자/)).not.toBeInTheDocument();
-  });
-
-  it("빈_아이콘은_제출을_허용한다", async () => {
-    const { props } = await renderOpenForm();
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
-
-    const submit = screen.getByRole("button", { name: "행 추가" });
-    expect(submit).toBeEnabled();
-    await userEvent.click(submit);
-
-    // icon 키 자체가 실리지 않는다 (아이콘 없이 생성)
-    await waitFor(() =>
-      expect(props.onCreateRow).toHaveBeenCalledWith({
-        title: "휴일",
-        start: "2026-08-09",
-        performance: "기타",
-      }),
+      expect(props.onCreateRow).toHaveBeenCalledWith({ start: "2026-08-09" }),
     );
     // created → 폼 접힘
     await waitFor(() =>
-      expect(screen.queryByRole("textbox", { name: "행 제목" })).not.toBeInTheDocument(),
+      expect(screen.queryByLabelText("날짜")).not.toBeInTheDocument(),
     );
   });
 
-  it("끝_날짜가_시작보다_빠르면_제출이_비활성화된다", async () => {
+  it("날짜를_바꿔_제출하면_그_날짜가_전달된다", async () => {
+    const { props } = await renderOpenForm();
+
+    fireEvent.change(screen.getByLabelText("날짜"), {
+      target: { value: "2026-08-15" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
+
+    await waitFor(() =>
+      expect(props.onCreateRow).toHaveBeenCalledWith({ start: "2026-08-15" }),
+    );
+  });
+
+  it("빈_날짜는_제출이_비활성화된다", async () => {
     await renderOpenForm();
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "범위" }));
 
-    fireEvent.change(screen.getByLabelText("끝 날짜"), {
-      target: { value: "2026-08-08" },
-    });
-    expect(screen.getByRole("button", { name: "행 추가" })).toBeDisabled();
-    expect(screen.getByText(/끝 날짜는 시작/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("날짜"), { target: { value: "" } });
 
-    fireEvent.change(screen.getByLabelText("끝 날짜"), {
-      target: { value: "2026-08-12" },
-    });
-    expect(screen.getByRole("button", { name: "행 추가" })).toBeEnabled();
-    expect(screen.queryByText(/끝 날짜는 시작/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "만들기" })).toBeDisabled();
   });
 
   it("busy_중_폼_입력이_비활성화된다", async () => {
     const { props, view } = await renderOpenForm();
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
 
     view.rerender(<TodoCard {...props} isBusy={true} />);
 
-    expect(screen.getByRole("textbox", { name: "행 제목" })).toBeDisabled();
-    expect(screen.getByRole("textbox", { name: "아이콘" })).toBeDisabled();
     expect(screen.getByLabelText("날짜")).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "범위" })).toBeDisabled();
-    expect(screen.getByRole("combobox", { name: "수행도" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "행 추가" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "휴일" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "만들기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "취소" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "행 만들기" })).toBeDisabled();
   });
 
-  it("Escape로_폼이_닫히고_재열림_시_초기화된다", async () => {
+  it("Escape와_취소로_폼이_닫히고_재열림_시_초기화된다", async () => {
     await renderOpenForm();
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "아이콘" }), "🏖");
+    const date = screen.getByLabelText("날짜");
+    fireEvent.change(date, { target: { value: "2026-08-20" } });
 
+    // Escape는 폼 안(입력에 포커스)에서 눌러야 폼으로 버블된다
+    await userEvent.click(date);
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("textbox", { name: "행 제목" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("날짜")).not.toBeInTheDocument();
 
-    // 재열림 — 입력이 버려져 있다
+    // 재열림 — 입력이 버려져 기본 날짜로 돌아온다
     await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
-    expect(screen.getByRole("textbox", { name: "행 제목" })).toHaveValue("");
-    expect(screen.getByRole("textbox", { name: "아이콘" })).toHaveValue("");
+    expect(screen.getByLabelText("날짜")).toHaveValue("2026-08-09");
+
+    // 취소 버튼도 폼을 닫는다
+    await userEvent.click(screen.getByRole("button", { name: "취소" }));
+    expect(screen.queryByLabelText("날짜")).not.toBeInTheDocument();
   });
 
   it("행_만들기_실패_시_입력이_유지되고_재조회가_실행된다", async () => {
@@ -597,9 +612,11 @@ describe("행 만들기 폼", () => {
     await screen.findByRole("checkbox", { name: "아침 운동" });
 
     await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
+    fireEvent.change(screen.getByLabelText("날짜"), {
+      target: { value: "2026-08-20" },
+    });
     const listCallsBefore = calls.filter((c) => c.cmd === "notion_todo_list").length;
-    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
     await screen.findByText("행 생성에 실패했습니다");
     // 타임아웃 뒤 실제로 생성됐다면 재조회가 그 행/exists 상태를 드러낸다 (R10)
@@ -609,7 +626,7 @@ describe("행 만들기 폼", () => {
       ),
     );
     // 폼 입력값은 유지된다 — 재시도할 수 있어야 한다
-    expect(screen.getByRole("textbox", { name: "행 제목" })).toHaveValue("휴일");
+    expect(screen.getByLabelText("날짜")).toHaveValue("2026-08-20");
   });
 
   it("생성_후_스냅샷_없음_응답은_기존_목록을_유지한다", async () => {
@@ -626,41 +643,14 @@ describe("행 만들기 폼", () => {
     await screen.findByRole("checkbox", { name: "아침 운동" });
 
     await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
-    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
     await screen.findByText(안내);
     // 목록은 마지막 스냅샷 그대로 유지된다 (비워지지 않음)
     expect(screen.getByRole("checkbox", { name: "아침 운동" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "이메일 정리" })).toBeInTheDocument();
     // 생성 자체는 성공(created) — 폼은 접혀 중복 재시도를 막는다
-    expect(
-      screen.queryByRole("textbox", { name: "행 제목" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("공백_포함_제목은_트림되어_전송된다", async () => {
-    const { props } = await renderOpenForm();
-    const title = screen.getByRole("textbox", { name: "행 제목" });
-    await userEvent.type(title, "휴일 ");
-
-    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
-    await waitFor(() =>
-      expect(props.onCreateRow).toHaveBeenCalledWith({
-        title: "휴일",
-        start: "2026-08-09",
-        performance: "기타",
-      }),
-    );
-
-    // ' [TODO]'도 트림 기준으로 [TODO]로 분류 — 아이콘·수행도 필드가 숨겨진다.
-    // created로 폼이 접혔으니 다시 연다
-    await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
-    const title2 = screen.getByRole("textbox", { name: "행 제목" });
-    await userEvent.type(title2, " [[TODO]"); // "[["는 userEvent의 리터럴 "[" 이스케이프
-    expect(title2).toHaveValue(" [TODO]");
-    expect(screen.queryByRole("textbox", { name: "아이콘" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "수행도" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("날짜")).not.toBeInTheDocument();
   });
 
   it("exists_응답이_기존_행_열기_버튼을_보여준다", async () => {
@@ -668,19 +658,18 @@ describe("행 만들기 폼", () => {
       async (): Promise<CreateRowFormResult> => ({
         state: "exists",
         page_id: "page-9",
-        title: "휴일",
+        title: "[TODO]",
         date: "2026-08-15",
       }),
     );
     await renderOpenForm({ onCreateRow });
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
 
-    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
-    expect(await screen.findByText("이미 있음: 휴일")).toBeInTheDocument();
+    expect(await screen.findByText("이미 있음: [TODO]")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "기존 행 열기" })).toBeInTheDocument();
     // 폼은 유지된다
-    expect(screen.getByRole("textbox", { name: "행 제목" })).toHaveValue("휴일");
+    expect(screen.getByLabelText("날짜")).toHaveValue("2026-08-09");
   });
 
   it("열기_클릭이_open_page를_호출한다", async () => {
@@ -688,21 +677,20 @@ describe("행 만들기 폼", () => {
       async (): Promise<CreateRowFormResult> => ({
         state: "exists",
         page_id: "page-9",
-        title: "휴일",
+        title: "[TODO]",
         date: "2026-08-15",
       }),
     );
     const onOpenPage = vi.fn(async (): Promise<boolean> => true);
     await renderOpenForm({ onCreateRow, onOpenPage });
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
-    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
     await userEvent.click(await screen.findByRole("button", { name: "기존 행 열기" }));
 
-    expect(onOpenPage).toHaveBeenCalledWith("page-9", "휴일", "2026-08-15");
+    expect(onOpenPage).toHaveBeenCalledWith("page-9", "[TODO]", "2026-08-15");
     // 열기 성공 → 폼 접힘
     await waitFor(() =>
-      expect(screen.queryByRole("textbox", { name: "행 제목" })).not.toBeInTheDocument(),
+      expect(screen.queryByLabelText("날짜")).not.toBeInTheDocument(),
     );
   });
 });
@@ -752,7 +740,7 @@ describe("날짜 전환", () => {
       expect(call).toBeDefined();
       expect(call!.args).toMatchObject({
         pageId: "page-0",
-        pageTitle: "휴일",
+        pageTitle: "[TODO]",
         text: "쉬기 준비",
         date: "2026-08-08",
       });
@@ -781,7 +769,7 @@ describe("날짜 전환", () => {
       expect(open).toBeDefined();
       expect(open!.args).toMatchObject({
         pageId: "page-0",
-        pageTitle: "휴일",
+        pageTitle: "[TODO]",
         date: "2026-08-08",
       });
     });
@@ -796,7 +784,7 @@ describe("날짜 전환", () => {
       state: "loaded",
       date: "2026-08-15",
       page_id: "page-7",
-      title: "휴일",
+      title: "[TODO]",
       items: [],
       is_today: false,
     };
@@ -811,18 +799,16 @@ describe("날짜 전환", () => {
     await screen.findByRole("checkbox", { name: "아침 운동" });
 
     await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
-    await userEvent.click(screen.getByRole("button", { name: "휴일" }));
-    await userEvent.click(screen.getByRole("button", { name: "행 추가" }));
+    fireEvent.change(screen.getByLabelText("날짜"), {
+      target: { value: "2026-08-15" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
 
     const call = calls.find((c) => c.cmd === "notion_todo_create_row");
     expect(call).toBeDefined();
-    expect(call!.args).toMatchObject({
-      title: "휴일",
-      start: "2026-08-09",
-      performance: "기타",
-    });
+    expect(call!.args).toEqual({ start: "2026-08-15" });
     await waitFor(() =>
-      expect(screen.queryByRole("textbox", { name: "행 제목" })).not.toBeInTheDocument(),
+      expect(screen.queryByLabelText("날짜")).not.toBeInTheDocument(),
     );
     // 생성된 날짜로 전환됨 — 날짜 표시 + 돌아가기
     expect(await screen.findByText("2026-08-15")).toBeInTheDocument();

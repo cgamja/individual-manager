@@ -91,7 +91,7 @@ describe("Todo 커맨드 래퍼", () => {
     date: "2026-08-09",
     page_id: "page-1",
     title: "[TODO]",
-    items: [{ id: "b1", text: "가짜 항목", checked: false }],
+    items: [{ id: "b1", text: "가짜 항목", checked: false, category: null }],
     is_today: true,
   };
   const OUTCOME: TodoOutcome = { snapshot: SNAPSHOT, notice: null };
@@ -155,7 +155,7 @@ describe("Todo 커맨드 래퍼", () => {
     });
   });
 
-  it("create_row_인자가_커맨드에_그대로_전달된다", async () => {
+  it("create_row는_start만_전달한다", async () => {
     const CREATED: CreateRowOutcome = {
       state: "created",
       snapshot: SNAPSHOT,
@@ -163,36 +163,24 @@ describe("Todo 커맨드 래퍼", () => {
     };
     const calls = captureIPC(CREATED);
 
-    // 전체 인자 케이스 — end·icon·performance 포함
-    const result = await createTodoRow({
-      title: "휴가",
-      start: "2026-08-10",
-      end: "2026-08-12",
-      icon: "🌴",
-      performance: "완료",
-    });
+    const result = await createTodoRow({ start: "2026-08-10" });
 
     expect(calls[0].cmd).toBe("notion_todo_create_row");
-    expect(calls[0].args).toMatchObject({
-      title: "휴가",
-      start: "2026-08-10",
-      end: "2026-08-12",
-      icon: "🌴",
-      performance: "완료",
-    });
+    // 행 생성은 미래 [TODO] 전용 — 날짜 외 인자는 실리지 않는다
+    expect(calls[0].args).toEqual({ start: "2026-08-10" });
     expect(result).toEqual(CREATED);
+  });
 
-    // 생략 케이스 — end·icon·performance 키 자체가 실리지 않는다
-    await createTodoRow({ title: "[TODO]", start: "2026-08-10" });
+  it("add는_category를_전달하거나_생략한다", async () => {
+    const calls = captureIPC(OUTCOME);
 
-    expect(calls[1].cmd).toBe("notion_todo_create_row");
-    expect(calls[1].args).toMatchObject({
-      title: "[TODO]",
-      start: "2026-08-10",
-    });
-    expect(calls[1].args).not.toHaveProperty("end");
-    expect(calls[1].args).not.toHaveProperty("icon");
-    expect(calls[1].args).not.toHaveProperty("performance");
+    // category 전달 → args에 포함
+    await addTodo("page-1", "새 할 일", "[TODO]", "2026-08-10", "기타");
+    expect(calls[0].args).toMatchObject({ category: "기타" });
+
+    // 미전달 → undefined (백엔드는 끝에 append)
+    await addTodo("page-1", "새 할 일", "[TODO]");
+    expect(calls[1].args).toMatchObject({ category: undefined });
   });
 
   it("open_page_인자가_커맨드에_그대로_전달된다", async () => {

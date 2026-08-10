@@ -345,6 +345,11 @@ const TODO_CREATED_FETCH_FAILED_NOTICE: &str =
 const TODO_WRITE_REFRESH_FAILED_NOTICE: &str =
     "변경은 반영됐지만 목록 조회에 실패했습니다. 새로고침해 주세요.";
 
+/// 같은 값 재선택이라 아무것도 쓰지 않은 경로(R4)에서 재조회만 실패했을 때의 안내 —
+/// 쓰기 경로 문구를 재사용하면 PATCH가 없었는데 "변경은 반영됐다"고 거짓말하게 된다.
+const TODO_UNCHANGED_REFRESH_FAILED_NOTICE: &str =
+    "이미 같은 값이라 변경하지 않았습니다. 목록 조회에 실패했으니 새로고침해 주세요.";
+
 /// page_id로 연 행이 사라졌을 때(404) 날짜 조회로 폴백하며 싣는 안내.
 const TODO_OPEN_FALLBACK_NOTICE: &str = "행을 찾지 못해 그 날짜를 다시 조회했습니다.";
 
@@ -656,6 +661,10 @@ pub enum CreateRowOutcome {
         date: String,
         /// 겹친 행의 현재 수행도 — 프론트의 "기존 행 열기"가 그대로 넘긴다.
         performance: Option<String>,
+        /// 겹친 행의 적용 구간(date-only) — 열기 경로도 이 값을 되실어야
+        /// 여러 날을 덮는 행에서 R10 구간 표시가 사라지지 않는다.
+        range_start: Option<String>,
+        range_end: Option<String>,
     },
 }
 
@@ -699,13 +708,17 @@ async fn create_row_outcome(
         .await
         .map_err(|e| e.message())?
     {
+        // 겹친 행 자신의 시작일 (date-only) — 요청 start를 실으면 프론트가
+        // 그 행과 무관한 날짜로 열게 된다
+        let start = date_only(&row.start).to_string();
         return Ok(CreateRowOutcome::Exists {
             page_id: row.page_id,
-            // 겹친 행 자신의 시작일 (date-only) — 요청 start를 실으면 프론트가
-            // 그 행과 무관한 날짜로 열게 된다
-            date: date_only(&row.start).to_string(),
+            date: start.clone(),
             title: row.title,
             performance: row.performance,
+            // 구간도 date-only로 잘라 싣는다 (`snapshot_by_date`와 같은 규칙)
+            range_start: Some(start),
+            range_end: row.end.as_deref().map(|e| date_only(e).to_string()),
         });
     }
 
@@ -980,11 +993,22 @@ async fn set_performance_outcome(
 ) -> Result<TodoOutcome, String> {
     // 이미 그 값이면 쓸 것이 없다 (R4) — PATCH 없이 현재 스냅샷만 새로 읽어 돌려준다.
     // 카드도 같은 값 클릭을 막지만(TodoCard), 커맨드는 직접 호출될 수 있다.
+    // 쓰기 경로(`finish_write`)에 태우지 않는다 — 재조회가 실패했을 때 그 경로의
+    // "변경은 반영됐지만…" 안내는 PATCH가 없었던 여기서는 거짓이다.
     if previous.performance.as_deref() == Some(performance) {
-        return finish_write(
-            base_url, access, page_id, page_title, date, today, previous, Ok(()),
-        )
-        .await;
+        let refreshed =
+            snapshot_after_write(base_url, access, page_id, page_title, date, today, previous)
+                .await;
+        return Ok(match refreshed {
+            Ok(snapshot) => TodoOutcome {
+                snapshot: Some(snapshot),
+                notice: None,
+            },
+            Err(_) => TodoOutcome {
+                snapshot: None,
+                notice: Some(TODO_UNCHANGED_REFRESH_FAILED_NOTICE.to_string()),
+            },
+        });
     }
     let client = NotionClient::new(base_url);
     let write = client
@@ -1216,12 +1240,14 @@ mod tests {
         assert_eq!(v["snapshot"]["state"], json!("no_page"));
         assert_eq!(v.get("notice"), Some(&Value::Null));
 
-        // exists — 겹친 행의 page_id·제목과 판정 기준 날짜
+        // exists — 겹친 행의 page_id·제목과 판정 기준 날짜, 그리고 적용 구간
         let exists = CreateRowOutcome::Exists {
             page_id: "aaaabbbb-cccc-dddd-eeee-ffff00001111".to_string(),
             title: "휴일".to_string(),
             date: "2026-08-12".to_string(),
             performance: Some("일부".to_string()),
+            range_start: Some("2026-08-12".to_string()),
+            range_end: Some("2026-08-14".to_string()),
         };
         assert_eq!(
             serde_json::to_value(&exists).unwrap(),
@@ -1230,7 +1256,9 @@ mod tests {
                 "page_id": "aaaabbbb-cccc-dddd-eeee-ffff00001111",
                 "title": "휴일",
                 "date": "2026-08-12",
-                "performance": "일부"
+                "performance": "일부",
+                "range_start": "2026-08-12",
+                "range_end": "2026-08-14"
             })
         );
     }
@@ -1944,6 +1972,9 @@ mod http_tests {
                 title: "[TODO]".to_string(),
                 date: 가짜_날짜.to_string(),
                 performance: None,
+                // 하루 행 — 시작일은 실리고 끝은 없다
+                range_start: Some(가짜_날짜.to_string()),
+                range_end: None,
             }
         );
     }
@@ -2044,6 +2075,8 @@ mod http_tests {
                 // 실제 날짜로 곧장 열 수 있어야 한다
                 date: "2026-06-25".to_string(),
                 performance: None,
+                range_start: Some("2026-06-25".to_string()),
+                range_end: Some("2026-09-20".to_string()),
             }
         );
     }
@@ -3040,6 +3073,51 @@ mod http_tests {
                 title: "[TODO]".to_string(),
                 date: 가짜_날짜.to_string(),
                 performance: Some("기타".to_string()),
+                range_start: Some(가짜_날짜.to_string()),
+                range_end: None,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn exists_응답이_그_행의_적용_구간을_date_only로_싣는다() {
+        // 여러 날을 덮는 행을 exists로 열면 R10 구간 표시가 사라지면 안 된다 —
+        // 겹친 행의 시작·끝을 date-only로 잘라 실어 프론트가 그대로 되싣게 한다
+        // (`snapshot_by_date`와 같은 규칙).
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(제목_쿼리_body("[TODO]")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                범위_페이지_행(
+                    가짜_특수_페이지_ID,
+                    "[TODO]",
+                    "2026-08-12T09:00:00.000+09:00",
+                    Some("2026-08-14T18:00:00.000+09:00"),
+                ),
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/pages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let outcome = create_row_outcome(&server.uri(), &가짜_access(), "2026-08-13", 가짜_날짜)
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome,
+            CreateRowOutcome::Exists {
+                page_id: 가짜_특수_페이지_ID.to_string(),
+                title: "[TODO]".to_string(),
+                date: "2026-08-12".to_string(),
+                performance: None,
+                range_start: Some("2026-08-12".to_string()),
+                range_end: Some("2026-08-14".to_string()),
             }
         );
     }
@@ -3184,6 +3262,90 @@ mod http_tests {
         assert_eq!(
             outcome.notice,
             Some(TODO_WRITE_REFRESH_FAILED_NOTICE.to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn 무변경_경로의_재조회_실패는_변경됐다고_말하지_않는다() {
+        // R4 조기 반환은 PATCH를 보내지 않는다 — 그 뒤 재조회가 실패했을 때
+        // 쓰기 경로의 "변경은 반영됐지만…" 안내를 쓰면 없던 변경을 있다고 말하게 된다
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path(format!("/v1/pages/{가짜_페이지_ID}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(0)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_json(에러_body(500, "internal_server_error")),
+            )
+            .mount(&server)
+            .await;
+
+        let outcome = set_performance_outcome(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "[TODO]",
+            가짜_날짜,
+            가짜_날짜,
+            "일부",
+            &PageMeta::new(Some("일부".to_string()), None, None),
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.snapshot, None);
+        assert_eq!(
+            outcome.notice,
+            Some(TODO_UNCHANGED_REFRESH_FAILED_NOTICE.to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn 범위_행의_수행도를_바꿔도_적용_구간이_유지된다() {
+        // R9·R10 — 성공 경로의 `written`은 수행도만 갈아 끼우고 구간은 직전 값을
+        // 그대로 이어 나른다. 구간이 빠지면 저장 직후 카드에서 "8/12~8/14 적용"이 사라진다
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path(format!("/v1/pages/{가짜_특수_페이지_ID}")))
+            .and(body_json(수행도_body("완료")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        mount_children(&server, 가짜_특수_페이지_ID, vec![]).await;
+
+        let outcome = set_performance_outcome(
+            &server.uri(),
+            &가짜_access(),
+            가짜_특수_페이지_ID,
+            "휴가",
+            "2026-08-13",
+            가짜_날짜,
+            "완료",
+            &PageMeta::new(
+                Some("일부".to_string()),
+                Some("2026-08-12".to_string()),
+                Some("2026-08-14".to_string()),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.notice, None);
+        assert_eq!(
+            outcome.snapshot,
+            Some(TodoSnapshot::Loaded {
+                date: "2026-08-13".to_string(),
+                page_id: 가짜_특수_페이지_ID.to_string(),
+                title: "휴가".to_string(),
+                items: vec![],
+                is_today: false,
+                performance: Some("완료".to_string()),
+                range_start: Some("2026-08-12".to_string()),
+                range_end: Some("2026-08-14".to_string()),
+            })
         );
     }
 }

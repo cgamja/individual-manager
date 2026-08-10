@@ -10,7 +10,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
-import type { TodoOutcome, TodoSnapshot } from "../lib/notion";
+import type { TodoOutcome, TodoPageMeta, TodoSnapshot } from "../lib/notion";
 import { TodoCard, type CreateRowFormResult } from "./TodoCard";
 
 afterEach(() => {
@@ -695,6 +695,8 @@ describe("행 만들기 폼", () => {
         title: "[TODO]",
         date: "2026-08-15",
         performance: "일부",
+        range_start: "2026-08-15",
+        range_end: null,
       }),
     );
     await renderOpenForm({ onCreateRow });
@@ -715,6 +717,8 @@ describe("행 만들기 폼", () => {
         title: "[TODO]",
         date: "2026-08-15",
         performance: "일부",
+        range_start: "2026-08-15",
+        range_end: "2026-08-17",
       }),
     );
     const onOpenPage = vi.fn(async (): Promise<boolean> => true);
@@ -723,8 +727,12 @@ describe("행 만들기 폼", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "기존 행 열기" }));
 
-    // exists가 실어 준 수행도가 열기 호출까지 그대로 흘러야 한다 (KTD1)
-    expect(onOpenPage).toHaveBeenCalledWith("page-9", "[TODO]", "2026-08-15", "일부");
+    // exists가 실어 준 수행도·적용 구간이 열기 호출까지 그대로 흘러야 한다 (KTD1)
+    expect(onOpenPage).toHaveBeenCalledWith("page-9", "[TODO]", "2026-08-15", {
+      performance: "일부",
+      rangeStart: "2026-08-15",
+      rangeEnd: "2026-08-17",
+    });
     // 열기 성공 → 폼 접힘
     await waitFor(() =>
       expect(screen.queryByLabelText("날짜")).not.toBeInTheDocument(),
@@ -1082,6 +1090,8 @@ describe("수행도", () => {
         title: "휴가",
         date: "2026-08-15",
         performance: "기타",
+        range_start: "2026-08-15",
+        range_end: null,
       }),
       notion_todo_open_page: (args) =>
         outcome({
@@ -1115,5 +1125,51 @@ describe("수행도", () => {
       });
     });
     await waitFor(() => expect(perfButton("기타")).toHaveAttribute("aria-pressed", "true"));
+  });
+
+  it("exists로_연_범위_행의_적용_구간이_보인다", async () => {
+    // R10 — 여러 날을 덮는 행은 exists 경로로 열려 오기 가장 쉬운 행이다.
+    // exists가 실어 준 구간이 열기 커맨드까지 흘러야 "8/12~8/14 적용"이 남는다
+    const calls = mockAppIPC({
+      notion_todo_create_row: () => ({
+        state: "exists",
+        page_id: "page-9",
+        title: "휴가",
+        date: "2026-08-12",
+        performance: "일부",
+        range_start: "2026-08-12",
+        range_end: "2026-08-14",
+      }),
+      // 백엔드는 받은 메타를 그대로 에코한다 — 넘긴 값이 곧 화면에 남는 값이다
+      notion_todo_open_page: (args) => {
+        const meta = (args as { meta?: TodoPageMeta }).meta;
+        return outcome({
+          state: "loaded",
+          date: "2026-08-12",
+          page_id: "page-9",
+          title: "휴가",
+          items: [],
+          is_today: false,
+          performance: meta?.performance ?? null,
+          range_start: meta?.rangeStart ?? null,
+          range_end: meta?.rangeEnd ?? null,
+        });
+      },
+    });
+    render(<App />);
+    await screen.findByRole("checkbox", { name: "아침 운동" });
+
+    await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
+    fireEvent.change(screen.getByLabelText("날짜"), {
+      target: { value: "2026-08-13" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
+    await userEvent.click(await screen.findByRole("button", { name: "기존 행 열기" }));
+
+    expect(await screen.findByText("2026-08-12~2026-08-14 적용")).toBeInTheDocument();
+    const open = calls.find((c) => c.cmd === "notion_todo_open_page");
+    expect(open!.args).toMatchObject({
+      meta: { rangeStart: "2026-08-12", rangeEnd: "2026-08-14" },
+    });
   });
 });

@@ -70,6 +70,10 @@ export type CreateRowOutcome =
       date: string;
       /** 겹친 행의 현재 수행도 — "기존 행 열기"가 그대로 넘긴다. */
       performance: string | null;
+      /** 겹친 행의 적용 구간 — "기존 행 열기"가 그대로 넘겨야 여러 날을 덮는
+       * 행에서 열기 스냅샷의 구간 표시가 사라지지 않는다 (R10). */
+      range_start: string | null;
+      range_end: string | null;
     };
 
 export const getTodoList = (): Promise<TodoSnapshot> =>

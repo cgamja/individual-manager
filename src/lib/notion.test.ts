@@ -291,21 +291,23 @@ describe("Todo 커맨드 래퍼", () => {
     expect(calls[3].args).toMatchObject({ meta: undefined });
   });
 
-  it("open_page_래퍼가_수행도를_전달한다", async () => {
+  it("open_page_래퍼가_수행도와_적용_구간을_전달한다", async () => {
     const calls = captureIPC(OUTCOME);
-    // "기존 행 열기"가 넘기는 값 — exists가 실어 준 수행도가 그대로 흘러야 한다
+    // "기존 행 열기"가 넘기는 값 — exists가 실어 준 수행도·적용 구간이 그대로 흘러야 한다
     const EXISTS: CreateRowOutcome = {
       state: "exists",
       page_id: "page-9",
       title: "휴가",
       date: "2026-08-10",
       performance: "일부",
+      range_start: "2026-08-12",
+      range_end: "2026-08-14",
     };
 
     await openTodoPage(EXISTS.page_id, EXISTS.title, EXISTS.date, {
       performance: EXISTS.performance ?? undefined,
-      rangeStart: "2026-08-12",
-      rangeEnd: "2026-08-14",
+      rangeStart: EXISTS.range_start ?? undefined,
+      rangeEnd: EXISTS.range_end ?? undefined,
     });
 
     expect(calls[0].cmd).toBe("notion_todo_open_page");

@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import type { TodoItem, TodoSnapshot } from "../lib/notion";
+import type { TodoItem, TodoPageMeta, TodoSnapshot } from "../lib/notion";
 
 /** 행 만들기 폼이 제출하는 파라미터 — lib/notion createTodoRow와 동일 형태.
  * 행 생성은 미래 [TODO] 전용이라 날짜 하나만 받는다. */
@@ -17,6 +17,10 @@ export type CreateRowFormResult =
       date: string;
       /** 겹친 행의 현재 수행도 — "기존 행 열기"가 그대로 넘긴다 (KTD1). */
       performance: string | null;
+      /** 겹친 행의 적용 구간 — 함께 넘겨야 여러 날을 덮는 행을 열었을 때도
+       * 구간 표시가 남는다 (R10). */
+      range_start: string | null;
+      range_end: string | null;
     }
   | { state: "failed" };
 
@@ -45,12 +49,12 @@ interface TodoCardProps {
   /** created일 때만 폼을 접는다 — exists는 기존 행 안내, failed는 입력 유지. */
   onCreateRow: (params: CreateRowFormParams) => Promise<CreateRowFormResult>;
   /** resolve가 true(열기 성공)일 때만 폼을 접는다.
-   * performance는 exists가 실어 준 그 행의 값 — 열기 스냅샷에 그대로 실린다 (KTD1). */
+   * meta는 exists가 실어 준 그 행의 수행도·적용 구간 — 열기 스냅샷에 그대로 실린다 (KTD1). */
   onOpenPage: (
     pageId: string,
     title: string,
     date: string,
-    performance: string | null,
+    meta: TodoPageMeta,
   ) => Promise<boolean>;
   /** 수행도 즉시 저장 (R3) — 카드는 같은 값 재클릭을 걸러서(R4) 호출하지 않는다. */
   onSetPerformance: (performance: string) => void;
@@ -77,12 +81,10 @@ export function TodoCard({
   // 행 만들기 폼 — 입력 초안만 로컬 state로 둔다
   const [formOpen, setFormOpen] = useState(false);
   const [rowStart, setRowStart] = useState("");
-  const [existsInfo, setExistsInfo] = useState<{
-    page_id: string;
-    title: string;
-    date: string;
-    performance: string | null;
-  } | null>(null);
+  const [existsInfo, setExistsInfo] = useState<Extract<
+    CreateRowFormResult,
+    { state: "exists" }
+  > | null>(null);
 
   // 날짜가 있는 스냅샷(no_page·loaded)에서만 폼·전환 UI가 의미가 있다
   const snapshotDate =
@@ -150,12 +152,7 @@ export function TodoCard({
       if (result.state === "created") {
         closeForm();
       } else if (result.state === "exists") {
-        setExistsInfo({
-          page_id: result.page_id,
-          title: result.title,
-          date: result.date,
-          performance: result.performance,
-        });
+        setExistsInfo(result);
       }
       // failed — 배너는 App이 띄우고 입력은 유지한다 (R10)
     } catch {
@@ -173,12 +170,12 @@ export function TodoCard({
     if (isBusy || existsInfo === null) return;
     try {
       if (
-        await onOpenPage(
-          existsInfo.page_id,
-          existsInfo.title,
-          existsInfo.date,
-          existsInfo.performance,
-        )
+        await onOpenPage(existsInfo.page_id, existsInfo.title, existsInfo.date, {
+          // null("값 없음")은 인자에서 생략(undefined)과 같은 뜻이다 (App todoMeta와 같은 규칙)
+          performance: existsInfo.performance ?? undefined,
+          rangeStart: existsInfo.range_start ?? undefined,
+          rangeEnd: existsInfo.range_end ?? undefined,
+        })
       ) {
         closeForm();
       }

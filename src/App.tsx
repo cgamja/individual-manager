@@ -259,12 +259,16 @@ function App() {
   }, [runNotionCommand]);
 
   /**
-   * 쓰기 실패 후 1회 재조회 — 타임아웃 뒤 실제로 반영됐다면 재조회가 그 결과를
-   * 드러낸다. 날짜 전환 중(loaded && !is_today)이면 그 날짜(openTodoPage)로
-   * 재조회해 오늘로 튕기지 않게 하고, 오늘이면 getTodoList. 결과는 순번이
-   * 여전히 최신일 때만 반영하고 재조회 자체의 실패는 삼킨다.
-   * 열기 경로에 되싣는 수행도는 방금 시도한 값이 아니라 화면에 남아 있는
-   * 직전 값이다 — 저장이 확인되지 않은 값을 선택된 것처럼 보이게 하지 않는다 (R9).
+   * 쓰기 실패 후 1회 재조회 — 날짜 전환 중(loaded && !is_today)이면 그
+   * 날짜(openTodoPage)로 재조회해 오늘로 튕기지 않게 하고, 오늘이면 getTodoList.
+   * 결과는 순번이 여전히 최신일 때만 반영하고 재조회 자체의 실패는 삼킨다.
+   *
+   * 두 경로가 드러내는 것이 다르다. 오늘 경로(getTodoList)는 원격을 다시 읽으므로
+   * 타임아웃 뒤 실제로 반영됐다면 그 결과가 목록·수행도에 드러난다. 열기
+   * 경로(openTodoPage)는 children만 다시 읽고 페이지 메타는 여기서 넘긴 값을
+   * 그대로 되받는 설계라(KTD1), 목록은 최신이 되지만 수행도·적용 구간은 화면에
+   * 남아 있던 직전 값 그대로다 — 저장이 확인되지 않은 값을 선택된 것처럼
+   * 보이게 하지 않는다 (R9).
    */
   const refetchAfterTodoFailure = useCallback(
     async (seq: number) => {
@@ -389,6 +393,8 @@ function App() {
             title: created.title,
             date: created.date,
             performance: created.performance,
+            range_start: created.range_start,
+            range_end: created.range_end,
           };
         }
         // created — snapshot이 null이면 생성은 됐지만 재조회만 실패한 것 (notice로 안내)
@@ -410,19 +416,15 @@ function App() {
     [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent, refetchAfterTodoFailure],
   );
   /** exists의 기존 행 열기 — openTodoPage는 TodoOutcome을 돌려줘 공통 경로를 탄다.
-   * 적용 구간은 exists가 알려주지 않아 생략한다 — 열기 스냅샷도 그만큼만 안다. */
+   * 수행도·적용 구간은 exists가 실어 준 그 행의 값 그대로다 (KTD1) — 여러 날을
+   * 덮는 행을 이 경로로 열어도 구간 표시가 사라지지 않는다 (R10). */
   const handleTodoOpenPage = useCallback(
     (
       pageId: string,
       title: string,
       date: string,
-      performance: string | null,
-    ): Promise<boolean> =>
-      runTodoCommand(() =>
-        openTodoPage(pageId, title, date, {
-          performance: performance ?? undefined,
-        }),
-      ),
+      meta: TodoPageMeta,
+    ): Promise<boolean> => runTodoCommand(() => openTodoPage(pageId, title, date, meta)),
     [runTodoCommand],
   );
 

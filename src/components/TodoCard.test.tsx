@@ -1,5 +1,12 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
@@ -12,7 +19,10 @@ afterEach(() => {
   Reflect.deleteProperty(window, "Notification");
 });
 
-const LOADED: TodoSnapshot = {
+/** loaded 변형만 — 스프레드 변형이 유니언으로 넓어지지 않게 좁혀 둔다. */
+type LoadedSnapshot = Extract<TodoSnapshot, { state: "loaded" }>;
+
+const LOADED: LoadedSnapshot = {
   state: "loaded",
   date: "2026-08-09",
   page_id: "page-1",
@@ -23,7 +33,16 @@ const LOADED: TodoSnapshot = {
     { id: "b3", text: "이메일 정리", checked: false, category: "기타" },
   ],
   is_today: true,
+  performance: null,
+  range_end: null,
 };
+
+/** LOADED 변형 — 결과 타입이 loaded로 고정돼 `items` 접근·오버라이드가 안전하다. */
+const loaded = (overrides: Partial<LoadedSnapshot> = {}): LoadedSnapshot => ({
+  ...LOADED,
+  ...overrides,
+});
+
 const NO_PAGE: TodoSnapshot = {
   state: "no_page",
   date: "2026-08-09",
@@ -34,14 +53,26 @@ const NOT_CONNECTED: TodoSnapshot = {
   missing: ["token", "database", "data_source"],
 };
 /** 날짜 전환 후 스냅샷 — 과거 [TODO] 행을 열어 둔 상태. */
-const NOT_TODAY: TodoSnapshot = {
+const NOT_TODAY: LoadedSnapshot = {
   state: "loaded",
   date: "2026-08-08",
   page_id: "page-0",
   title: "[TODO]",
   items: [{ id: "c1", text: "쉬기", checked: false, category: null }],
   is_today: false,
+  performance: "일부",
+  range_end: null,
 };
+
+/** 수행도 세그먼트 안에서만 버튼을 찾는다 — "기타"가 카테고리와 겹친다. */
+const perfGroup = () => screen.getByRole("group", { name: "수행도" });
+const perfButton = (name: string) =>
+  within(perfGroup()).getByRole("button", { name });
+/** 카테고리 세그먼트 안에서만 버튼을 찾는다 — 수행도와 "기타"가 겹친다. */
+const catButton = (name: string) =>
+  within(screen.getByRole("group", { name: "추가 카테고리" })).getByRole("button", {
+    name,
+  });
 
 const outcome = (
   snapshot: TodoSnapshot | null,
@@ -65,6 +96,7 @@ function renderCard(overrides: Partial<Parameters<typeof TodoCard>[0]> = {}) {
       async (): Promise<CreateRowFormResult> => ({ state: "created" }),
     ),
     onOpenPage: vi.fn(async (): Promise<boolean> => true),
+    onSetPerformance: vi.fn(),
     ...overrides,
   };
   const view = render(<TodoCard {...props} />);
@@ -138,13 +170,12 @@ describe("목록 표시", () => {
 
     // 첫 헤딩 전(category null) 항목은 라벨 없이 맨 앞 그대로
     renderCard({
-      snapshot: {
-        ...LOADED,
+      snapshot: loaded({
         items: [
           { id: "b0", text: "머리말 항목", checked: false, category: null },
           ...LOADED.items,
         ],
-      },
+      }),
     });
     const rows2 = screen.getAllByRole("listitem");
     expect(rows2.map((r) => r.textContent)).toEqual([
@@ -173,7 +204,7 @@ describe("목록 표시", () => {
   });
 
   it("항목이_없으면_짧은_안내를_표시한다", () => {
-    renderCard({ snapshot: { ...LOADED, items: [] } });
+    renderCard({ snapshot: loaded({ items: [] }) });
 
     expect(screen.getByText(/할 일이 아직 없어요/)).toBeInTheDocument();
     // 추가 입력은 그대로 쓸 수 있다
@@ -185,7 +216,7 @@ describe("페이지 없음 플로", () => {
   it("페이지_없음_상태는_만들기_버튼을_보여주고_클릭이_커맨드를_invoke한다", async () => {
     const calls = mockAppIPC({
       notion_todo_list: () => NO_PAGE,
-      notion_todo_create_page: () => outcome({ ...LOADED, items: [] }),
+      notion_todo_create_page: () => outcome(loaded({ items: [] })),
     });
     render(<App />);
 
@@ -200,14 +231,13 @@ describe("페이지 없음 플로", () => {
 
 describe("토글 플로", () => {
   it("체크박스_클릭이_notion_todo_toggle을_올바른_인자로_invoke하고_응답_스냅샷으로_갱신한다", async () => {
-    const toggled: TodoSnapshot = {
-      ...LOADED,
+    const toggled = loaded({
       items: [
         { id: "b1", text: "아침 운동", checked: true, category: "공부" },
         { id: "b2", text: "보고서 작성", checked: true, category: "공부" },
         { id: "b3", text: "이메일 정리", checked: false, category: "기타" },
       ],
-    };
+    });
     const calls = mockAppIPC({ notion_todo_toggle: () => outcome(toggled) });
     render(<App />);
 
@@ -274,10 +304,7 @@ describe("추가 플로", () => {
     const input = await screen.findByRole("textbox", { name: "새 할 일" });
 
     // 기본 선택은 공부다
-    expect(screen.getByRole("button", { name: "공부" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(catButton("공부")).toHaveAttribute("aria-pressed", "true");
     await userEvent.type(input, "단어 암기");
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
     await waitFor(() => {
@@ -287,7 +314,7 @@ describe("추가 플로", () => {
     });
 
     // 기타 선택 후 추가 → category "기타"
-    await userEvent.click(screen.getByRole("button", { name: "기타" }));
+    await userEvent.click(catButton("기타"));
     await userEvent.type(input, "짐 정리");
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
     await waitFor(() => {
@@ -377,8 +404,8 @@ describe("busy·새로고침", () => {
     // 텍스트 입력도 잠근다 — 진행 중 타이핑이 성공 시 setAddRaw("")/cancelEdit()로 유실되는 것 방지
     expect(screen.getByRole("textbox", { name: "새 할 일" })).toBeDisabled();
     // 카테고리 세그먼트도 잠근다
-    expect(screen.getByRole("button", { name: "공부" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "기타" })).toBeDisabled();
+    expect(catButton("공부")).toBeDisabled();
+    expect(catButton("기타")).toBeDisabled();
     for (const box of screen.getAllByRole("checkbox")) {
       expect(box).toBeDisabled();
     }
@@ -470,14 +497,13 @@ describe("재표시 재조회", () => {
     const pendingToggle = new Promise<TodoOutcome>((resolve) => {
       resolveToggle = resolve;
     });
-    const written: TodoSnapshot = {
-      ...LOADED,
+    const written = loaded({
       items: [
         { id: "b1", text: "아침 운동", checked: true, category: "공부" },
         { id: "b2", text: "보고서 작성", checked: true, category: "공부" },
         { id: "b3", text: "이메일 정리", checked: false, category: "기타" },
       ],
-    };
+    });
     const calls = mockAppIPC({ notion_todo_toggle: () => pendingToggle });
     render(<App />);
 
@@ -660,6 +686,7 @@ describe("행 만들기 폼", () => {
         page_id: "page-9",
         title: "[TODO]",
         date: "2026-08-15",
+        performance: "일부",
       }),
     );
     await renderOpenForm({ onCreateRow });
@@ -679,6 +706,7 @@ describe("행 만들기 폼", () => {
         page_id: "page-9",
         title: "[TODO]",
         date: "2026-08-15",
+        performance: "일부",
       }),
     );
     const onOpenPage = vi.fn(async (): Promise<boolean> => true);
@@ -687,7 +715,8 @@ describe("행 만들기 폼", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "기존 행 열기" }));
 
-    expect(onOpenPage).toHaveBeenCalledWith("page-9", "[TODO]", "2026-08-15");
+    // exists가 실어 준 수행도가 열기 호출까지 그대로 흘러야 한다 (KTD1)
+    expect(onOpenPage).toHaveBeenCalledWith("page-9", "[TODO]", "2026-08-15", "일부");
     // 열기 성공 → 폼 접힘
     await waitFor(() =>
       expect(screen.queryByLabelText("날짜")).not.toBeInTheDocument(),
@@ -780,13 +809,15 @@ describe("날짜 전환", () => {
   });
 
   it("생성_성공_시_폼이_접히고_스냅샷이_전환된다", async () => {
-    const FUTURE: TodoSnapshot = {
+    const FUTURE: LoadedSnapshot = {
       state: "loaded",
       date: "2026-08-15",
       page_id: "page-7",
       title: "[TODO]",
       items: [],
       is_today: false,
+      performance: null,
+      range_end: null,
     };
     const calls = mockAppIPC({
       notion_todo_create_row: () => ({
@@ -813,5 +844,237 @@ describe("날짜 전환", () => {
     // 생성된 날짜로 전환됨 — 날짜 표시 + 돌아가기
     expect(await screen.findByText("2026-08-15")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "오늘로 돌아가기" })).toBeInTheDocument();
+  });
+});
+
+describe("수행도", () => {
+  const PERFORMANCES = ["완료", "일부", "미완", "기타"];
+
+  it("현재_수행도가_선택된_상태로_보인다", () => {
+    renderCard({ snapshot: loaded({ performance: "일부" }) });
+
+    // 달성도 순(완료·일부·미완·기타) 4개만 있고 현재 값만 눌려 있다 (KTD2)
+    const buttons = within(perfGroup()).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual(PERFORMANCES);
+    for (const value of PERFORMANCES) {
+      expect(perfButton(value)).toHaveAttribute(
+        "aria-pressed",
+        String(value === "일부"),
+      );
+    }
+    // 값이 있으면 미지정 라벨은 없다
+    expect(screen.queryByText("미지정")).not.toBeInTheDocument();
+  });
+
+  it("값이_없으면_미지정으로_보이고_아무것도_선택되지_않는다", () => {
+    renderCard(); // LOADED — performance null
+
+    expect(screen.getByText("미지정")).toBeInTheDocument();
+    for (const value of PERFORMANCES) {
+      expect(perfButton(value)).toHaveAttribute("aria-pressed", "false");
+    }
+  });
+
+  it("버튼을_누르면_그_값으로_커맨드가_호출된다", async () => {
+    const { props } = renderCard({ snapshot: loaded({ performance: "미완" }) });
+
+    await userEvent.click(perfButton("완료"));
+
+    expect(props.onSetPerformance).toHaveBeenCalledWith("완료");
+  });
+
+  it("같은_값을_다시_누르면_커맨드를_호출하지_않는다", async () => {
+    const { props } = renderCard({ snapshot: loaded({ performance: "완료" }) });
+
+    await userEvent.click(perfButton("완료"));
+
+    expect(props.onSetPerformance).not.toHaveBeenCalled();
+  });
+
+  it("busy_중에는_수행도_버튼이_비활성이다", () => {
+    renderCard({ isBusy: true, snapshot: loaded({ performance: "완료" }) });
+
+    for (const value of PERFORMANCES) {
+      expect(perfButton(value)).toBeDisabled();
+    }
+  });
+
+  it("범위_행에서는_적용_구간이_함께_표시된다", () => {
+    // 8/13을 보고 있고 그 날짜를 덮는 행이 8/14까지인 경우 (AE8)
+    renderCard({
+      snapshot: loaded({
+        date: "2026-08-13",
+        is_today: false,
+        performance: "기타",
+        range_end: "2026-08-14",
+      }),
+    });
+
+    expect(screen.getByText("2026-08-14까지 적용")).toBeInTheDocument();
+  });
+
+  it("하루_행에서는_적용_구간을_표시하지_않는다", () => {
+    renderCard({ snapshot: loaded({ performance: "완료" }) });
+
+    expect(screen.queryByText(/적용/)).not.toBeInTheDocument();
+  });
+
+  it("not_connected와_no_page에서는_수행도_줄이_보이지_않는다", () => {
+    const { view } = renderCard({ snapshot: NOT_CONNECTED });
+    expect(screen.queryByRole("group", { name: "수행도" })).not.toBeInTheDocument();
+    view.unmount();
+
+    renderCard({ snapshot: NO_PAGE });
+    expect(screen.queryByRole("group", { name: "수행도" })).not.toBeInTheDocument();
+  });
+
+  it("오늘이_아닌_스냅샷에서도_수행도_줄이_보이고_그_날짜로_호출한다", async () => {
+    // NOT_TODAY — 8/8 행, 현재 수행도 "일부" (AE5)
+    const calls = mockAppIPC({
+      notion_todo_list: () => NOT_TODAY,
+      notion_todo_set_performance: () =>
+        outcome({ ...NOT_TODAY, performance: "미완" }),
+    });
+    render(<App />);
+
+    await screen.findByRole("checkbox", { name: "쉬기" });
+    expect(perfButton("일부")).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(perfButton("미완"));
+
+    await waitFor(() => {
+      const call = calls.find((c) => c.cmd === "notion_todo_set_performance");
+      expect(call).toBeDefined();
+      expect(call!.args).toMatchObject({
+        pageId: "page-0",
+        pageTitle: "[TODO]",
+        date: "2026-08-08",
+        performance: "미완",
+        // 저장이 확인되지 않은 경로에서 되실을 직전 값 (R9)
+        previousPerformance: "일부",
+      });
+    });
+    // 카드는 그 날짜에 머문다
+    await waitFor(() => expect(perfButton("미완")).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByText("2026-08-08")).toBeInTheDocument();
+  });
+
+  it("오늘_화면의_수행도_쓰기_실패가_배너를_띄우고_재조회한다", async () => {
+    // AE6 — 오늘 화면(LOADED, 미지정)에서의 실패는 오늘 목록을 1회 재조회한다
+    const calls = mockAppIPC({
+      notion_todo_set_performance: () => {
+        throw "수행도 저장에 실패했습니다";
+      },
+    });
+    render(<App />);
+
+    await screen.findByRole("checkbox", { name: "아침 운동" });
+    const listCallsBefore = calls.filter((c) => c.cmd === "notion_todo_list").length;
+    await userEvent.click(perfButton("완료"));
+
+    await screen.findByText("수행도 저장에 실패했습니다");
+    await waitFor(() =>
+      expect(calls.filter((c) => c.cmd === "notion_todo_list").length).toBe(
+        listCallsBefore + 1,
+      ),
+    );
+    // 시도값이 선택된 채로 남지 않는다 — 재조회 결과(미지정) 그대로다 (R9)
+    expect(perfButton("완료")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("미지정")).toBeInTheDocument();
+  });
+
+  it("전환된_날짜의_쓰기_실패는_직전_수행도를_유지한다", async () => {
+    // AE7 — 실패 재조회(openTodoPage)가 시도값이 아니라 직전 값을 되싣는다 (R9).
+    // 백엔드는 받은 값을 그대로 에코하므로, 화면에 남는 값이 곧 넘긴 값이다.
+    const calls = mockAppIPC({
+      notion_todo_list: () => NOT_TODAY,
+      notion_todo_set_performance: () => {
+        throw "일시 오류";
+      },
+      notion_todo_open_page: (args) =>
+        outcome({
+          ...NOT_TODAY,
+          performance: (args as { performance?: string }).performance ?? null,
+        }),
+    });
+    render(<App />);
+
+    await screen.findByRole("checkbox", { name: "쉬기" });
+    await userEvent.click(perfButton("완료"));
+
+    await screen.findByText("일시 오류");
+    await waitFor(() => {
+      const open = calls.find((c) => c.cmd === "notion_todo_open_page");
+      expect(open).toBeDefined();
+      expect(open!.args).toMatchObject({
+        pageId: "page-0",
+        date: "2026-08-08",
+        performance: "일부", // 시도값("완료")이 아니라 직전 값
+      });
+    });
+    expect(perfButton("일부")).toHaveAttribute("aria-pressed", "true");
+    expect(perfButton("완료")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("목록_쓰기도_현재_수행도를_함께_보낸다", async () => {
+    // children 재조회는 페이지 메타를 주지 않는다 — 토글 후에도 값이 남으려면
+    // 프론트가 현재 값을 되실어 줘야 한다 (KTD1)
+    const RANGE = loaded({ performance: "일부", range_end: "2026-08-14" });
+    const calls = mockAppIPC({
+      notion_todo_list: () => RANGE,
+      notion_todo_toggle: () => outcome(RANGE),
+    });
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: "보고서 작성" }));
+
+    await waitFor(() => {
+      const call = calls.find((c) => c.cmd === "notion_todo_toggle");
+      expect(call).toBeDefined();
+      expect(call!.args).toMatchObject({
+        performance: "일부",
+        rangeEnd: "2026-08-14",
+      });
+    });
+    expect(perfButton("일부")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("exists로_연_행의_수행도가_보인다", async () => {
+    // 기존 행 열기 — exists가 실어 준 수행도가 열기 커맨드까지 흘러 화면에 보인다
+    const calls = mockAppIPC({
+      notion_todo_create_row: () => ({
+        state: "exists",
+        page_id: "page-9",
+        title: "휴가",
+        date: "2026-08-15",
+        performance: "기타",
+      }),
+      notion_todo_open_page: (args) =>
+        outcome({
+          state: "loaded",
+          date: "2026-08-15",
+          page_id: "page-9",
+          title: "휴가",
+          items: [],
+          is_today: false,
+          performance: (args as { performance?: string }).performance ?? null,
+          range_end: null,
+        }),
+    });
+    render(<App />);
+    await screen.findByRole("checkbox", { name: "아침 운동" });
+
+    await userEvent.click(screen.getByRole("button", { name: "행 만들기" }));
+    fireEvent.change(screen.getByLabelText("날짜"), {
+      target: { value: "2026-08-15" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "만들기" }));
+    await userEvent.click(await screen.findByRole("button", { name: "기존 행 열기" }));
+
+    await waitFor(() => {
+      const open = calls.find((c) => c.cmd === "notion_todo_open_page");
+      expect(open).toBeDefined();
+      expect(open!.args).toMatchObject({ pageId: "page-9", performance: "기타" });
+    });
+    await waitFor(() => expect(perfButton("기타")).toHaveAttribute("aria-pressed", "true"));
   });
 });

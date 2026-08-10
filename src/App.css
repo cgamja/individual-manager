@@ -287,6 +287,49 @@ button:active {
   font-weight: 600;
 }
 
+/* 수행도 줄 — 헤더 바로 아래, 목록 위. 360px 기준 4개 pill(약 200px)에
+   미지정 배지를 더해도 카드 안쪽 폭(약 304px)에 들어간다.
+   적용 구간은 길이가 들쭉날쭉해 항상 다음 줄을 차지하게 둔다 */
+.todo-perf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 10px;
+}
+
+.todo-perfs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* 카테고리 pill과 모양은 같지만 역할이 다르다 — 이쪽은 누르는 즉시 원격에 쓴다 */
+.todo-perf-pill {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.todo-perf-pill[aria-pressed="true"] {
+  background: #e4e4e8;
+  border-color: rgba(0, 0, 0, 0.3);
+  font-weight: 600;
+}
+
+.todo-perf-empty,
+.todo-perf-range {
+  font-size: 11px;
+  color: #6e6e73;
+  white-space: nowrap;
+}
+
+.todo-perf-range {
+  flex-basis: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 목록 자체 스크롤 영역 — 팝오버 전체 스크롤과 별개 (플랜 Assumptions) */
 .todo-list {
   list-style: none;
@@ -482,11 +525,14 @@ button:active {
   .todo-page-title,
   .todo-date,
   .todo-status,
-  .todo-section-label {
+  .todo-section-label,
+  .todo-perf-empty,
+  .todo-perf-range {
     color: #a1a1a6;
   }
 
-  .todo-cat[aria-pressed="true"] {
+  .todo-cat[aria-pressed="true"],
+  .todo-perf-pill[aria-pressed="true"] {
     background: #525257;
     border-color: rgba(255, 255, 255, 0.3);
   }

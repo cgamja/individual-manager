@@ -20,6 +20,7 @@ import {
   openTodoPage,
   saveNotionToken,
   setNotionDatabase,
+  setTodoPerformance,
   testNotionConnection,
   toggleTodo,
   type ConnectionState,
@@ -248,13 +249,21 @@ function App() {
    * 드러낸다. 날짜 전환 중(loaded && !is_today)이면 그 날짜(openTodoPage)로
    * 재조회해 오늘로 튕기지 않게 하고, 오늘이면 getTodoList. 결과는 순번이
    * 여전히 최신일 때만 반영하고 재조회 자체의 실패는 삼킨다.
+   * 열기 경로에 되싣는 수행도는 방금 시도한 값이 아니라 화면에 남아 있는
+   * 직전 값이다 — 저장이 확인되지 않은 값을 선택된 것처럼 보이게 하지 않는다 (R9).
    */
   const refetchAfterTodoFailure = useCallback(
     async (seq: number) => {
       const current = todoSnapshotRef.current;
       const actual =
         current?.state === "loaded" && !current.is_today
-          ? await openTodoPage(current.page_id, current.title, current.date)
+          ? await openTodoPage(
+              current.page_id,
+              current.title,
+              current.date,
+              current.performance ?? undefined,
+              current.range_end ?? undefined,
+            )
               .then((o) => o.snapshot)
               .catch(() => null)
           : await getTodoList().catch(() => null);
@@ -305,25 +314,75 @@ function App() {
   const handleTodoAdd = useCallback(
     (text: string, category: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
-      const { page_id, title, date } = todoSnapshot;
-      // category = 선택된 헤딩 텍스트 — 백엔드가 해당 헤딩 아래에 삽입한다
-      return runTodoCommand(() => addTodo(page_id, text, title, date, category));
+      const { page_id, title, date, performance, range_end } = todoSnapshot;
+      // category = 선택된 헤딩 텍스트 — 백엔드가 해당 헤딩 아래에 삽입한다.
+      // 수행도·적용 구간은 children 재조회가 주지 않는 페이지 메타라 되실어 준다 (KTD1)
+      return runTodoCommand(() =>
+        addTodo(
+          page_id,
+          text,
+          title,
+          date,
+          category,
+          performance ?? undefined,
+          range_end ?? undefined,
+        ),
+      );
     },
     [todoSnapshot, runTodoCommand],
   );
   const handleTodoToggle = useCallback(
     (blockId: string, checked: boolean) => {
       if (todoSnapshot?.state !== "loaded") return;
-      const { page_id, title, date } = todoSnapshot;
-      void runTodoCommand(() => toggleTodo(page_id, blockId, checked, title, date));
+      const { page_id, title, date, performance, range_end } = todoSnapshot;
+      void runTodoCommand(() =>
+        toggleTodo(
+          page_id,
+          blockId,
+          checked,
+          title,
+          date,
+          performance ?? undefined,
+          range_end ?? undefined,
+        ),
+      );
     },
     [todoSnapshot, runTodoCommand],
   );
   const handleTodoEdit = useCallback(
     (blockId: string, text: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
-      const { page_id, title, date } = todoSnapshot;
-      return runTodoCommand(() => editTodo(page_id, blockId, text, title, date));
+      const { page_id, title, date, performance, range_end } = todoSnapshot;
+      return runTodoCommand(() =>
+        editTodo(
+          page_id,
+          blockId,
+          text,
+          title,
+          date,
+          performance ?? undefined,
+          range_end ?? undefined,
+        ),
+      );
+    },
+    [todoSnapshot, runTodoCommand],
+  );
+  /** 수행도 즉시 저장 (R3) — `handleTodoToggle` 전례로 busy·seq·실패 재조회를
+   * 공통 경로에 맡긴다. 직전 값을 함께 넘겨 확인되지 않은 값이 되실리지 않게 한다 (R9). */
+  const handleTodoSetPerformance = useCallback(
+    (performance: string) => {
+      if (todoSnapshot?.state !== "loaded") return;
+      const { page_id, title, date, performance: current, range_end } = todoSnapshot;
+      void runTodoCommand(() =>
+        setTodoPerformance(
+          page_id,
+          title,
+          date,
+          performance,
+          current ?? undefined,
+          range_end ?? undefined,
+        ),
+      );
     },
     [todoSnapshot, runTodoCommand],
   );
@@ -346,6 +405,7 @@ function App() {
             page_id: created.page_id,
             title: created.title,
             date: created.date,
+            performance: created.performance,
           };
         }
         // created — snapshot이 null이면 생성은 됐지만 재조회만 실패한 것 (notice로 안내)
@@ -366,10 +426,16 @@ function App() {
     },
     [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent, refetchAfterTodoFailure],
   );
-  /** exists의 기존 행 열기 — openTodoPage는 TodoOutcome을 돌려줘 공통 경로를 탄다. */
+  /** exists의 기존 행 열기 — openTodoPage는 TodoOutcome을 돌려줘 공통 경로를 탄다.
+   * 적용 구간은 exists가 알려주지 않아 생략한다 — 열기 스냅샷도 그만큼만 안다. */
   const handleTodoOpenPage = useCallback(
-    (pageId: string, title: string, date: string): Promise<boolean> =>
-      runTodoCommand(() => openTodoPage(pageId, title, date)),
+    (
+      pageId: string,
+      title: string,
+      date: string,
+      performance: string | null,
+    ): Promise<boolean> =>
+      runTodoCommand(() => openTodoPage(pageId, title, date, performance ?? undefined)),
     [runTodoCommand],
   );
 
@@ -392,6 +458,7 @@ function App() {
         onEdit={handleTodoEdit}
         onCreateRow={handleTodoCreateRow}
         onOpenPage={handleTodoOpenPage}
+        onSetPerformance={handleTodoSetPerformance}
       />
       <SettingsCard
         config={config}

@@ -9,7 +9,7 @@ use tauri_plugin_store::StoreExt;
 
 use crate::notion::{
     date_only, determine_connection_state, parse_database_id, ConnectError, ConnectionState,
-    NewPage, NotionClient, PageIcon, RowInWindow, TodoItem, NOTION_API_BASE,
+    NotionClient, RowInWindow, TodoItem, NOTION_API_BASE,
 };
 
 /// Keychain service 이름 — 번들 ID(com.kangr.penguin) 기반.
@@ -312,9 +312,6 @@ const TODO_WRITE_REFRESH_FAILED_NOTICE: &str =
 /// page_id로 연 행이 사라졌을 때(404) 날짜 조회로 폴백하며 싣는 안내.
 const TODO_OPEN_FALLBACK_NOTICE: &str = "행을 찾지 못해 그 날짜를 다시 조회했습니다.";
 
-/// `[TODO]` 행에 날짜 범위(end)를 지정하려 할 때의 오류 — TODO 행은 하루 골격이다.
-const TODO_ROW_RANGE_ERROR: &str = "TODO 행은 하루 단위입니다";
-
 /// 미연결 판정 — 무엇이 없는지 snake_case 문자열 목록으로 돌려준다 (R7).
 /// `notion_get_status`의 캐시 기반 표시와 독립인 순수 판정.
 pub fn todo_missing(
@@ -542,21 +539,8 @@ pub async fn notion_todo_create_page(app: AppHandle) -> Result<TodoOutcome, Stri
 }
 
 // ---------------------------------------------------------------------------
-// 행 생성·열기 커맨드 (U4) — 특수 행(휴일·MT 등)과 임의 날짜 [TODO] 행
+// 행 생성·열기 커맨드 (U4) — 미래 날짜 [TODO] 행 만들기와 행 직접 열기
 // ---------------------------------------------------------------------------
-
-/// 새 행 생성 입력 — 커맨드 인자를 코어(`create_row_outcome`)로 넘기는 묶음.
-pub struct NewRowParams {
-    pub title: String,
-    /// `날짜` 시작 (date-only `YYYY-MM-DD`)
-    pub start: String,
-    /// `날짜` 끝 — 특수 행 전용, `[TODO]` 행에 주면 오류
-    pub end: Option<String>,
-    /// 특수 행의 이모지 아이콘 — `[TODO]` 행은 무시하고 최신 행 아이콘을 복사한다
-    pub icon: Option<String>,
-    /// 특수 행의 `수행도` — None이면 "기타"
-    pub performance: Option<String>,
-}
 
 /// 행 생성 커맨드의 반환 — 생성 성공(created)과 겹침 차단(exists)을
 /// `TodoSnapshot` 전례대로 state 태그로 구분한다 (TS 판별 용이).
@@ -583,44 +567,36 @@ fn ranges_overlap(a_start: &str, a_end: Option<&str>, b_start: &str, b_end: Opti
         && date_only(b_start) <= date_only(a_end.unwrap_or(a_start))
 }
 
-/// 새 기간과 겹치는 같은 제목 행을 찾는다 — 제목 필터 쿼리 한 번
+/// 그 날짜와 겹치는 `[TODO]` 행을 찾는다 — 제목 필터 쿼리 한 번
 /// (`find_rows_by_title`, 날짜 하한 없음)으로 같은 제목 행 전체를 받아
-/// 구간 겹침을 클라이언트에서 판정한다. 날짜 창 조회(31일 하한)는 훨씬 전에
-/// 시작한 범위 행(예: 45일 전 시작한 휴가)을 조용히 놓쳐 중복 생성을 허용했다.
+/// 하루 겹침을 클라이언트에서 판정한다. 날짜 창 조회(31일 하한)는 훨씬 전에
+/// 시작한 legacy 범위 행을 조용히 놓쳐 중복 생성을 허용했다.
 async fn overlapping_row(
     client: &NotionClient,
     access: &TodoAccess,
     title: &str,
-    start: &str,
-    end: &str,
+    date: &str,
 ) -> Result<Option<RowInWindow>, ConnectError> {
     let rows = client
         .find_rows_by_title(&access.token, &access.data_source_id, title)
         .await?;
     Ok(rows
         .into_iter()
-        .find(|row| ranges_overlap(&row.start, row.end.as_deref(), start, Some(end))))
+        .find(|row| ranges_overlap(&row.start, row.end.as_deref(), date, None)))
 }
 
-/// 행 생성의 코어 (`create_page_outcome` 전례 — AppHandle 무의존, today 주입).
-/// `[TODO]` 행은 하루 골격(아이콘 복사·수행도 없음), 특수 행은 입력 아이콘·
-/// 수행도(기본 "기타")·골격 없음. 같은 제목 행이 기간과 겹치면 생성하지 않는다.
+/// `[TODO]` 행 생성의 코어 (`create_page_outcome` 전례 — AppHandle 무의존, today 주입).
+/// 하루 골격(공부/기타 헤딩) + 최신 행 아이콘 복사. 그 날짜를 덮는 `[TODO]` 행이
+/// 이미 있으면 생성하지 않고 알린다.
 async fn create_row_outcome(
     base_url: &str,
     access: &TodoAccess,
-    params: &NewRowParams,
+    start: &str,
     today: &str,
 ) -> Result<CreateRowOutcome, String> {
-    let is_todo_row = params.title == "[TODO]";
-    if is_todo_row && params.end.is_some() {
-        return Err(TODO_ROW_RANGE_ERROR.to_string());
-    }
-    let start = params.start.as_str();
-    let end = params.end.as_deref().unwrap_or(start);
-
     let client = NotionClient::new(base_url);
     // 겹침 검사 실패는 그대로 Err — 아직 아무것도 만들지 않아 재시도가 안전하다
-    if let Some(row) = overlapping_row(&client, access, &params.title, start, end)
+    if let Some(row) = overlapping_row(&client, access, "[TODO]", start)
         .await
         .map_err(|e| e.message())?
     {
@@ -633,86 +609,50 @@ async fn create_row_outcome(
         });
     }
 
-    // [TODO] 행은 최신 행 아이콘 복사(실패·없음 → None, latest_todo_icon 내부 보장),
-    // 특수 행은 입력 이모지 그대로.
-    let icon = if is_todo_row {
-        client
-            .latest_todo_icon(&access.token, &access.data_source_id)
-            .await
-    } else {
-        params.icon.clone().map(PageIcon::Emoji)
-    };
-    let performance = if is_todo_row {
-        None
-    } else {
-        Some(params.performance.clone().unwrap_or_else(|| "기타".to_string()))
-    };
+    // 최신 [TODO] 행 아이콘 복사 — 실패·없음은 None으로 수렴한다(latest_todo_icon
+    // 내부 보장). 아이콘 없이도 생성은 진행된다.
+    let icon = client
+        .latest_todo_icon(&access.token, &access.data_source_id)
+        .await;
     let page_id = client
-        .create_page(
-            &access.token,
-            &access.data_source_id,
-            &NewPage {
-                title: &params.title,
-                start,
-                end: params.end.as_deref(),
-                icon: icon.as_ref(),
-                performance: performance.as_deref(),
-                skeleton: is_todo_row,
-            },
-        )
+        .create_day_page(&access.token, &access.data_source_id, start, icon.as_ref())
         .await
         .map_err(|e| e.message())?;
-    // [TODO] 행만 생성 직후 children을 조회한다 — 특수 행은 children 없이
-    // 만들었으므로 빈 목록이 확정이다. 조회 실패는 Err 대신 빈 목록 + 안내 —
-    // page_id를 잃으면 재클릭이 행을 중복 생성한다 (create_page_outcome과 같은
-    // 정책). 스냅샷은 날짜 재쿼리 없이 새 page_id로 직접 조회한다 — 범위 행은
-    // 날짜 조회로 못 찾는다.
-    let (items, notice) = if is_todo_row {
-        match client.fetch_todos(&access.token, &page_id).await {
-            Ok(items) => (items, None),
-            Err(_) => (
-                Vec::new(),
-                Some(TODO_CREATED_FETCH_FAILED_NOTICE.to_string()),
-            ),
-        }
-    } else {
-        (Vec::new(), None)
+    // 생성 직후 children 조회 실패는 Err 대신 빈 목록 + 안내 — page_id를 잃으면
+    // 재클릭이 행을 중복 생성한다 (create_page_outcome과 같은 정책). 스냅샷은
+    // 날짜 재쿼리 없이 새 page_id로 직접 조회한다.
+    let (items, notice) = match client.fetch_todos(&access.token, &page_id).await {
+        Ok(items) => (items, None),
+        Err(_) => (
+            Vec::new(),
+            Some(TODO_CREATED_FETCH_FAILED_NOTICE.to_string()),
+        ),
     };
     Ok(CreateRowOutcome::Created {
         outcome: TodoOutcome {
             snapshot: Some(TodoSnapshot::Loaded {
-                date: params.start.clone(),
+                date: start.to_string(),
                 page_id,
-                title: params.title.clone(),
+                title: "[TODO]".to_string(),
                 items,
-                is_today: params.start == today,
+                is_today: start == today,
             }),
             notice,
         },
     })
 }
 
-/// 새 행(`[TODO]`·특수)을 만든다 — 같은 제목 행이 기간과 겹치면 만들지 않고 알린다.
+/// 미래 날짜의 `[TODO]` 행을 만든다 — 그 날짜를 덮는 `[TODO]` 행이 이미 있으면
+/// 만들지 않고 알린다.
 #[tauri::command]
 pub async fn notion_todo_create_row(
-    title: String,
     start: String,
-    end: Option<String>,
-    icon: Option<String>,
-    performance: Option<String>,
     app: AppHandle,
 ) -> Result<CreateRowOutcome, String> {
     let access = todo_access(&app)
         .await?
         .map_err(|_| TODO_NOT_CONNECTED_ERROR.to_string())?;
-    let params = NewRowParams {
-        title,
-        start,
-        end,
-        icon,
-        performance,
-    };
-    create_row_outcome(NOTION_API_BASE, &access, &params, &today_local()).await
+    create_row_outcome(NOTION_API_BASE, &access, &start, &today_local()).await
 }
 
 /// 이미 아는 행을 page_id로 직접 여는 코어 — 날짜 조회는 `[TODO]` 우선 규칙
@@ -781,7 +721,40 @@ fn resolve_write_date(date: Option<String>) -> (String, String) {
     (date, today)
 }
 
-/// 페이지 본문 끝에 to_do를 추가하고 재조회 스냅샷을 돌려준다 (R4·R6).
+/// 추가의 코어 (`finish_write` 전례 — AppHandle 무의존, 날짜 주입, 테스트 가능).
+/// `category`가 Some이면 children을 먼저 순회해 그 카테고리 섹션의 마지막 최상위
+/// 블록 뒤(after)에 삽입한다 — 섹션이 비었으면 헤딩 블록 바로 뒤. 헤딩이 없거나
+/// category가 None이면 끝에 붙는다(기존 동작). 앵커 탐색 실패는 그대로 Err —
+/// 아직 아무것도 쓰지 않아 재시도가 안전하다.
+#[allow(clippy::too_many_arguments)]
+async fn add_todo_outcome(
+    base_url: &str,
+    access: &TodoAccess,
+    page_id: &str,
+    text: &str,
+    page_title: &str,
+    date: &str,
+    today: &str,
+    category: Option<&str>,
+) -> Result<TodoOutcome, String> {
+    let client = NotionClient::new(base_url);
+    let after = match category {
+        None => None,
+        Some(category) => client
+            .fetch_page_blocks(&access.token, page_id)
+            .await
+            .map_err(|e| e.message())?
+            .anchor_for(category)
+            .map(str::to_string),
+    };
+    let write = client
+        .append_todo(&access.token, page_id, text, after.as_deref())
+        .await;
+    finish_write(base_url, access, page_id, page_title, date, today, write).await
+}
+
+/// 페이지에 to_do를 추가하고 재조회 스냅샷을 돌려준다 (R4·R6).
+/// `category`(공부/기타)가 있으면 그 섹션 아래에, 없으면 본문 끝에 붙는다.
 /// `page_title`은 프론트가 현재 스냅샷에서 넘긴다 — children 재조회는 페이지
 /// 제목을 주지 않고, 날짜 재쿼리는 KTD5가 금지한다.
 /// `date`는 보고 있는 스냅샷의 날짜 — 없으면 오늘(기존 호출 호환).
@@ -791,22 +764,22 @@ pub async fn notion_todo_add(
     text: String,
     page_title: String,
     date: Option<String>,
+    category: Option<String>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
     let access = todo_access(&app)
         .await?
         .map_err(|_| TODO_NOT_CONNECTED_ERROR.to_string())?;
-    let client = NotionClient::new(NOTION_API_BASE);
-    let write = client.append_todo(&access.token, &page_id, &text).await;
     let (date, today) = resolve_write_date(date);
-    finish_write(
+    add_todo_outcome(
         NOTION_API_BASE,
         &access,
         &page_id,
+        &text,
         &page_title,
         &date,
         &today,
-        write,
+        category.as_deref(),
     )
     .await
 }
@@ -968,16 +941,26 @@ mod tests {
             json!({ "state": "no_page", "date": "2026-08-09", "is_today": true })
         );
 
-        // loaded — date·page_id·title·items·is_today 전 필드
+        // loaded — date·page_id·title·items·is_today 전 필드.
+        // 카테고리는 있으면 문자열, 없으면 null로 실린다 (프론트 W2 계약).
         let v = serde_json::to_value(TodoSnapshot::Loaded {
             date: "2026-08-09".to_string(),
             page_id: "aaaabbbb-cccc-dddd-eeee-ffff00001111".to_string(),
             title: "[TODO]".to_string(),
-            items: vec![TodoItem {
-                id: "block-1".to_string(),
-                text: "테스트 항목".to_string(),
-                checked: true,
-            }],
+            items: vec![
+                TodoItem {
+                    id: "block-1".to_string(),
+                    text: "테스트 항목".to_string(),
+                    checked: true,
+                    category: Some("공부".to_string()),
+                },
+                TodoItem {
+                    id: "block-2".to_string(),
+                    text: "헤딩 전 항목".to_string(),
+                    checked: false,
+                    category: None,
+                },
+            ],
             is_today: true,
         })
         .unwrap();
@@ -988,7 +971,12 @@ mod tests {
                 "date": "2026-08-09",
                 "page_id": "aaaabbbb-cccc-dddd-eeee-ffff00001111",
                 "title": "[TODO]",
-                "items": [{ "id": "block-1", "text": "테스트 항목", "checked": true }],
+                "items": [
+                    { "id": "block-1", "text": "테스트 항목", "checked": true,
+                      "category": "공부" },
+                    { "id": "block-2", "text": "헤딩 전 항목", "checked": false,
+                      "category": null }
+                ],
                 "is_today": true
             })
         );
@@ -1235,6 +1223,7 @@ mod http_tests {
                     id: "block-1".to_string(),
                     text: "첫째".to_string(),
                     checked: true,
+                    category: None,
                 }],
                 // date == today(가짜_날짜) — 재조회 스냅샷에 오늘 판정이 실린다
                 is_today: true,
@@ -1674,29 +1663,6 @@ mod http_tests {
     // U4 — 행 생성(create_row_outcome) · 열기(open_page_outcome) · 날짜 재조회
     // ------------------------------------------------------------------
 
-    fn 새_행(title: &str, start: &str, end: Option<&str>) -> NewRowParams {
-        NewRowParams {
-            title: title.to_string(),
-            start: start.to_string(),
-            end: end.map(str::to_string),
-            icon: None,
-            performance: None,
-        }
-    }
-
-    /// 특수 행 생성 body — icon·골격 children 없음, 수행도 포함 (정확 일치 매칭이라
-    /// icon·children 키 부재까지 검증된다).
-    fn 특수_생성_body(제목: &str, start: &str, end: &str, 수행도: &str) -> serde_json::Value {
-        json!({
-            "parent": { "type": "data_source_id", "data_source_id": 가짜_DS_ID },
-            "properties": {
-                "이름": { "title": [ { "type": "text", "text": { "content": 제목 } } ] },
-                "날짜": { "date": { "start": start, "end": end } },
-                "수행도": { "select": { "name": 수행도 } }
-            }
-        })
-    }
-
     #[tokio::test]
     async fn 같은_날짜에_TODO_행이_있으면_생성_없이_exists를_돌려준다() {
         let server = MockServer::start().await;
@@ -1719,14 +1685,9 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let outcome = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("[TODO]", 가짜_날짜, None),
-            가짜_날짜,
-        )
-        .await
-        .unwrap();
+        let outcome = create_row_outcome(&server.uri(), &가짜_access(), 가짜_날짜, 가짜_날짜)
+            .await
+            .unwrap();
         assert_eq!(
             outcome,
             CreateRowOutcome::Exists {
@@ -1739,7 +1700,7 @@ mod http_tests {
 
     #[tokio::test]
     async fn 휴일_행만_있는_날의_TODO_생성은_정상_생성된다() {
-        // AE4 — 같은 날짜의 특수 행은 [TODO] 생성을 막지 않는다:
+        // legacy 휴일 행이 같은 날짜에 남아 있어도 [TODO] 생성을 막지 않는다:
         // 겹침 검사는 제목 필터 조회라 [TODO] 결과가 비어 있으면 생성이 진행된다
         // (같은 날짜의 휴일 행은 서버 필터가 걸러낸다)
         let server = MockServer::start().await;
@@ -1774,14 +1735,9 @@ mod http_tests {
             .await;
         mount_children(&server, 가짜_새_페이지_ID, vec![]).await;
 
-        let outcome = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("[TODO]", 가짜_날짜, None),
-            가짜_날짜,
-        )
-        .await
-        .unwrap();
+        let outcome = create_row_outcome(&server.uri(), &가짜_access(), 가짜_날짜, 가짜_날짜)
+            .await
+            .unwrap();
         match outcome {
             CreateRowOutcome::Created { outcome } => {
                 assert_eq!(outcome.notice, None);
@@ -1801,117 +1757,16 @@ mod http_tests {
     }
 
     #[tokio::test]
-    async fn 특수_행_생성_후_그_날짜_스냅샷을_돌려준다() {
-        // AE1 백엔드 — 범위(8/12~8/14) 특수 행, 수행도 기본 "기타", 골격·아이콘 없음
-        let server = MockServer::start().await;
-        // 겹침 검사: 범위 생성도 제목 필터 조회 한 번이다
-        Mock::given(method("POST"))
-            .and(path(쿼리_경로()))
-            .and(body_json(제목_쿼리_body("휴일")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path(format!("/v1/data_sources/{가짜_DS_ID}")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(data_source_응답()))
-            .mount(&server)
-            .await;
-        // 골격 없음·icon 없음·수행도 "기타" body 정확 일치
-        Mock::given(method("POST"))
-            .and(path("/v1/pages"))
-            .and(body_json(특수_생성_body("휴일", "2026-08-12", "2026-08-14", "기타")))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({ "object": "page", "id": 가짜_특수_페이지_ID })),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-        // 특수 행은 children 없이 만들었으므로 생성 후 children 조회가 없어야 한다
-        Mock::given(method("GET"))
-            .and(path(children_경로(가짜_특수_페이지_ID)))
-            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(vec![])))
-            .expect(0)
-            .mount(&server)
-            .await;
-
-        let outcome = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("휴일", "2026-08-12", Some("2026-08-14")),
-            가짜_날짜,
-        )
-        .await
-        .unwrap();
-        match outcome {
-            CreateRowOutcome::Created { outcome } => {
-                assert_eq!(outcome.notice, None);
-                assert_eq!(
-                    outcome.snapshot,
-                    Some(TodoSnapshot::Loaded {
-                        date: "2026-08-12".to_string(),
-                        page_id: 가짜_특수_페이지_ID.to_string(),
-                        title: "휴일".to_string(),
-                        items: vec![],
-                        is_today: false,
-                    })
-                );
-            }
-            other => panic!("Created가 아님: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn 범위_생성은_기간과_겹치는_같은_제목_행에_차단된다() {
-        // 기존 휴일 8/13 단일 행 — 새 휴일 8/12~8/14의 기간 안쪽이라 차단돼야 한다
-        let server = MockServer::start().await;
-        // 제목 필터 조회가 8/13 행을 돌려준다 → 기간 안쪽이라 겹침 → 차단
-        Mock::given(method("POST"))
-            .and(path(쿼리_경로()))
-            .and(body_json(제목_쿼리_body("휴일")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
-                범위_페이지_행(가짜_특수_페이지_ID, "휴일", "2026-08-13", None),
-            ])))
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path("/v1/pages"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
-            .expect(0)
-            .mount(&server)
-            .await;
-
-        let outcome = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("휴일", "2026-08-12", Some("2026-08-14")),
-            가짜_날짜,
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            outcome,
-            CreateRowOutcome::Exists {
-                page_id: 가짜_특수_페이지_ID.to_string(),
-                title: "휴일".to_string(),
-                // 겹친 행 자신의 시작일(8/13) — 요청 start(8/12)가 아니다
-                date: "2026-08-13".to_string(),
-            }
-        );
-    }
-
-    #[tokio::test]
     async fn 같은_제목_행이_31일_이전에_시작해도_겹침이_검출된다() {
-        // 기존 휴가 6/25~9/20 — 요청(9/15)의 31일 창(8/15~) 훨씬 밖에서 시작한 범위 행.
-        // 제목 필터 조회는 날짜 하한이 없어 이 행을 받고, 겹침 판정이 생성을 차단한다.
+        // legacy [TODO] 범위 행 6/25~9/20 — 요청(9/15)의 31일 창(8/15~) 훨씬 밖에서
+        // 시작한 행. 제목 필터 조회는 날짜 하한이 없어 이 행을 받고, 겹침 판정이
+        // 생성을 차단한다.
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
-            .and(body_json(제목_쿼리_body("휴가")))
+            .and(body_json(제목_쿼리_body("[TODO]")))
             .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
-                범위_페이지_행(가짜_특수_페이지_ID, "휴가", "2026-06-25", Some("2026-09-20")),
+                범위_페이지_행(가짜_특수_페이지_ID, "[TODO]", "2026-06-25", Some("2026-09-20")),
             ])))
             .expect(1)
             .mount(&server)
@@ -1924,19 +1779,14 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let outcome = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("휴가", "2026-09-15", None),
-            가짜_날짜,
-        )
-        .await
-        .unwrap();
+        let outcome = create_row_outcome(&server.uri(), &가짜_access(), "2026-09-15", 가짜_날짜)
+            .await
+            .unwrap();
         assert_eq!(
             outcome,
             CreateRowOutcome::Exists {
                 page_id: 가짜_특수_페이지_ID.to_string(),
-                title: "휴가".to_string(),
+                title: "[TODO]".to_string(),
                 // 요청 start(9/15)가 아니라 겹친 행 자신의 시작일 — 프론트가 그 행의
                 // 실제 날짜로 곧장 열 수 있어야 한다
                 date: "2026-06-25".to_string(),
@@ -1987,43 +1837,10 @@ mod http_tests {
             .await;
         mount_children(&server, 가짜_새_페이지_ID, vec![]).await;
 
-        let outcome = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("[TODO]", 가짜_날짜, None),
-            가짜_날짜,
-        )
-        .await
-        .unwrap();
+        let outcome = create_row_outcome(&server.uri(), &가짜_access(), 가짜_날짜, 가짜_날짜)
+            .await
+            .unwrap();
         assert!(matches!(outcome, CreateRowOutcome::Created { .. }));
-    }
-
-    #[tokio::test]
-    async fn TODO_행_범위_요청은_오류를_돌려준다() {
-        // [TODO] 행은 하루 골격 — end가 오면 어떤 요청도 보내지 않고 거부한다
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/pages"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
-            .expect(0)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path(쿼리_경로()))
-            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
-            .expect(0)
-            .mount(&server)
-            .await;
-
-        let err = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("[TODO]", "2026-08-12", Some("2026-08-14")),
-            가짜_날짜,
-        )
-        .await
-        .unwrap_err();
-        assert_eq!(err, TODO_ROW_RANGE_ERROR);
     }
 
     // ------------------------------------------------------------------
@@ -2050,14 +1867,9 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let err = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("휴일", 가짜_날짜, None),
-            가짜_날짜,
-        )
-        .await
-        .unwrap_err();
+        let err = create_row_outcome(&server.uri(), &가짜_access(), 가짜_날짜, 가짜_날짜)
+            .await
+            .unwrap_err();
         assert_eq!(err, ConnectError::Network(Some("HTTP 500".to_string())).message());
     }
 
@@ -2068,12 +1880,19 @@ mod http_tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(쿼리_경로()))
-            .and(body_json(제목_쿼리_body("휴일")))
+            .and(body_json(제목_쿼리_body("[TODO]")))
             .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
             .expect(1)
             .mount(&server)
             .await;
-        // create_page의 스키마 조회는 성공한다 — 실패 지점은 생성 POST 하나다
+        // 아이콘 조회 — 이 테스트의 관심사가 아니므로 빈 결과(아이콘 없음)로 응답
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(아이콘_쿼리_body()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![])))
+            .mount(&server)
+            .await;
+        // create_day_page의 스키마 조회는 성공한다 — 실패 지점은 생성 POST 하나다
         Mock::given(method("GET"))
             .and(path(format!("/v1/data_sources/{가짜_DS_ID}")))
             .respond_with(ResponseTemplate::new(200).set_body_json(data_source_응답()))
@@ -2088,14 +1907,9 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let err = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("휴일", 가짜_날짜, None),
-            가짜_날짜,
-        )
-        .await
-        .unwrap_err();
+        let err = create_row_outcome(&server.uri(), &가짜_access(), 가짜_날짜, 가짜_날짜)
+            .await
+            .unwrap_err();
         assert_eq!(err, ConnectError::Network(Some("HTTP 500".to_string())).message());
     }
 
@@ -2141,14 +1955,9 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let outcome = create_row_outcome(
-            &server.uri(),
-            &가짜_access(),
-            &새_행("[TODO]", 가짜_날짜, None),
-            가짜_날짜,
-        )
-        .await
-        .unwrap();
+        let outcome = create_row_outcome(&server.uri(), &가짜_access(), 가짜_날짜, 가짜_날짜)
+            .await
+            .unwrap();
         match outcome {
             CreateRowOutcome::Created { outcome } => {
                 assert_eq!(
@@ -2238,6 +2047,7 @@ mod http_tests {
                     id: "block-1".to_string(),
                     text: "짐 싸기".to_string(),
                     checked: false,
+                    category: None,
                 }],
                 is_today: false,
             })
@@ -2332,5 +2142,209 @@ mod http_tests {
                 is_today: false,
             })
         );
+    }
+
+    // ------------------------------------------------------------------
+    // 카테고리 삽입 (add_todo_outcome) — 섹션 마지막 블록 뒤 after 삽입
+    // ------------------------------------------------------------------
+
+    fn heading_블록(id: &str, text: &str) -> serde_json::Value {
+        json!({
+            "object": "block", "id": id, "type": "heading_3",
+            "has_children": false, "archived": false,
+            "heading_3": { "rich_text": [ { "type": "text", "plain_text": text } ] }
+        })
+    }
+
+    /// 추가 PATCH body — after가 Some이면 최상위 after 키가 실리고, None이면
+    /// 키 자체가 없다 (body_json 정확 일치가 부재까지 검증한다).
+    fn 추가_body(text: &str, after: Option<&str>) -> serde_json::Value {
+        let mut body = json!({
+            "children": [ {
+                "object": "block",
+                "type": "to_do",
+                "to_do": {
+                    "rich_text": [ { "type": "text", "text": { "content": text } } ],
+                    "checked": false
+                }
+            } ]
+        });
+        if let Some(after) = after {
+            body["after"] = json!(after);
+        }
+        body
+    }
+
+    #[tokio::test]
+    async fn 카테고리_삽입은_섹션_마지막_블록_뒤에_after로_붙는다() {
+        let server = MockServer::start().await;
+        // 공부 섹션의 마지막 최상위 블록은 block-b — 그 뒤(after)에 삽입돼야 한다.
+        // children GET은 앵커 탐색 1회 + 쓰기 후 재조회 1회 = 정확히 2회.
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(vec![
+                heading_블록("block-h-study", "공부"),
+                to_do_블록("block-a", "영어 단어", false),
+                to_do_블록("block-b", "알고리즘 1문제", false),
+                heading_블록("block-h-etc", "기타"),
+                to_do_블록("block-c", "장보기", false),
+            ])))
+            .expect(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .and(body_json(추가_body("한국사 강의", Some("block-b"))))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "list", "results": [] })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let outcome = add_todo_outcome(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "한국사 강의",
+            "[TODO]",
+            가짜_날짜,
+            가짜_날짜,
+            Some("공부"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.notice, None);
+        // 재조회 스냅샷의 카테고리 태깅까지 함께 확인한다
+        match outcome.snapshot {
+            Some(TodoSnapshot::Loaded { items, .. }) => {
+                assert_eq!(
+                    items.iter().map(|t| t.category.as_deref()).collect::<Vec<_>>(),
+                    vec![Some("공부"), Some("공부"), Some("기타")]
+                );
+            }
+            other => panic!("Loaded가 아님: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn 빈_섹션은_헤딩_블록_뒤에_삽입한다() {
+        let server = MockServer::start().await;
+        // 공부 섹션에 블록이 하나도 없다 — 앵커는 헤딩 블록 자신의 id
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(vec![
+                heading_블록("block-h-study", "공부"),
+                heading_블록("block-h-etc", "기타"),
+                to_do_블록("block-c", "장보기", false),
+            ])))
+            .expect(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .and(body_json(추가_body("영어 단어", Some("block-h-study"))))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "list", "results": [] })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let outcome = add_todo_outcome(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "영어 단어",
+            "[TODO]",
+            가짜_날짜,
+            가짜_날짜,
+            Some("공부"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.notice, None);
+        assert!(matches!(outcome.snapshot, Some(TodoSnapshot::Loaded { .. })));
+    }
+
+    #[tokio::test]
+    async fn 헤딩이_없으면_끝에_append한다() {
+        let server = MockServer::start().await;
+        // 대상 카테고리 헤딩이 페이지에 없다 — after 없이 끝에 붙는다(기존 동작 폴백).
+        // body_json 정확 일치가 after 키 부재까지 검증한다.
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(vec![
+                to_do_블록("block-a", "영어 단어", false),
+            ])))
+            .expect(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .and(body_json(추가_body("한국사 강의", None)))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "list", "results": [] })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let outcome = add_todo_outcome(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "한국사 강의",
+            "[TODO]",
+            가짜_날짜,
+            가짜_날짜,
+            Some("공부"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.notice, None);
+    }
+
+    #[tokio::test]
+    async fn 카테고리_미지정_추가는_기존_동작을_유지한다() {
+        let server = MockServer::start().await;
+        // category 없음 — 앵커 탐색 없이 곧장 끝에 붙는다: children GET은
+        // 쓰기 후 재조회 1회뿐이어야 한다.
+        Mock::given(method("GET"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(vec![
+                to_do_블록("block-a", "영어 단어", false),
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(children_경로(가짜_페이지_ID)))
+            .and(body_json(추가_body("장보기", None)))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "list", "results": [] })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let outcome = add_todo_outcome(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "장보기",
+            "[TODO]",
+            가짜_날짜,
+            가짜_날짜,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.notice, None);
+        assert!(matches!(outcome.snapshot, Some(TodoSnapshot::Loaded { .. })));
     }
 }

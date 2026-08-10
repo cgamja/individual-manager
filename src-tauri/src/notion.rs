@@ -210,6 +210,36 @@ pub struct TodoItem {
     pub id: String,
     pub text: String,
     pub checked: bool,
+    /// 직전 heading_1/2/3의 plain_text (공부/기타 등) — 첫 헤딩 전 블록이면 None.
+    pub category: Option<String>,
+}
+
+/// 페이지 본문 최상위 순회 결과 — to_do 목록(카테고리 태깅)과 카테고리 삽입 앵커.
+/// 조회(`fetch_todos`)와 카테고리 삽입의 앵커 탐색이 같은 순회 한 번을 공유한다.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct PageBlocks {
+    pub items: Vec<TodoItem>,
+    sections: Vec<Section>,
+}
+
+/// 헤딩 하나가 여는 섹션 — 순회 중 앵커가 그 섹션의 마지막 최상위 블록으로 갱신된다.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct Section {
+    heading: String,
+    /// 섹션의 마지막 최상위 블록 id — 섹션이 비었으면 헤딩 블록 자신의 id
+    anchor_id: String,
+}
+
+impl PageBlocks {
+    /// 카테고리 섹션의 삽입 앵커 — 그 섹션 마지막 최상위 블록 id
+    /// (섹션이 비었으면 헤딩 블록 자신). 같은 텍스트 헤딩이 여럿이면 첫 섹션.
+    /// 헤딩이 없으면 None — 호출자는 끝에 append로 폴백한다.
+    pub fn anchor_for(&self, category: &str) -> Option<&str> {
+        self.sections
+            .iter()
+            .find(|s| s.heading == category)
+            .map(|s| s.anchor_id.as_str())
+    }
 }
 
 /// 새 페이지 생성에 실을 페이지 아이콘 — 최신 `[TODO]` 행에서 복사한다.
@@ -223,22 +253,6 @@ pub enum PageIcon {
 
 /// 복사할 수 없는 아이콘(file·custom_emoji)의 폴백 이모지.
 pub const DEFAULT_PAGE_ICON: &str = "📝";
-
-/// 새 페이지 생성 입력 — 하루 골격(`[TODO]`)과 특수 행(휴일·MT 등)을 하나의
-/// 생성 경로로 다루기 위한 범용 구조체.
-pub struct NewPage<'a> {
-    pub title: &'a str,
-    /// `날짜` 시작 (date-only `YYYY-MM-DD`)
-    pub start: &'a str,
-    /// `날짜` 끝 — None이면 body에 end 키를 넣지 않는다 (null 아님)
-    pub end: Option<&'a str>,
-    /// 페이지 아이콘 — None이면 icon 키 생략
-    pub icon: Option<&'a PageIcon>,
-    /// `수행도` select 값 — None이면 수행도 키 생략
-    pub performance: Option<&'a str>,
-    /// true면 공부/기타 heading_3 골격 children을 싣는다
-    pub skeleton: bool,
-}
 
 /// 창 조회의 원본 행 — 커버 판정 없이 제목과 `날짜` 범위를 그대로 싣는다.
 /// `find_rows_covering_date`의 원본층이자, 구간 겹침 검사(U4)의 입력.
@@ -419,55 +433,6 @@ impl NotionClient {
         rows_from_query_response(&response)
     }
 
-    /// 임의 제목·날짜 범위·수행도·아이콘·골격 여부로 페이지를 생성한다.
-    /// end·수행도·icon·children은 값이 없으면 키 자체를 넣지 않는다 (null 아님).
-    /// title 속성 키는 DB마다 다르므로 스키마를 먼저 조회해 알아낸다.
-    /// 반환: 생성된 페이지 ID.
-    pub async fn create_page(
-        &self,
-        token: &str,
-        data_source_id: &str,
-        page: &NewPage<'_>,
-    ) -> Result<String, ConnectError> {
-        let data_source = self
-            .get_json(&format!("/v1/data_sources/{data_source_id}"), token)
-            .await?;
-        let properties = data_source
-            .get("properties")
-            .ok_or_else(|| ConnectError::UnexpectedShape("properties 없음".to_string()))?;
-        let title_key = title_property_key(properties)
-            .ok_or_else(|| ConnectError::UnexpectedShape("title 속성 없음".to_string()))?;
-
-        let mut date_value = serde_json::json!({ "start": page.start });
-        if let Some(end) = page.end {
-            date_value["end"] = serde_json::json!(end);
-        }
-        let mut body = serde_json::json!({
-            "parent": { "type": "data_source_id", "data_source_id": data_source_id },
-            "properties": {
-                title_key: { "title": plain_rich_text(page.title)? },
-                "날짜": { "date": date_value }
-            }
-        });
-        if let Some(performance) = page.performance {
-            body["properties"]["수행도"] = serde_json::json!({ "select": { "name": performance } });
-        }
-        if page.skeleton {
-            body["children"] = serde_json::json!([heading_3_block("공부"), heading_3_block("기타")]);
-        }
-        if let Some(icon) = page.icon {
-            body["icon"] = page_icon_json(icon);
-        }
-        let created = self
-            .request_json(reqwest::Method::POST, "/v1/pages", token, Some(&body))
-            .await?;
-        created
-            .get("id")
-            .and_then(|v| v.as_str())
-            .map(str::to_string)
-            .ok_or_else(|| ConnectError::UnexpectedShape("생성된 페이지 ID 없음".to_string()))
-    }
-
     /// 가장 최근 `[TODO]` 행의 페이지 아이콘을 읽는다 — 새 페이지 생성 시 복사용.
     /// 부가 기능이므로 HTTP·파싱 오류는 전파하지 않고 None으로 수렴한다.
     pub async fn latest_todo_icon(&self, token: &str, data_source_id: &str) -> Option<PageIcon> {
@@ -490,14 +455,25 @@ impl NotionClient {
         page_icon_from_json(row.get("icon"))
     }
 
-    /// 페이지 본문의 최상위 to_do 블록을 페이지 순서대로 모두 수집한다(KTD6).
-    /// `has_more`/`next_cursor` 페이지네이션 루프(100개/페이지)로 끝까지 돈다.
+    /// 페이지 본문의 최상위 to_do 블록을 페이지 순서대로 모두 수집한다(KTD6) —
+    /// `fetch_page_blocks` 위의 얇은 뷰(items만).
     pub async fn fetch_todos(
         &self,
         token: &str,
         page_id: &str,
     ) -> Result<Vec<TodoItem>, ConnectError> {
-        let mut items = Vec::new();
+        Ok(self.fetch_page_blocks(token, page_id).await?.items)
+    }
+
+    /// 페이지 본문 최상위 블록을 한 번 순회해 to_do 목록(카테고리 태깅)과
+    /// 섹션 앵커를 함께 모은다. `has_more`/`next_cursor` 페이지네이션 루프
+    /// (100개/페이지)로 끝까지 돈다 — 헤딩 컨텍스트는 페이지 경계를 넘어 유지된다.
+    pub async fn fetch_page_blocks(
+        &self,
+        token: &str,
+        page_id: &str,
+    ) -> Result<PageBlocks, ConnectError> {
+        let mut blocks = PageBlocks::default();
         let mut cursor: Option<String> = None;
         loop {
             let path = match &cursor {
@@ -511,13 +487,13 @@ impl NotionClient {
                 .ok_or_else(|| {
                     ConnectError::UnexpectedShape("results가 배열이 아님".to_string())
                 })?;
-            items.extend(results.iter().filter_map(todo_from_block));
+            collect_blocks(results, &mut blocks);
             if !response
                 .get("has_more")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false)
             {
-                return Ok(items);
+                return Ok(blocks);
             }
             cursor = response
                 .get("next_cursor")
@@ -531,20 +507,25 @@ impl NotionClient {
         }
     }
 
-    /// 페이지 본문 끝에 미체크 to_do 블록 하나를 추가한다(KTD6 — 위치 지정 없음).
+    /// 미체크 to_do 블록 하나를 추가한다(KTD6). `after`가 Some이면 그 블록 뒤에
+    /// 삽입하고(API 2025-09-03 children append의 `after`), None이면 끝에 붙는다.
     pub async fn append_todo(
         &self,
         token: &str,
         page_id: &str,
         text: &str,
+        after: Option<&str>,
     ) -> Result<(), ConnectError> {
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "children": [ {
                 "object": "block",
                 "type": "to_do",
                 "to_do": { "rich_text": plain_rich_text(text)?, "checked": false }
             } ]
         });
+        if let Some(after) = after {
+            body["after"] = serde_json::json!(after);
+        }
         self.request_json(
             reqwest::Method::PATCH,
             &format!("/v1/blocks/{page_id}/children"),
@@ -592,9 +573,10 @@ impl NotionClient {
         Ok(())
     }
 
-    /// 오늘 행이 없을 때 하루 골격 페이지를 만든다 — 제목 `[TODO]`,
+    /// 그 날짜의 행이 없을 때 하루 골격 페이지를 만든다 — 제목 `[TODO]`,
     /// `날짜` date-only, 본문에 heading_3 `공부`/`기타` 두 섹션.
-    /// `create_page` 위의 얇은 래퍼 — 전송 body는 기존과 동일하다.
+    /// icon은 값이 없으면 키 자체를 넣지 않는다 (null 아님).
+    /// title 속성 키는 DB마다 다르므로 스키마를 먼저 조회해 알아낸다.
     /// 반환: 생성된 페이지 ID.
     pub async fn create_day_page(
         &self,
@@ -603,19 +585,34 @@ impl NotionClient {
         date: &str,
         icon: Option<&PageIcon>,
     ) -> Result<String, ConnectError> {
-        self.create_page(
-            token,
-            data_source_id,
-            &NewPage {
-                title: "[TODO]",
-                start: date,
-                end: None,
-                icon,
-                performance: None,
-                skeleton: true,
+        let data_source = self
+            .get_json(&format!("/v1/data_sources/{data_source_id}"), token)
+            .await?;
+        let properties = data_source
+            .get("properties")
+            .ok_or_else(|| ConnectError::UnexpectedShape("properties 없음".to_string()))?;
+        let title_key = title_property_key(properties)
+            .ok_or_else(|| ConnectError::UnexpectedShape("title 속성 없음".to_string()))?;
+
+        let mut body = serde_json::json!({
+            "parent": { "type": "data_source_id", "data_source_id": data_source_id },
+            "properties": {
+                title_key: { "title": plain_rich_text("[TODO]")? },
+                "날짜": { "date": { "start": date } }
             },
-        )
-        .await
+            "children": [heading_3_block("공부"), heading_3_block("기타")]
+        });
+        if let Some(icon) = icon {
+            body["icon"] = page_icon_json(icon);
+        }
+        let created = self
+            .request_json(reqwest::Method::POST, "/v1/pages", token, Some(&body))
+            .await?;
+        created
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| ConnectError::UnexpectedShape("생성된 페이지 ID 없음".to_string()))
     }
 
     /// 공통 헤더로 GET을 보내고 JSON body를 돌려준다.
@@ -836,8 +833,47 @@ fn page_icon_json(icon: &PageIcon) -> Value {
     }
 }
 
+/// 최상위 블록 한 페이지 분량을 순서대로 접는다 — heading_1/2/3을 만나면 새 섹션을
+/// 열고, 이후의 최상위 블록마다 그 섹션의 앵커를 갱신한다. to_do는 현재 섹션의
+/// 헤딩 텍스트를 카테고리로 태깅해 수집한다(첫 헤딩 전이면 None). archived 블록은
+/// 목록·앵커 모두에서 제외한다 — 지워진 블록 뒤에 삽입하면 안 된다.
+fn collect_blocks(results: &[Value], blocks: &mut PageBlocks) {
+    for block in results {
+        if block.get("archived").and_then(|a| a.as_bool()) == Some(true) {
+            continue;
+        }
+        let Some(id) = block.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let block_type = block
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or_default();
+        if matches!(block_type, "heading_1" | "heading_2" | "heading_3") {
+            let heading = rich_text_plain(block.get(block_type).and_then(|h| h.get("rich_text")))
+                .unwrap_or_default();
+            blocks.sections.push(Section {
+                heading,
+                anchor_id: id.to_string(),
+            });
+            continue;
+        }
+        // 헤딩이 아닌 모든 최상위 블록(단락·to_do 등)이 섹션의 마지막 블록 후보다
+        if let Some(section) = blocks.sections.last_mut() {
+            section.anchor_id = id.to_string();
+        }
+        if let Some(item) = todo_from_block(block) {
+            blocks.items.push(TodoItem {
+                category: blocks.sections.last().map(|s| s.heading.clone()),
+                ..item
+            });
+        }
+    }
+}
+
 /// 블록 JSON → TodoItem 변환. `type == "to_do"`이고 archived가 아닌 블록만 변환한다.
 /// 오류 대신 None — 형태가 어긋난 블록은 목록에서 조용히 제외된다.
+/// 카테고리는 순회 문맥이 결정하므로(`collect_blocks`) 여기서는 항상 None이다.
 fn todo_from_block(block: &Value) -> Option<TodoItem> {
     if block.get("type").and_then(|t| t.as_str()) != Some("to_do") {
         return None;
@@ -852,7 +888,12 @@ fn todo_from_block(block: &Value) -> Option<TodoItem> {
         .get("checked")
         .and_then(|c| c.as_bool())
         .unwrap_or(false);
-    Some(TodoItem { id, text, checked })
+    Some(TodoItem {
+        id,
+        text,
+        checked,
+        category: None,
+    })
 }
 
 /// title rich text 배열의 `plain_text`를 이어붙인다. 배열이 아니면 None.
@@ -1178,6 +1219,8 @@ mod tests {
                 id: "block-1".to_string(),
                 text: "10:00 알고리즘 1문제".to_string(),
                 checked: true,
+                // 카테고리는 children 순회(collect_blocks)가 태깅한다 — 블록 단독 변환은 None
+                category: None,
             })
         );
     }
@@ -1790,6 +1833,16 @@ mod http_tests {
         })
     }
 
+    /// heading 블록 픽스처 — level은 "heading_1"~"heading_3" (전부 카테고리 경계다).
+    fn heading_블록(id: &str, level: &str, text: &str) -> serde_json::Value {
+        let mut block = json!({
+            "object": "block", "id": id, "type": level,
+            "has_children": false, "archived": false
+        });
+        block[level] = json!({ "rich_text": [ { "type": "text", "plain_text": text } ] });
+        block
+    }
+
     #[tokio::test]
     async fn 조회_body가_31일_하한과_내림차순_정렬로_전송된다() {
         let server = MockServer::start().await;
@@ -2041,6 +2094,55 @@ mod http_tests {
     }
 
     #[tokio::test]
+    async fn 헤딩_아래_to_do가_카테고리로_태깅된다() {
+        let server = MockServer::start().await;
+        // 페이지 경계를 넘어도 직전 헤딩이 유지돼야 한다 — 공부 섹션이 두 페이지에 걸친다.
+        // 커서 있는 요청 매처를 먼저 등록한다 (두_페이지 병합 테스트 전례).
+        Mock::given(method("GET"))
+            .and(path(children_경로()))
+            .and(query_param("page_size", "100"))
+            .and(query_param("start_cursor", "cursor-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(
+                vec![
+                    to_do_블록("block-b", "알고리즘 1문제", false),
+                    // heading_1도 카테고리 경계다 (heading_1/2/3 모두)
+                    heading_블록("block-h2", "heading_1", "기타"),
+                    to_do_블록("block-c", "장보기", false),
+                ],
+                None,
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(children_경로()))
+            .and(query_param("page_size", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(children_응답(
+                vec![
+                    // 첫 헤딩 전 to_do — 카테고리 없음
+                    to_do_블록("block-pre", "헤딩 전 항목", false),
+                    heading_블록("block-h1", "heading_3", "공부"),
+                    to_do_블록("block-a", "영어 단어", true),
+                ],
+                Some("cursor-1"),
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        let todos = client.fetch_todos(가짜_토큰, 가짜_페이지_ID).await.unwrap();
+        assert_eq!(
+            todos.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            vec!["block-pre", "block-a", "block-b", "block-c"]
+        );
+        assert_eq!(
+            todos.iter().map(|t| t.category.as_deref()).collect::<Vec<_>>(),
+            vec![None, Some("공부"), Some("공부"), Some("기타")]
+        );
+    }
+
+    #[tokio::test]
     async fn 페이지_ID를_붙여넣으면_404_실패에_원본_링크_확인_안내가_포함된다() {
         // 페이지 ID로 databases 조회 → Notion은 object_not_found를 돌려준다
         let server = MockServer::start().await;
@@ -2102,7 +2204,40 @@ mod http_tests {
 
         let client = NotionClient::new(server.uri());
         client
-            .append_todo(가짜_토큰, 가짜_페이지_ID, "10:00 알고리즘 1문제")
+            .append_todo(가짜_토큰, 가짜_페이지_ID, "10:00 알고리즘 1문제", None)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn after_지정_추가는_body_최상위에_after_블록_id를_싣는다() {
+        let server = MockServer::start().await;
+        // 카테고리 섹션 삽입 — after에 앵커 블록 id가 실려야 한다 (API 2025-09-03)
+        let 추가_body = json!({
+            "children": [ {
+                "object": "block",
+                "type": "to_do",
+                "to_do": {
+                    "rich_text": [ { "type": "text", "text": { "content": "영어 단어" } } ],
+                    "checked": false
+                }
+            } ],
+            "after": "block-anchor"
+        });
+        Mock::given(method("PATCH"))
+            .and(path(children_경로()))
+            .and(body_json(추가_body))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "object": "list", "results": [] })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NotionClient::new(server.uri());
+        client
+            .append_todo(가짜_토큰, 가짜_페이지_ID, "영어 단어", Some("block-anchor"))
             .await
             .unwrap();
     }
@@ -2471,52 +2606,6 @@ mod http_tests {
     }
 
     #[tokio::test]
-    async fn 특수_행_생성_body에_제목_범위_아이콘_수행도가_실린다() {
-        let server = MockServer::start().await;
-        mount_정상_data_source(&server).await;
-        // 휴일처럼 하루 골격이 아닌 특수 행 — 제목·날짜 범위(start+end)·아이콘·수행도를
-        // 싣고, skeleton=false이므로 children 키 자체가 없어야 한다.
-        // body_json 정확 일치가 children 부재까지 함께 검증한다.
-        let 생성_body = json!({
-            "parent": { "type": "data_source_id", "data_source_id": 가짜_DS_ID },
-            "properties": {
-                "이름": {
-                    "title": [ { "type": "text", "text": { "content": "휴일" } } ]
-                },
-                "날짜": { "date": { "start": "2026-08-13", "end": "2026-08-14" } },
-                "수행도": { "select": { "name": "기타" } }
-            },
-            "icon": { "type": "emoji", "emoji": "🏖️" }
-        });
-        Mock::given(method("POST"))
-            .and(path("/v1/pages"))
-            .and(body_json(생성_body))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({ "object": "page", "id": 가짜_새_페이지_ID })),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let client = NotionClient::new(server.uri());
-        let icon = PageIcon::Emoji("🏖️".to_string());
-        let page = NewPage {
-            title: "휴일",
-            start: "2026-08-13",
-            end: Some("2026-08-14"),
-            icon: Some(&icon),
-            performance: Some("기타"),
-            skeleton: false,
-        };
-        let page_id = client
-            .create_page(가짜_토큰, 가짜_DS_ID, &page)
-            .await
-            .unwrap();
-        assert_eq!(page_id, 가짜_새_페이지_ID);
-    }
-
-    #[tokio::test]
     async fn 소실된_블록_업데이트는_404를_NotFound로_매핑한다() {
         // 다른 곳에서 블록이 삭제된 뒤 토글 시도 — object_not_found → NotFound
         let server = MockServer::start().await;
@@ -2544,7 +2633,7 @@ mod http_tests {
         let 긴_텍스트 = "가".repeat(2001);
 
         let err = client
-            .append_todo(가짜_토큰, 가짜_페이지_ID, &긴_텍스트)
+            .append_todo(가짜_토큰, 가짜_페이지_ID, &긴_텍스트, None)
             .await
             .unwrap_err();
         assert_eq!(err, ConnectError::TooLong);

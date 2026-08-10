@@ -83,24 +83,22 @@ export const createTodoRow = (params: {
   start: string;
 }): Promise<CreateRowOutcome> => invoke("notion_todo_create_row", { ...params });
 
-/** 쓰기 커맨드는 재조회가 주지 않는 페이지 메타를 프론트가 되실어 준다 —
- * `pageTitle`과 같은 방식이다. 모르면 생략하고, 그러면 스냅샷도 null로 돌아온다. */
+/** 쓰기 커맨드가 되실어 주는 페이지 메타 (Rust `PageMeta`) — children 재조회는
+ * 이 값들을 주지 않으므로 프론트가 아는 값을 그대로 넘긴다(`pageTitle`과 같은
+ * 방식). 모르는 값은 생략하고, 그러면 스냅샷도 그만큼만 안다. */
+export interface TodoPageMeta {
+  performance?: string;
+  rangeStart?: string;
+  rangeEnd?: string;
+}
+
 export const openTodoPage = (
   pageId: string,
   pageTitle: string,
   date: string,
-  performance?: string,
-  rangeStart?: string,
-  rangeEnd?: string,
+  meta?: TodoPageMeta,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_open_page", {
-    pageId,
-    pageTitle,
-    date,
-    performance,
-    rangeStart,
-    rangeEnd,
-  });
+  invoke("notion_todo_open_page", { pageId, pageTitle, date, meta });
 
 export const addTodo = (
   pageId: string,
@@ -109,20 +107,9 @@ export const addTodo = (
   date?: string,
   /** 삽입할 헤딩 텍스트 (공부/기타) — 미지정이면 백엔드가 끝에 append. */
   category?: string,
-  performance?: string,
-  rangeStart?: string,
-  rangeEnd?: string,
+  meta?: TodoPageMeta,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_add", {
-    pageId,
-    text,
-    pageTitle,
-    date,
-    category,
-    performance,
-    rangeStart,
-    rangeEnd,
-  });
+  invoke("notion_todo_add", { pageId, text, pageTitle, date, category, meta });
 
 export const toggleTodo = (
   pageId: string,
@@ -130,9 +117,7 @@ export const toggleTodo = (
   checked: boolean,
   pageTitle: string,
   date?: string,
-  performance?: string,
-  rangeStart?: string,
-  rangeEnd?: string,
+  meta?: TodoPageMeta,
 ): Promise<TodoOutcome> =>
   invoke("notion_todo_toggle", {
     pageId,
@@ -140,9 +125,7 @@ export const toggleTodo = (
     checked,
     pageTitle,
     date,
-    performance,
-    rangeStart,
-    rangeEnd,
+    meta,
   });
 
 export const editTodo = (
@@ -151,40 +134,25 @@ export const editTodo = (
   text: string,
   pageTitle: string,
   date?: string,
-  performance?: string,
-  rangeStart?: string,
-  rangeEnd?: string,
+  meta?: TodoPageMeta,
 ): Promise<TodoOutcome> =>
-  invoke("notion_todo_edit", {
-    pageId,
-    blockId,
-    text,
-    pageTitle,
-    date,
-    performance,
-    rangeStart,
-    rangeEnd,
-  });
+  invoke("notion_todo_edit", { pageId, blockId, text, pageTitle, date, meta });
 
 /** 보고 있는 행의 `수행도`를 바꾼다 (R3). 옵션 4개(완료/일부/미완/기타) 가드는
  * Rust가 갖고 있다(KTD2) — 여기서는 값을 그대로 넘긴다.
- * `previousPerformance`는 화면에 지금 보이는 값 — 저장이 확인되지 않은 경로에서
- * 시도값 대신 이 값이 되실린다 (R9). */
+ * `meta.performance`는 화면에 지금 보이는 값 — 저장이 확인되지 않은 경로에서
+ * 시도값(`performance`) 대신 이 값이 되실린다 (R9). */
 export const setTodoPerformance = (
   pageId: string,
   pageTitle: string,
   date: string | undefined,
   performance: string,
-  previousPerformance?: string,
-  rangeStart?: string,
-  rangeEnd?: string,
+  meta?: TodoPageMeta,
 ): Promise<TodoOutcome> =>
   invoke("notion_todo_set_performance", {
     pageId,
     pageTitle,
     date,
     performance,
-    previousPerformance,
-    rangeStart,
-    rangeEnd,
+    meta,
   });

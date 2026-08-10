@@ -105,6 +105,12 @@ function renderCard(overrides: Partial<Parameters<typeof TodoCard>[0]> = {}) {
   return { props, view };
 }
 
+/** 쓰기 커맨드 인자의 `meta.performance` — 백엔드가 되싣는 값을 흉내 낸다.
+ * 프론트가 넘긴 값이 곧 스냅샷에 남는 값이므로, 무엇을 넘겼는지가 화면에 드러난다. */
+function metaPerformance(args: unknown): string | null {
+  return (args as { meta?: { performance?: string } }).meta?.performance ?? null;
+}
+
 /**
  * App 통합 테스트용 IPC mock — 타이머/스토어/이벤트 커맨드는 기본 응답을 주고,
  * todo·notion 커맨드는 handlers로 오버라이드한다. 알림 권한은 Notification 심으로 통과시킨다.
@@ -970,7 +976,7 @@ describe("수행도", () => {
         date: "2026-08-08",
         performance: "미완",
         // 저장이 확인되지 않은 경로에서 되실을 직전 값 (R9)
-        previousPerformance: "일부",
+        meta: { performance: "일부" },
       });
     });
     // 카드는 그 날짜에 머문다
@@ -1013,7 +1019,7 @@ describe("수행도", () => {
       notion_todo_open_page: (args) =>
         outcome({
           ...NOT_TODAY,
-          performance: (args as { performance?: string }).performance ?? null,
+          performance: metaPerformance(args),
         }),
     });
     render(<App />);
@@ -1028,7 +1034,8 @@ describe("수행도", () => {
       expect(open!.args).toMatchObject({
         pageId: "page-0",
         date: "2026-08-08",
-        performance: "일부", // 시도값("완료")이 아니라 직전 값
+        // 시도값("완료")이 아니라 직전 값
+        meta: { performance: "일부" },
       });
     });
     expect(perfButton("일부")).toHaveAttribute("aria-pressed", "true");
@@ -1055,10 +1062,12 @@ describe("수행도", () => {
       const call = calls.find((c) => c.cmd === "notion_todo_toggle");
       expect(call).toBeDefined();
       expect(call!.args).toMatchObject({
-        performance: "일부",
-        // 적용 구간은 시작·끝 둘 다 되실려야 토글 후에도 구간 표시가 남는다
-        rangeStart: "2026-08-12",
-        rangeEnd: "2026-08-14",
+        meta: {
+          performance: "일부",
+          // 적용 구간은 시작·끝 둘 다 되실려야 토글 후에도 구간 표시가 남는다
+          rangeStart: "2026-08-12",
+          rangeEnd: "2026-08-14",
+        },
       });
     });
     expect(perfButton("일부")).toHaveAttribute("aria-pressed", "true");
@@ -1082,7 +1091,7 @@ describe("수행도", () => {
           title: "휴가",
           items: [],
           is_today: false,
-          performance: (args as { performance?: string }).performance ?? null,
+          performance: metaPerformance(args),
           range_start: null,
           range_end: null,
         }),
@@ -1100,7 +1109,10 @@ describe("수행도", () => {
     await waitFor(() => {
       const open = calls.find((c) => c.cmd === "notion_todo_open_page");
       expect(open).toBeDefined();
-      expect(open!.args).toMatchObject({ pageId: "page-9", performance: "기타" });
+      expect(open!.args).toMatchObject({
+        pageId: "page-9",
+        meta: { performance: "기타" },
+      });
     });
     await waitFor(() => expect(perfButton("기타")).toHaveAttribute("aria-pressed", "true"));
   });

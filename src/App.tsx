@@ -25,6 +25,7 @@ import {
   toggleTodo,
   type ConnectionState,
   type TodoOutcome,
+  type TodoPageMeta,
   type TodoSnapshot,
 } from "./lib/notion";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settings";
@@ -49,6 +50,19 @@ function errorMessage(err: unknown): string {
     : typeof err === "string"
       ? err
       : String(err);
+}
+
+/** 목록이 실린 스냅샷 — 쓰기 핸들러가 다루는 유일한 상태다. */
+type LoadedTodoSnapshot = Extract<TodoSnapshot, { state: "loaded" }>;
+
+/** 스냅샷의 페이지 메타를 쓰기 커맨드 인자 형태로 뽑는다 (KTD1) —
+ * 스냅샷의 null("값 없음")은 인자에서 생략(undefined)과 같은 뜻이다. */
+function todoMeta(snapshot: LoadedTodoSnapshot): TodoPageMeta {
+  return {
+    performance: snapshot.performance ?? undefined,
+    rangeStart: snapshot.range_start ?? undefined,
+    rangeEnd: snapshot.range_end ?? undefined,
+  };
 }
 
 function App() {
@@ -261,9 +275,7 @@ function App() {
               current.page_id,
               current.title,
               current.date,
-              current.performance ?? undefined,
-              current.range_start ?? undefined,
-              current.range_end ?? undefined,
+              todoMeta(current),
             )
               .then((o) => o.snapshot)
               .catch(() => null)
@@ -315,21 +327,11 @@ function App() {
   const handleTodoAdd = useCallback(
     (text: string, category: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
-      const { page_id, title, date, performance, range_start, range_end } =
-        todoSnapshot;
+      const { page_id, title, date } = todoSnapshot;
       // category = 선택된 헤딩 텍스트 — 백엔드가 해당 헤딩 아래에 삽입한다.
       // 수행도·적용 구간은 children 재조회가 주지 않는 페이지 메타라 되실어 준다 (KTD1)
       return runTodoCommand(() =>
-        addTodo(
-          page_id,
-          text,
-          title,
-          date,
-          category,
-          performance ?? undefined,
-          range_start ?? undefined,
-          range_end ?? undefined,
-        ),
+        addTodo(page_id, text, title, date, category, todoMeta(todoSnapshot)),
       );
     },
     [todoSnapshot, runTodoCommand],
@@ -337,19 +339,9 @@ function App() {
   const handleTodoToggle = useCallback(
     (blockId: string, checked: boolean) => {
       if (todoSnapshot?.state !== "loaded") return;
-      const { page_id, title, date, performance, range_start, range_end } =
-        todoSnapshot;
+      const { page_id, title, date } = todoSnapshot;
       void runTodoCommand(() =>
-        toggleTodo(
-          page_id,
-          blockId,
-          checked,
-          title,
-          date,
-          performance ?? undefined,
-          range_start ?? undefined,
-          range_end ?? undefined,
-        ),
+        toggleTodo(page_id, blockId, checked, title, date, todoMeta(todoSnapshot)),
       );
     },
     [todoSnapshot, runTodoCommand],
@@ -357,19 +349,9 @@ function App() {
   const handleTodoEdit = useCallback(
     (blockId: string, text: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
-      const { page_id, title, date, performance, range_start, range_end } =
-        todoSnapshot;
+      const { page_id, title, date } = todoSnapshot;
       return runTodoCommand(() =>
-        editTodo(
-          page_id,
-          blockId,
-          text,
-          title,
-          date,
-          performance ?? undefined,
-          range_start ?? undefined,
-          range_end ?? undefined,
-        ),
+        editTodo(page_id, blockId, text, title, date, todoMeta(todoSnapshot)),
       );
     },
     [todoSnapshot, runTodoCommand],
@@ -379,18 +361,10 @@ function App() {
   const handleTodoSetPerformance = useCallback(
     (performance: string) => {
       if (todoSnapshot?.state !== "loaded") return;
-      const { page_id, title, date, performance: current, range_start, range_end } =
-        todoSnapshot;
+      const { page_id, title, date } = todoSnapshot;
+      // meta.performance는 화면에 지금 보이는 직전 값이다 — 시도값은 별도 인자다
       void runTodoCommand(() =>
-        setTodoPerformance(
-          page_id,
-          title,
-          date,
-          performance,
-          current ?? undefined,
-          range_start ?? undefined,
-          range_end ?? undefined,
-        ),
+        setTodoPerformance(page_id, title, date, performance, todoMeta(todoSnapshot)),
       );
     },
     [todoSnapshot, runTodoCommand],
@@ -444,7 +418,11 @@ function App() {
       date: string,
       performance: string | null,
     ): Promise<boolean> =>
-      runTodoCommand(() => openTodoPage(pageId, title, date, performance ?? undefined)),
+      runTodoCommand(() =>
+        openTodoPage(pageId, title, date, {
+          performance: performance ?? undefined,
+        }),
+      ),
     [runTodoCommand],
   );
 

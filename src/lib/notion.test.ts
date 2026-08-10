@@ -227,9 +227,7 @@ describe("Todo 커맨드 래퍼", () => {
       "[TODO]",
       "2026-08-10",
       "완료",
-      "일부",
-      "2026-08-12",
-      "2026-08-14",
+      { performance: "일부", rangeStart: "2026-08-12", rangeEnd: "2026-08-14" },
     );
 
     expect(calls[0].cmd).toBe("notion_todo_set_performance");
@@ -238,82 +236,59 @@ describe("Todo 커맨드 래퍼", () => {
       pageTitle: "[TODO]",
       date: "2026-08-10",
       performance: "완료",
-      // 저장이 확인되지 않은 경로에서 되실을 직전 값 (R9)
-      previousPerformance: "일부",
-      rangeStart: "2026-08-12",
-      rangeEnd: "2026-08-14",
+      meta: {
+        // 저장이 확인되지 않은 경로에서 되실을 직전 값 (R9)
+        performance: "일부",
+        rangeStart: "2026-08-12",
+        rangeEnd: "2026-08-14",
+      },
     });
     expect(result).toEqual(OUTCOME);
 
-    // 미지정 행에서의 첫 선택 — 직전 값·구간이 없으면 undefined
+    // 미지정 행에서의 첫 선택 — 직전 값·구간을 모르면 meta 자체가 없다
     await setTodoPerformance("page-1", "[TODO]", undefined, "미완");
     expect(calls[1].args).toMatchObject({
       date: undefined,
       performance: "미완",
-      previousPerformance: undefined,
-      rangeStart: undefined,
-      rangeEnd: undefined,
+      meta: undefined,
     });
   });
 
   it("쓰기_래퍼가_현재_수행도를_함께_전달한다", async () => {
     const calls = captureIPC(OUTCOME);
 
-    await addTodo(
-      "page-1",
-      "새 할 일",
-      "[TODO]",
-      "2026-08-10",
-      "기타",
-      "완료",
-      "2026-08-12",
-      "2026-08-14",
-    );
-    expect(calls[0].args).toMatchObject({
+    const META = {
+      rangeStart: "2026-08-12",
+      rangeEnd: "2026-08-14",
+    };
+
+    await addTodo("page-1", "새 할 일", "[TODO]", "2026-08-10", "기타", {
       performance: "완료",
-      rangeStart: "2026-08-12",
-      rangeEnd: "2026-08-14",
+      ...META,
+    });
+    expect(calls[0].args).toMatchObject({
+      meta: { performance: "완료", ...META },
     });
 
-    await toggleTodo(
-      "page-1",
-      "b1",
-      true,
-      "[TODO]",
-      "2026-08-10",
-      "일부",
-      "2026-08-12",
-      "2026-08-14",
-    );
-    expect(calls[1].args).toMatchObject({
+    await toggleTodo("page-1", "b1", true, "[TODO]", "2026-08-10", {
       performance: "일부",
-      rangeStart: "2026-08-12",
-      rangeEnd: "2026-08-14",
+      ...META,
+    });
+    expect(calls[1].args).toMatchObject({
+      meta: { performance: "일부", ...META },
     });
 
-    await editTodo(
-      "page-1",
-      "b1",
-      "수정",
-      "[TODO]",
-      "2026-08-10",
-      "미완",
-      "2026-08-12",
-      "2026-08-14",
-    );
-    expect(calls[2].args).toMatchObject({
+    await editTodo("page-1", "b1", "수정", "[TODO]", "2026-08-10", {
       performance: "미완",
-      rangeStart: "2026-08-12",
-      rangeEnd: "2026-08-14",
+      ...META,
+    });
+    expect(calls[2].args).toMatchObject({
+      meta: { performance: "미완", ...META },
     });
 
-    // 미지정 행 — 값이 없으면 undefined로 실린다
+    // 미지정 행 — 넘길 값이 없으면 meta 자체가 실리지 않는다
     await toggleTodo("page-1", "b1", false, "[TODO]", "2026-08-10");
-    expect(calls[3].args).toMatchObject({
-      performance: undefined,
-      rangeStart: undefined,
-      rangeEnd: undefined,
-    });
+    expect(calls[3].args).toMatchObject({ meta: undefined });
   });
 
   it("open_page_래퍼가_수행도를_전달한다", async () => {
@@ -327,31 +302,26 @@ describe("Todo 커맨드 래퍼", () => {
       performance: "일부",
     };
 
-    await openTodoPage(
-      EXISTS.page_id,
-      EXISTS.title,
-      EXISTS.date,
-      EXISTS.performance ?? undefined,
-      "2026-08-12",
-      "2026-08-14",
-    );
+    await openTodoPage(EXISTS.page_id, EXISTS.title, EXISTS.date, {
+      performance: EXISTS.performance ?? undefined,
+      rangeStart: "2026-08-12",
+      rangeEnd: "2026-08-14",
+    });
 
     expect(calls[0].cmd).toBe("notion_todo_open_page");
     expect(calls[0].args).toMatchObject({
       pageId: "page-9",
       pageTitle: "휴가",
       date: "2026-08-10",
-      performance: "일부",
-      rangeStart: "2026-08-12",
-      rangeEnd: "2026-08-14",
+      meta: {
+        performance: "일부",
+        rangeStart: "2026-08-12",
+        rangeEnd: "2026-08-14",
+      },
     });
 
     // 값을 모르면 생략 — 기존 3-인자 호출도 그대로 동작한다
     await openTodoPage("page-9", "휴가", "2026-08-10");
-    expect(calls[1].args).toMatchObject({
-      performance: undefined,
-      rangeStart: undefined,
-      rangeEnd: undefined,
-    });
+    expect(calls[1].args).toMatchObject({ meta: undefined });
   });
 });

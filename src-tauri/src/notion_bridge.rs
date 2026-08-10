@@ -2,7 +2,7 @@
 //! store(`settings.json`) 설정 영속, 연결 커맨드 5종.
 //! 토큰 값은 Keychain에만 존재한다 — 응답·로그·store·에러 어디에도 넣지 않는다.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
@@ -290,11 +290,15 @@ pub enum TodoSnapshot {
 /// 스냅샷이 나르는 페이지 메타 (KTD1) — children 재조회는 이 값들을 주지 않으므로
 /// 호출자가 아는 값을 그대로 싣는다(`page_title`과 같은 방식). 확인되지 않은 값은
 /// 절대 싣지 않는다 (R9).
-#[derive(Clone, Default, PartialEq, Eq, Debug)]
-struct PageMeta {
-    performance: Option<String>,
-    range_start: Option<String>,
-    range_end: Option<String>,
+///
+/// 쓰기 커맨드의 인자이기도 하다 — 프론트는 세 값을 낱개로 넘기지 않고 이 객체
+/// 하나(`meta`)로 넘긴다. 생략하면 전부 미지정(`default`)으로 본다.
+#[derive(Clone, Default, PartialEq, Eq, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageMeta {
+    pub performance: Option<String>,
+    pub range_start: Option<String>,
+    pub range_end: Option<String>,
 }
 
 impl PageMeta {
@@ -469,15 +473,34 @@ async fn snapshot_after_write(
     }
 }
 
-/// 블록 쓰기 결과의 공통 종단 (R6·R8): 성공 → 재조회 스냅샷,
-/// 블록 소실(404)·충돌(409) → Err 대신 재조회 스냅샷 + 안내 문구,
+/// 블록 쓰기 결과의 공통 종단 (R6·R8) — 페이지 메타를 바꾸지 않는
+/// 쓰기(추가·토글·편집)용. 성공이든 안내(404·409)든 같은 메타를 싣는다.
+/// 메타를 바꾸는 쓰기만 `finish_write_split`을 직접 쓴다.
+#[allow(clippy::too_many_arguments)]
+async fn finish_write(
+    base_url: &str,
+    access: &TodoAccess,
+    page_id: &str,
+    page_title: &str,
+    date: &str,
+    today: &str,
+    meta: &PageMeta,
+    write: Result<(), ConnectError>,
+) -> Result<TodoOutcome, String> {
+    finish_write_split(
+        base_url, access, page_id, page_title, date, today, meta, meta, write,
+    )
+    .await
+}
+
+/// 쓰기 결과 → 재조회·안내·오류 분기의 본체: 성공 → 재조회 스냅샷,
+/// 블록 소실(404)·편집 충돌(409) → Err 대신 재조회 스냅샷 + 안내 문구,
 /// 그 외(네트워크·인증·한도·형식) → 스냅샷 없는 오류로 전달.
 ///
 /// 페이지 메타는 두 갈래로 받는다 (R9): `written`은 쓰기가 확인됐을 때 싣는 값,
 /// `previous`는 404·409를 안내로 흡수해 저장이 확인되지 않았을 때 싣는 직전 표시값이다.
-/// 메타를 바꾸지 않는 쓰기(추가·토글·편집)는 두 자리에 같은 값을 넘긴다.
 #[allow(clippy::too_many_arguments)]
-async fn finish_write(
+async fn finish_write_split(
     base_url: &str,
     access: &TodoAccess,
     page_id: &str,
@@ -561,8 +584,10 @@ async fn create_page_outcome(
                 is_today: date == today,
                 // 재확인 쿼리가 돌려준 값 — 이미 손에 있으므로 추가 조회가 없다
                 performance,
-                range_start: Some(start),
-                range_end: end,
+                // 구간은 date-only로 잘라 싣는다 (`snapshot_by_date`와 같은 규칙) —
+                // 원문이 datetime이면 화면에 타임스탬프가 새고 시작·끝 동일 판정도 어긋난다
+                range_start: Some(date_only(&start).to_string()),
+                range_end: end.map(|e| date_only(&e).to_string()),
             }),
             notice: Some(TODO_PAGE_EXISTS_NOTICE.to_string()),
         });
@@ -777,15 +802,14 @@ async fn open_page_outcome(
 }
 
 /// 목록에서 고른 행을 page_id로 연다 — 스냅샷과 (폴백 시) 안내를 돌려준다.
-/// `performance`·`range_start`·`range_end`는 제목과 같이 프론트가 아는 값을 그대로 되싣는다.
+/// `meta`(수행도·적용 구간)는 제목과 같이 프론트가 아는 값을 그대로 되싣는다 —
+/// 모르면 생략하고, 그러면 스냅샷도 그만큼만 안다.
 #[tauri::command]
 pub async fn notion_todo_open_page(
     page_id: String,
     page_title: String,
     date: String,
-    performance: Option<String>,
-    range_start: Option<String>,
-    range_end: Option<String>,
+    meta: Option<PageMeta>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
     let access = todo_access(&app)
@@ -798,7 +822,7 @@ pub async fn notion_todo_open_page(
         &page_title,
         &date,
         &today_local(),
-        &PageMeta::new(performance, range_start, range_end),
+        &meta.unwrap_or_default(),
     )
     .await
 }
@@ -841,10 +865,7 @@ async fn add_todo_outcome(
         .append_todo(&access.token, page_id, text, after.as_deref())
         .await;
     // 할 일 추가는 페이지 메타를 바꾸지 않는다 — 성공·안내 어느 쪽이든 같은 값이다
-    finish_write(
-        base_url, access, page_id, page_title, date, today, meta, meta, write,
-    )
-    .await
+    finish_write(base_url, access, page_id, page_title, date, today, meta, write).await
 }
 
 /// 페이지에 to_do를 추가하고 재조회 스냅샷을 돌려준다 (R4·R6).
@@ -853,16 +874,13 @@ async fn add_todo_outcome(
 /// 제목을 주지 않고, 날짜 재쿼리는 KTD5가 금지한다.
 /// `date`는 보고 있는 스냅샷의 날짜 — 없으면 오늘(기존 호출 호환).
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn notion_todo_add(
     page_id: String,
     text: String,
     page_title: String,
     date: Option<String>,
     category: Option<String>,
-    performance: Option<String>,
-    range_start: Option<String>,
-    range_end: Option<String>,
+    meta: Option<PageMeta>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
     let access = todo_access(&app)
@@ -878,23 +896,20 @@ pub async fn notion_todo_add(
         &date,
         &today,
         category.as_deref(),
-        &PageMeta::new(performance, range_start, range_end),
+        &meta.unwrap_or_default(),
     )
     .await
 }
 
 /// to_do 체크 상태를 토글하고 재조회 스냅샷을 돌려준다 (R5·R6·R8).
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn notion_todo_toggle(
     page_id: String,
     block_id: String,
     checked: bool,
     page_title: String,
     date: Option<String>,
-    performance: Option<String>,
-    range_start: Option<String>,
-    range_end: Option<String>,
+    meta: Option<PageMeta>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
     let access = todo_access(&app)
@@ -905,7 +920,6 @@ pub async fn notion_todo_toggle(
         .set_todo_checked(&access.token, &block_id, checked)
         .await;
     let (date, today) = resolve_write_date(date);
-    let meta = PageMeta::new(performance, range_start, range_end);
     finish_write(
         NOTION_API_BASE,
         &access,
@@ -913,8 +927,7 @@ pub async fn notion_todo_toggle(
         &page_title,
         &date,
         &today,
-        &meta,
-        &meta,
+        &meta.unwrap_or_default(),
         write,
     )
     .await
@@ -922,16 +935,13 @@ pub async fn notion_todo_toggle(
 
 /// to_do 텍스트를 교체하고 재조회 스냅샷을 돌려준다 (R5·R6·R8).
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn notion_todo_edit(
     page_id: String,
     block_id: String,
     text: String,
     page_title: String,
     date: Option<String>,
-    performance: Option<String>,
-    range_start: Option<String>,
-    range_end: Option<String>,
+    meta: Option<PageMeta>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
     let access = todo_access(&app)
@@ -940,7 +950,6 @@ pub async fn notion_todo_edit(
     let client = NotionClient::new(NOTION_API_BASE);
     let write = client.set_todo_text(&access.token, &block_id, &text).await;
     let (date, today) = resolve_write_date(date);
-    let meta = PageMeta::new(performance, range_start, range_end);
     finish_write(
         NOTION_API_BASE,
         &access,
@@ -948,8 +957,7 @@ pub async fn notion_todo_edit(
         &page_title,
         &date,
         &today,
-        &meta,
-        &meta,
+        &meta.unwrap_or_default(),
         write,
     )
     .await
@@ -970,6 +978,14 @@ async fn set_performance_outcome(
     performance: &str,
     previous: &PageMeta,
 ) -> Result<TodoOutcome, String> {
+    // 이미 그 값이면 쓸 것이 없다 (R4) — PATCH 없이 현재 스냅샷만 새로 읽어 돌려준다.
+    // 카드도 같은 값 클릭을 막지만(TodoCard), 커맨드는 직접 호출될 수 있다.
+    if previous.performance.as_deref() == Some(performance) {
+        return finish_write(
+            base_url, access, page_id, page_title, date, today, previous, Ok(()),
+        )
+        .await;
+    }
     let client = NotionClient::new(base_url);
     let write = client
         .set_page_performance(&access.token, page_id, performance)
@@ -980,25 +996,22 @@ async fn set_performance_outcome(
         previous.range_start.clone(),
         previous.range_end.clone(),
     );
-    finish_write(
+    finish_write_split(
         base_url, access, page_id, page_title, date, today, &written, previous, write,
     )
     .await
 }
 
 /// 보고 있는 날짜의 행 `수행도`를 바꾸고 재조회 스냅샷을 돌려준다 (R3·R7·R9).
-/// `previous_performance`는 화면에 지금 보이는 값 — 저장이 확인되지 않은 경로에서
-/// 시도값 대신 이 값을 되싣는다.
+/// `meta`는 화면에 지금 보이는 페이지 메타 — 그 `performance`가 직전 표시값이고,
+/// 저장이 확인되지 않은 경로에서 시도값(`performance` 인자) 대신 이 값이 되실린다.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn notion_todo_set_performance(
     page_id: String,
     page_title: String,
     date: Option<String>,
     performance: String,
-    previous_performance: Option<String>,
-    range_start: Option<String>,
-    range_end: Option<String>,
+    meta: Option<PageMeta>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
     let access = todo_access(&app)
@@ -1013,7 +1026,7 @@ pub async fn notion_todo_set_performance(
         &date,
         &today,
         &performance,
-        &PageMeta::new(previous_performance, range_start, range_end),
+        &meta.unwrap_or_default(),
     )
     .await
 }
@@ -1402,7 +1415,6 @@ mod http_tests {
             가짜_날짜,
             가짜_날짜,
             &PageMeta::default(),
-            &PageMeta::default(),
             Ok(()),
         )
         .await
@@ -1432,7 +1444,6 @@ mod http_tests {
             "[TODO]",
             가짜_날짜,
             가짜_날짜,
-            &PageMeta::default(),
             &PageMeta::default(),
             Ok(()),
         )
@@ -1480,7 +1491,6 @@ mod http_tests {
                 가짜_날짜,
                 가짜_날짜,
                 &PageMeta::default(),
-                &PageMeta::default(),
                 Err(write_err),
             )
             .await
@@ -1512,7 +1522,6 @@ mod http_tests {
                 "[TODO]",
                 가짜_날짜,
                 가짜_날짜,
-                &PageMeta::default(),
                 &PageMeta::default(),
                 Err(write_err),
             )
@@ -2391,7 +2400,6 @@ mod http_tests {
             "2026-08-03",
             가짜_날짜,
             &PageMeta::default(),
-            &PageMeta::default(),
             Ok(()),
         )
         .await
@@ -2905,6 +2913,94 @@ mod http_tests {
         match outcome.snapshot {
             Some(TodoSnapshot::Loaded { performance, .. }) => {
                 assert_eq!(performance, Some("완료".to_string()));
+            }
+            other => panic!("Loaded가 아님: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn 이미_있는_페이지의_적용_구간도_date_only로_정규화된다() {
+        // 생성 전 재확인이 찾은 행의 `날짜`가 datetime이면 그대로 실을 수 없다 —
+        // 화면에 타임스탬프가 새고 시작·끝 동일(하루 행) 판정도 어긋난다 (KTD3).
+        // 날짜 쿼리 경로(`snapshot_by_date`)와 같은 규칙이어야 한다.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .and(body_json(날짜_쿼리_body()))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![범위_페이지_행(
+                    가짜_페이지_ID,
+                    "[TODO]",
+                    "2026-08-09T09:00:00.000+09:00",
+                    Some("2026-08-09T18:00:00.000+09:00"),
+                )])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        mount_children(&server, 가짜_페이지_ID, vec![]).await;
+
+        let outcome = create_page_outcome(&server.uri(), &가짜_access(), 가짜_날짜, 가짜_날짜)
+            .await
+            .unwrap();
+        match outcome.snapshot {
+            Some(TodoSnapshot::Loaded {
+                range_start,
+                range_end,
+                ..
+            }) => {
+                assert_eq!(range_start, Some(가짜_날짜.to_string()));
+                assert_eq!(range_end, Some(가짜_날짜.to_string()));
+            }
+            other => panic!("Loaded가 아님: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn 같은_수행도_값은_요청_없이_현재_스냅샷을_돌려준다() {
+        // R4 방어 — 카드도 같은 값 클릭을 막지만 커맨드는 직접 호출될 수 있다.
+        // PATCH는 한 번도 나가지 않고, 현재 메타 그대로의 스냅샷이 돌아온다.
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path(format!("/v1/pages/{가짜_페이지_ID}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "object": "page" })))
+            .expect(0)
+            .mount(&server)
+            .await;
+        mount_children(
+            &server,
+            가짜_페이지_ID,
+            vec![to_do_블록("block-1", "첫째", true)],
+        )
+        .await;
+
+        let outcome = set_performance_outcome(
+            &server.uri(),
+            &가짜_access(),
+            가짜_페이지_ID,
+            "[TODO]",
+            가짜_날짜,
+            가짜_날짜,
+            "일부",
+            &PageMeta::new(
+                Some("일부".to_string()),
+                Some("2026-08-12".to_string()),
+                Some("2026-08-14".to_string()),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.notice, None);
+        match outcome.snapshot {
+            Some(TodoSnapshot::Loaded {
+                performance,
+                range_start,
+                range_end,
+                ..
+            }) => {
+                assert_eq!(performance, Some("일부".to_string()));
+                assert_eq!(range_start, Some("2026-08-12".to_string()));
+                assert_eq!(range_end, Some("2026-08-14".to_string()));
             }
             other => panic!("Loaded가 아님: {other:?}"),
         }

@@ -279,13 +279,15 @@ pub struct RowInWindow {
 }
 
 /// 하루의 행 하나 — 커버 판정을 통과한 후보이자 `find_page_by_date`의 결과.
-/// 커버 판정에 쓴 시작일은 이미 소비됐으므로 싣지 않고, 카드가 곧바로 쓰는 값만 남긴다.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct DayPage {
     pub page_id: String,
     pub title: String,
     /// `수행도` select의 현재 이름 — 값이 비었거나 속성이 없으면 None
     pub performance: Option<String>,
+    /// `날짜` 범위의 시작 — 커버 판정에 이미 썼지만 카드도 필요로 한다.
+    /// 끝만 보여주면 그 행이 조회일 전부터 시작했는지를 알 수 없다 (R10).
+    pub start: String,
     /// `날짜` 범위의 끝 — 하루 행이면 None. 수행도가 하루가 아니라 이 구간
     /// 전체에 적용된다는 사실을 카드가 표시해야 한다 (R10).
     pub end: Option<String>,
@@ -400,6 +402,7 @@ impl NotionClient {
                 page_id: row.page_id,
                 title: row.title,
                 performance: row.performance,
+                start: row.start,
                 end: row.end,
             })
             .collect())
@@ -1312,12 +1315,13 @@ mod tests {
         assert_eq!(todo_from_block(&archived), None);
     }
 
-    /// 하루 행 후보 픽스처 — 수행도·범위 끝은 호출자가 필요하면 덮어쓴다.
+    /// 하루 행 후보 픽스처 — 수행도·범위 시작/끝은 호출자가 필요하면 덮어쓴다.
     fn 후보(page_id: &str, title: &str) -> DayPage {
         DayPage {
             page_id: page_id.to_string(),
             title: title.to_string(),
             performance: None,
+            start: "2026-08-09".to_string(),
             end: None,
         }
     }
@@ -1928,12 +1932,14 @@ mod http_tests {
     }
 
     /// 하루 행 후보 기대값 — `find_page_by_date`·`find_rows_covering_date`의 반환 모양.
-    /// 범위 행을 기대할 때는 호출자가 `end`를 덮어쓴다.
+    /// 시작일은 픽스처 기본값(가짜_날짜)이고, 범위 행을 기대할 때는 호출자가
+    /// `start`·`end`를 덮어쓴다.
     fn 하루_행(id: &str, 제목: &str, 수행도: Option<&str>) -> DayPage {
         DayPage {
             page_id: id.to_string(),
             title: 제목.to_string(),
             performance: 수행도.map(str::to_string),
+            start: 가짜_날짜.to_string(),
             end: None,
         }
     }
@@ -2059,8 +2065,9 @@ mod http_tests {
             .find_rows_covering_date(가짜_토큰, 가짜_DS_ID, "2026-08-13")
             .await
             .unwrap();
-        // 적용 구간 끝은 후보에 그대로 실려 나온다 — 카드가 기간을 표시해야 한다
+        // 적용 구간은 시작·끝 모두 후보에 실려 나온다 — 카드가 기간을 표시해야 한다
         let mut 기대 = 하루_행("row-range", "휴가", None);
+        기대.start = "2026-08-12".to_string();
         기대.end = Some("2026-08-14".to_string());
         assert_eq!(rows, vec![기대]);
     }
@@ -2084,7 +2091,9 @@ mod http_tests {
             .find_rows_covering_date(가짜_토큰, 가짜_DS_ID, "2026-08-13")
             .await
             .unwrap();
-        assert_eq!(rows, vec![하루_행("row-today", "[TODO]", None)]);
+        let mut 기대 = 하루_행("row-today", "[TODO]", None);
+        기대.start = "2026-08-13".to_string();
+        assert_eq!(rows, vec![기대]);
     }
 
     #[tokio::test]

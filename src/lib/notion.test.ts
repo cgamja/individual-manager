@@ -95,6 +95,7 @@ describe("Todo 커맨드 래퍼", () => {
     items: [{ id: "b1", text: "가짜 항목", checked: false, category: null }],
     is_today: true,
     performance: "일부",
+    range_start: null,
     range_end: null,
   };
   const OUTCOME: TodoOutcome = { snapshot: SNAPSHOT, notice: null };
@@ -227,6 +228,7 @@ describe("Todo 커맨드 래퍼", () => {
       "2026-08-10",
       "완료",
       "일부",
+      "2026-08-12",
       "2026-08-14",
     );
 
@@ -238,6 +240,7 @@ describe("Todo 커맨드 래퍼", () => {
       performance: "완료",
       // 저장이 확인되지 않은 경로에서 되실을 직전 값 (R9)
       previousPerformance: "일부",
+      rangeStart: "2026-08-12",
       rangeEnd: "2026-08-14",
     });
     expect(result).toEqual(OUTCOME);
@@ -248,6 +251,7 @@ describe("Todo 커맨드 래퍼", () => {
       date: undefined,
       performance: "미완",
       previousPerformance: undefined,
+      rangeStart: undefined,
       rangeEnd: undefined,
     });
   });
@@ -262,10 +266,12 @@ describe("Todo 커맨드 래퍼", () => {
       "2026-08-10",
       "기타",
       "완료",
+      "2026-08-12",
       "2026-08-14",
     );
     expect(calls[0].args).toMatchObject({
       performance: "완료",
+      rangeStart: "2026-08-12",
       rangeEnd: "2026-08-14",
     });
 
@@ -276,10 +282,12 @@ describe("Todo 커맨드 래퍼", () => {
       "[TODO]",
       "2026-08-10",
       "일부",
+      "2026-08-12",
       "2026-08-14",
     );
     expect(calls[1].args).toMatchObject({
       performance: "일부",
+      rangeStart: "2026-08-12",
       rangeEnd: "2026-08-14",
     });
 
@@ -290,10 +298,12 @@ describe("Todo 커맨드 래퍼", () => {
       "[TODO]",
       "2026-08-10",
       "미완",
+      "2026-08-12",
       "2026-08-14",
     );
     expect(calls[2].args).toMatchObject({
       performance: "미완",
+      rangeStart: "2026-08-12",
       rangeEnd: "2026-08-14",
     });
 
@@ -301,6 +311,7 @@ describe("Todo 커맨드 래퍼", () => {
     await toggleTodo("page-1", "b1", false, "[TODO]", "2026-08-10");
     expect(calls[3].args).toMatchObject({
       performance: undefined,
+      rangeStart: undefined,
       rangeEnd: undefined,
     });
   });
@@ -321,6 +332,7 @@ describe("Todo 커맨드 래퍼", () => {
       EXISTS.title,
       EXISTS.date,
       EXISTS.performance ?? undefined,
+      "2026-08-12",
       "2026-08-14",
     );
 
@@ -330,6 +342,7 @@ describe("Todo 커맨드 래퍼", () => {
       pageTitle: "휴가",
       date: "2026-08-10",
       performance: "일부",
+      rangeStart: "2026-08-12",
       rangeEnd: "2026-08-14",
     });
 
@@ -337,6 +350,7 @@ describe("Todo 커맨드 래퍼", () => {
     await openTodoPage("page-9", "휴가", "2026-08-10");
     expect(calls[1].args).toMatchObject({
       performance: undefined,
+      rangeStart: undefined,
       rangeEnd: undefined,
     });
   });

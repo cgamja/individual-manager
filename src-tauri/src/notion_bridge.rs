@@ -278,6 +278,9 @@ pub enum TodoSnapshot {
         is_today: bool,
         /// 이 행의 `수행도` — 없으면(null) 프론트가 "미지정"으로 그린다 (R1).
         performance: Option<String>,
+        /// 이 행의 시작 날짜 — 모르는 경로(생성 직후·확인되지 않은 에코)면 null (R10).
+        /// 끝만 보여주면 그 행이 보고 있는 날짜 전부터 시작했는지 알 수 없다.
+        range_start: Option<String>,
         /// 행이 날짜 범위를 덮을 때의 끝 날짜 — 하루 행이면 null (R10).
         /// 수행도가 하루가 아니라 이 구간 전체에 적용된다는 사실을 카드가 보여야 한다.
         range_end: Option<String>,
@@ -290,13 +293,19 @@ pub enum TodoSnapshot {
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 struct PageMeta {
     performance: Option<String>,
+    range_start: Option<String>,
     range_end: Option<String>,
 }
 
 impl PageMeta {
-    fn new(performance: Option<String>, range_end: Option<String>) -> Self {
+    fn new(
+        performance: Option<String>,
+        range_start: Option<String>,
+        range_end: Option<String>,
+    ) -> Self {
         Self {
             performance,
+            range_start,
             range_end,
         }
     }
@@ -410,6 +419,7 @@ async fn snapshot_by_date(
             page_id,
             title,
             performance,
+            start,
             end,
         }) => {
             let items = client.fetch_todos(&access.token, &page_id).await?;
@@ -421,7 +431,10 @@ async fn snapshot_by_date(
                 is_today: date == today,
                 // 날짜 쿼리 경로는 이미 받아 온 행에서 값을 뽑는다 — 추가 GET 0 (KTD1)
                 performance,
-                range_end: end,
+                // 적용 구간은 date-only로 잘라 싣는다 — 원문이 datetime이면 화면에
+                // 타임스탬프가 새고 시작·끝 동일 판정도 어긋난다 (KTD3의 date-only 원칙)
+                range_start: Some(date_only(&start).to_string()),
+                range_end: end.map(|e| date_only(&e).to_string()),
             })
         }
     }
@@ -447,6 +460,7 @@ async fn snapshot_after_write(
             items,
             is_today: date == today,
             performance: meta.performance.clone(),
+            range_start: meta.range_start.clone(),
             range_end: meta.range_end.clone(),
         }),
         // 날짜 폴백은 행을 다시 읽으므로 메타도 원격 값으로 새로 실린다
@@ -527,6 +541,7 @@ async fn create_page_outcome(
         page_id,
         title,
         performance,
+        start,
         end,
     }) = client
         .find_page_by_date(&access.token, &access.data_source_id, date)
@@ -546,6 +561,7 @@ async fn create_page_outcome(
                 is_today: date == today,
                 // 재확인 쿼리가 돌려준 값 — 이미 손에 있으므로 추가 조회가 없다
                 performance,
+                range_start: Some(start),
                 range_end: end,
             }),
             notice: Some(TODO_PAGE_EXISTS_NOTICE.to_string()),
@@ -576,6 +592,7 @@ async fn create_page_outcome(
             is_today: date == today,
             // 갓 만든 하루 행 — 생성 body에 수행도를 넣지 않으므로 미지정이고 범위도 없다
             performance: None,
+            range_start: None,
             range_end: None,
         }),
         notice,
@@ -696,6 +713,7 @@ async fn create_row_outcome(
                 is_today: start == today,
                 // 갓 만든 하루 행 — 수행도 미지정, 범위 없음
                 performance: None,
+                range_start: None,
                 range_end: None,
             }),
             notice,
@@ -740,6 +758,7 @@ async fn open_page_outcome(
                 is_today: date == today,
                 // 수행도·적용 구간도 제목과 같은 방식으로 프론트가 넘긴다 (KTD1)
                 performance: meta.performance.clone(),
+                range_start: meta.range_start.clone(),
                 range_end: meta.range_end.clone(),
             }),
             notice: None,
@@ -758,13 +777,14 @@ async fn open_page_outcome(
 }
 
 /// 목록에서 고른 행을 page_id로 연다 — 스냅샷과 (폴백 시) 안내를 돌려준다.
-/// `performance`·`range_end`는 제목과 같이 프론트가 아는 값을 그대로 되싣는다.
+/// `performance`·`range_start`·`range_end`는 제목과 같이 프론트가 아는 값을 그대로 되싣는다.
 #[tauri::command]
 pub async fn notion_todo_open_page(
     page_id: String,
     page_title: String,
     date: String,
     performance: Option<String>,
+    range_start: Option<String>,
     range_end: Option<String>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
@@ -778,7 +798,7 @@ pub async fn notion_todo_open_page(
         &page_title,
         &date,
         &today_local(),
-        &PageMeta::new(performance, range_end),
+        &PageMeta::new(performance, range_start, range_end),
     )
     .await
 }
@@ -841,6 +861,7 @@ pub async fn notion_todo_add(
     date: Option<String>,
     category: Option<String>,
     performance: Option<String>,
+    range_start: Option<String>,
     range_end: Option<String>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
@@ -857,7 +878,7 @@ pub async fn notion_todo_add(
         &date,
         &today,
         category.as_deref(),
-        &PageMeta::new(performance, range_end),
+        &PageMeta::new(performance, range_start, range_end),
     )
     .await
 }
@@ -872,6 +893,7 @@ pub async fn notion_todo_toggle(
     page_title: String,
     date: Option<String>,
     performance: Option<String>,
+    range_start: Option<String>,
     range_end: Option<String>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
@@ -883,7 +905,7 @@ pub async fn notion_todo_toggle(
         .set_todo_checked(&access.token, &block_id, checked)
         .await;
     let (date, today) = resolve_write_date(date);
-    let meta = PageMeta::new(performance, range_end);
+    let meta = PageMeta::new(performance, range_start, range_end);
     finish_write(
         NOTION_API_BASE,
         &access,
@@ -908,6 +930,7 @@ pub async fn notion_todo_edit(
     page_title: String,
     date: Option<String>,
     performance: Option<String>,
+    range_start: Option<String>,
     range_end: Option<String>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
@@ -917,7 +940,7 @@ pub async fn notion_todo_edit(
     let client = NotionClient::new(NOTION_API_BASE);
     let write = client.set_todo_text(&access.token, &block_id, &text).await;
     let (date, today) = resolve_write_date(date);
-    let meta = PageMeta::new(performance, range_end);
+    let meta = PageMeta::new(performance, range_start, range_end);
     finish_write(
         NOTION_API_BASE,
         &access,
@@ -952,7 +975,11 @@ async fn set_performance_outcome(
         .set_page_performance(&access.token, page_id, performance)
         .await;
     // 적용 구간은 이 쓰기로 바뀌지 않는다 — 직전 값을 그대로 이어 나른다
-    let written = PageMeta::new(Some(performance.to_string()), previous.range_end.clone());
+    let written = PageMeta::new(
+        Some(performance.to_string()),
+        previous.range_start.clone(),
+        previous.range_end.clone(),
+    );
     finish_write(
         base_url, access, page_id, page_title, date, today, &written, previous, write,
     )
@@ -970,6 +997,7 @@ pub async fn notion_todo_set_performance(
     date: Option<String>,
     performance: String,
     previous_performance: Option<String>,
+    range_start: Option<String>,
     range_end: Option<String>,
     app: AppHandle,
 ) -> Result<TodoOutcome, String> {
@@ -985,7 +1013,7 @@ pub async fn notion_todo_set_performance(
         &date,
         &today,
         &performance,
-        &PageMeta::new(previous_performance, range_end),
+        &PageMeta::new(previous_performance, range_start, range_end),
     )
     .await
 }
@@ -1111,6 +1139,7 @@ mod tests {
             ],
             is_today: true,
             performance: Some("완료".to_string()),
+            range_start: None,
             range_end: None,
         })
         .unwrap();
@@ -1129,6 +1158,7 @@ mod tests {
                 ],
                 "is_today": true,
                 "performance": "완료",
+                "range_start": null,
                 "range_end": null
             })
         );
@@ -1150,6 +1180,7 @@ mod tests {
             items: vec![],
             is_today: false,
             performance: None,
+            range_start: None,
             range_end: None,
         };
         assert_eq!(serde_json::to_value(&past).unwrap()["is_today"], json!(false));
@@ -1217,7 +1248,7 @@ mod tests {
 
     #[test]
     fn 스냅샷이_수행도를_snake_case로_직렬화한다() {
-        // 값 있음 — 수행도와 적용 구간 끝이 snake_case 키로 실린다 (R1·R10)
+        // 값 있음 — 수행도와 적용 구간 시작·끝이 snake_case 키로 실린다 (R1·R10)
         let 범위_행 = TodoSnapshot::Loaded {
             date: "2026-08-13".to_string(),
             page_id: "aaaabbbb-cccc-dddd-eeee-ffff00001111".to_string(),
@@ -1225,10 +1256,12 @@ mod tests {
             items: vec![],
             is_today: false,
             performance: Some("일부".to_string()),
+            range_start: Some("2026-08-12".to_string()),
             range_end: Some("2026-08-14".to_string()),
         };
         let v = serde_json::to_value(&범위_행).unwrap();
         assert_eq!(v["performance"], json!("일부"));
+        assert_eq!(v["range_start"], json!("2026-08-12"));
         assert_eq!(v["range_end"], json!("2026-08-14"));
 
         // 값 없음 — 키는 남고 null로 실린다 (프론트가 "미지정"·하루 행으로 읽는다)
@@ -1239,10 +1272,12 @@ mod tests {
             items: vec![],
             is_today: true,
             performance: None,
+            range_start: None,
             range_end: None,
         };
         let v = serde_json::to_value(&하루_행).unwrap();
         assert_eq!(v.get("performance"), Some(&Value::Null));
+        assert_eq!(v.get("range_start"), Some(&Value::Null));
         assert_eq!(v.get("range_end"), Some(&Value::Null));
     }
 
@@ -1419,6 +1454,7 @@ mod http_tests {
                 // date == today(가짜_날짜) — 재조회 스냅샷에 오늘 판정이 실린다
                 is_today: true,
                 performance: None,
+                range_start: None,
                 range_end: None,
             })
         );
@@ -1658,6 +1694,7 @@ mod http_tests {
                 items: vec![],
                 is_today: true,
                 performance: None,
+                range_start: None,
                 range_end: None,
             })
         );
@@ -1807,6 +1844,7 @@ mod http_tests {
                 items: vec![],
                 is_today: true,
                 performance: None,
+                range_start: None,
                 range_end: None,
             })
         );
@@ -1953,6 +1991,7 @@ mod http_tests {
                         items: vec![],
                         is_today: true,
                         performance: None,
+                        range_start: None,
                         range_end: None,
                     })
                 );
@@ -2179,6 +2218,7 @@ mod http_tests {
                         items: vec![],
                         is_today: true,
                         performance: None,
+                        range_start: None,
                         range_end: None,
                     })
                 );
@@ -2241,7 +2281,11 @@ mod http_tests {
             "휴일",
             "2026-08-03",
             가짜_날짜,
-            &PageMeta::new(Some("일부".to_string()), None),
+            &PageMeta::new(
+                Some("일부".to_string()),
+                Some("2026-08-01".to_string()),
+                Some("2026-08-05".to_string()),
+            ),
         )
         .await
         .unwrap();
@@ -2260,9 +2304,10 @@ mod http_tests {
                     category: None,
                 }],
                 is_today: false,
-                // 수행도도 제목과 같이 프론트가 넘긴 값이 유지된다
+                // 수행도·적용 구간도 제목과 같이 프론트가 넘긴 값이 그대로 유지된다
                 performance: Some("일부".to_string()),
-                range_end: None,
+                range_start: Some("2026-08-01".to_string()),
+                range_end: Some("2026-08-05".to_string()),
             })
         );
     }
@@ -2616,7 +2661,8 @@ mod http_tests {
                 items: vec![],
                 is_today: true,
                 performance: Some("일부".to_string()),
-                // 하루 행이라 적용 구간 끝은 없다
+                // 하루 행 — 시작일은 실리지만 끝이 없어 카드는 구간을 그리지 않는다
+                range_start: Some(가짜_날짜.to_string()),
                 range_end: None,
             }
         );
@@ -2658,6 +2704,34 @@ mod http_tests {
     }
 
     #[tokio::test]
+    async fn 범위_행_스냅샷이_적용_구간_시작일도_싣는다() {
+        // R10 — 끝만으로는 그 행이 오늘 전에 시작했는지 알 수 없다. 시작일이 없으면
+        // 카드는 "8/14까지"만 그려 이미 지난 8/12·8/13까지 바뀐다는 사실을 감춘다.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(쿼리_경로()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(쿼리_응답(vec![
+                범위_페이지_행(
+                    가짜_특수_페이지_ID,
+                    "휴가",
+                    "2026-08-12",
+                    Some("2026-08-14"),
+                ),
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        mount_children(&server, 가짜_특수_페이지_ID, vec![]).await;
+
+        let snapshot = snapshot_by_date(&server.uri(), &가짜_access(), "2026-08-13", 가짜_날짜)
+            .await
+            .unwrap();
+        let v = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(v["range_start"], json!("2026-08-12"));
+        assert_eq!(v["range_end"], json!("2026-08-14"));
+    }
+
+    #[tokio::test]
     async fn 수행도_변경_후_스냅샷에_새_값이_실린다() {
         // AE3 — PATCH 1회 + children 재조회. 쓰기가 Ok일 때만 방금 쓴 값을 싣는다.
         let server = MockServer::start().await;
@@ -2685,6 +2759,7 @@ mod http_tests {
             "완료",
             &PageMeta {
                 performance: Some("일부".to_string()),
+                range_start: None,
                 range_end: None,
             },
         )
@@ -2898,6 +2973,7 @@ mod http_tests {
             "완료",
             &PageMeta {
                 performance: Some("일부".to_string()),
+                range_start: None,
                 range_end: None,
             },
         )

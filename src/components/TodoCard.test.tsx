@@ -34,6 +34,7 @@ const LOADED: LoadedSnapshot = {
   ],
   is_today: true,
   performance: null,
+  range_start: null,
   range_end: null,
 };
 
@@ -61,6 +62,7 @@ const NOT_TODAY: LoadedSnapshot = {
   items: [{ id: "c1", text: "쉬기", checked: false, category: null }],
   is_today: false,
   performance: "일부",
+  range_start: null,
   range_end: null,
 };
 
@@ -817,6 +819,7 @@ describe("날짜 전환", () => {
       items: [],
       is_today: false,
       performance: null,
+      range_start: null,
       range_end: null,
     };
     const calls = mockAppIPC({
@@ -900,21 +903,38 @@ describe("수행도", () => {
   });
 
   it("범위_행에서는_적용_구간이_함께_표시된다", () => {
-    // 8/13을 보고 있고 그 날짜를 덮는 행이 8/14까지인 경우 (AE8)
+    // 8/13을 보고 있고 그 날짜를 덮는 행이 8/12~8/14인 경우 (AE8) —
+    // 끝만 적으면 이미 지난 8/12까지 함께 바뀐다는 사실이 감춰진다
     renderCard({
       snapshot: loaded({
         date: "2026-08-13",
         is_today: false,
         performance: "기타",
+        range_start: "2026-08-12",
         range_end: "2026-08-14",
       }),
     });
 
-    expect(screen.getByText("2026-08-14까지 적용")).toBeInTheDocument();
+    expect(screen.getByText("2026-08-12~2026-08-14 적용")).toBeInTheDocument();
   });
 
   it("하루_행에서는_적용_구간을_표시하지_않는다", () => {
     renderCard({ snapshot: loaded({ performance: "완료" }) });
+
+    expect(screen.queryByText(/적용/)).not.toBeInTheDocument();
+  });
+
+  it("시작일과_끝이_같은_행은_적용_구간을_표시하지_않는다", () => {
+    // 시작·끝이 모두 실려도 같은 날이면 하루 행이다 — 구간을 그리면 거짓 정보다
+    renderCard({
+      snapshot: loaded({
+        date: "2026-08-13",
+        is_today: false,
+        performance: "완료",
+        range_start: "2026-08-13",
+        range_end: "2026-08-13",
+      }),
+    });
 
     expect(screen.queryByText(/적용/)).not.toBeInTheDocument();
   });
@@ -1018,7 +1038,11 @@ describe("수행도", () => {
   it("목록_쓰기도_현재_수행도를_함께_보낸다", async () => {
     // children 재조회는 페이지 메타를 주지 않는다 — 토글 후에도 값이 남으려면
     // 프론트가 현재 값을 되실어 줘야 한다 (KTD1)
-    const RANGE = loaded({ performance: "일부", range_end: "2026-08-14" });
+    const RANGE = loaded({
+      performance: "일부",
+      range_start: "2026-08-12",
+      range_end: "2026-08-14",
+    });
     const calls = mockAppIPC({
       notion_todo_list: () => RANGE,
       notion_todo_toggle: () => outcome(RANGE),
@@ -1032,6 +1056,8 @@ describe("수행도", () => {
       expect(call).toBeDefined();
       expect(call!.args).toMatchObject({
         performance: "일부",
+        // 적용 구간은 시작·끝 둘 다 되실려야 토글 후에도 구간 표시가 남는다
+        rangeStart: "2026-08-12",
         rangeEnd: "2026-08-14",
       });
     });
@@ -1057,6 +1083,7 @@ describe("수행도", () => {
           items: [],
           is_today: false,
           performance: (args as { performance?: string }).performance ?? null,
+          range_start: null,
           range_end: null,
         }),
     });

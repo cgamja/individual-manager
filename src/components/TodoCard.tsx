@@ -262,10 +262,14 @@ export function TodoCard({
               <span className="todo-perf-empty">미지정</span>
             )}
             {/* 범위 행 — 이 값이 하루가 아니라 구간 전체에 적용된다는 사실을
-                누르기 전에 보여준다 (R10). 행의 시작일은 스냅샷에 없어 끝만 적는다 */}
-            {snapshot.range_end !== null && (
-              <span className="todo-perf-range">{snapshot.range_end}까지 적용</span>
-            )}
+                누르기 전에 보여준다 (R10). 시작·끝이 같으면 하루 행이라 적지 않는다 */}
+            {snapshot.range_start !== null &&
+              snapshot.range_end !== null &&
+              snapshot.range_start !== snapshot.range_end && (
+                <span className="todo-perf-range">
+                  {snapshot.range_start}~{snapshot.range_end} 적용
+                </span>
+              )}
           </div>
 
           {snapshot.items.length === 0 ? (

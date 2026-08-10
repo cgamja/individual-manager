@@ -46,6 +46,8 @@ export type TodoSnapshot =
       is_today: boolean;
       /** 이 행의 `수행도` — null이면 "미지정" (R1). */
       performance: string | null;
+      /** 이 행의 시작 날짜 — 모르는 경로(생성 직후·확인되지 않은 에코)면 null (R10). */
+      range_start: string | null;
       /** 행이 날짜 범위를 덮을 때의 끝 날짜 — 하루 행이면 null (R10). */
       range_end: string | null;
     };
@@ -88,6 +90,7 @@ export const openTodoPage = (
   pageTitle: string,
   date: string,
   performance?: string,
+  rangeStart?: string,
   rangeEnd?: string,
 ): Promise<TodoOutcome> =>
   invoke("notion_todo_open_page", {
@@ -95,6 +98,7 @@ export const openTodoPage = (
     pageTitle,
     date,
     performance,
+    rangeStart,
     rangeEnd,
   });
 
@@ -106,6 +110,7 @@ export const addTodo = (
   /** 삽입할 헤딩 텍스트 (공부/기타) — 미지정이면 백엔드가 끝에 append. */
   category?: string,
   performance?: string,
+  rangeStart?: string,
   rangeEnd?: string,
 ): Promise<TodoOutcome> =>
   invoke("notion_todo_add", {
@@ -115,6 +120,7 @@ export const addTodo = (
     date,
     category,
     performance,
+    rangeStart,
     rangeEnd,
   });
 
@@ -125,6 +131,7 @@ export const toggleTodo = (
   pageTitle: string,
   date?: string,
   performance?: string,
+  rangeStart?: string,
   rangeEnd?: string,
 ): Promise<TodoOutcome> =>
   invoke("notion_todo_toggle", {
@@ -134,6 +141,7 @@ export const toggleTodo = (
     pageTitle,
     date,
     performance,
+    rangeStart,
     rangeEnd,
   });
 
@@ -144,6 +152,7 @@ export const editTodo = (
   pageTitle: string,
   date?: string,
   performance?: string,
+  rangeStart?: string,
   rangeEnd?: string,
 ): Promise<TodoOutcome> =>
   invoke("notion_todo_edit", {
@@ -153,6 +162,7 @@ export const editTodo = (
     pageTitle,
     date,
     performance,
+    rangeStart,
     rangeEnd,
   });
 
@@ -166,6 +176,7 @@ export const setTodoPerformance = (
   date: string | undefined,
   performance: string,
   previousPerformance?: string,
+  rangeStart?: string,
   rangeEnd?: string,
 ): Promise<TodoOutcome> =>
   invoke("notion_todo_set_performance", {
@@ -174,5 +185,6 @@ export const setTodoPerformance = (
     date,
     performance,
     previousPerformance,
+    rangeStart,
     rangeEnd,
   });

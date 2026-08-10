@@ -262,6 +262,7 @@ function App() {
               current.title,
               current.date,
               current.performance ?? undefined,
+              current.range_start ?? undefined,
               current.range_end ?? undefined,
             )
               .then((o) => o.snapshot)
@@ -314,7 +315,8 @@ function App() {
   const handleTodoAdd = useCallback(
     (text: string, category: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
-      const { page_id, title, date, performance, range_end } = todoSnapshot;
+      const { page_id, title, date, performance, range_start, range_end } =
+        todoSnapshot;
       // category = 선택된 헤딩 텍스트 — 백엔드가 해당 헤딩 아래에 삽입한다.
       // 수행도·적용 구간은 children 재조회가 주지 않는 페이지 메타라 되실어 준다 (KTD1)
       return runTodoCommand(() =>
@@ -325,6 +327,7 @@ function App() {
           date,
           category,
           performance ?? undefined,
+          range_start ?? undefined,
           range_end ?? undefined,
         ),
       );
@@ -334,7 +337,8 @@ function App() {
   const handleTodoToggle = useCallback(
     (blockId: string, checked: boolean) => {
       if (todoSnapshot?.state !== "loaded") return;
-      const { page_id, title, date, performance, range_end } = todoSnapshot;
+      const { page_id, title, date, performance, range_start, range_end } =
+        todoSnapshot;
       void runTodoCommand(() =>
         toggleTodo(
           page_id,
@@ -343,6 +347,7 @@ function App() {
           title,
           date,
           performance ?? undefined,
+          range_start ?? undefined,
           range_end ?? undefined,
         ),
       );
@@ -352,7 +357,8 @@ function App() {
   const handleTodoEdit = useCallback(
     (blockId: string, text: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
-      const { page_id, title, date, performance, range_end } = todoSnapshot;
+      const { page_id, title, date, performance, range_start, range_end } =
+        todoSnapshot;
       return runTodoCommand(() =>
         editTodo(
           page_id,
@@ -361,6 +367,7 @@ function App() {
           title,
           date,
           performance ?? undefined,
+          range_start ?? undefined,
           range_end ?? undefined,
         ),
       );
@@ -372,7 +379,8 @@ function App() {
   const handleTodoSetPerformance = useCallback(
     (performance: string) => {
       if (todoSnapshot?.state !== "loaded") return;
-      const { page_id, title, date, performance: current, range_end } = todoSnapshot;
+      const { page_id, title, date, performance: current, range_start, range_end } =
+        todoSnapshot;
       void runTodoCommand(() =>
         setTodoPerformance(
           page_id,
@@ -380,6 +388,7 @@ function App() {
           date,
           performance,
           current ?? undefined,
+          range_start ?? undefined,
           range_end ?? undefined,
         ),
       );

@@ -26,7 +26,9 @@
 
 ### PR 생성 및 처리
 - 내가 요구했을 때, [.github/TEMPLATE/PR.md](.github/TEMPLATE/PR.md) 템플릿에 맞춰 PR을 연다
-- **Merge는 내가 한다** (에이전트/자동화가 merge하지 않는다)
+- **Merge는 에이전트가 해도 된다** (2026-08-30 변경. 그 전에는 사용자 전용이었다).
+  전제: `npm test`·`cargo test` 모두 통과 + 코드 리뷰 지적 반영 완료.
+  force push·브랜치 삭제·이력 재작성은 여전히 사용자 확인을 받는다
 - PR 하나는 하나의 마일스톤 항목([TODO.md](TODO.md) 체크박스) 단위를 넘지 않게 유지
 
 ### 문서 최신화

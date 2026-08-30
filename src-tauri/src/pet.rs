@@ -32,9 +32,8 @@ const SPEECH_MS: u64 = 3_200;
 /// 한마디와 다음 한마디 사이 간격. 클릭과 무관하게 알아서 떠든다.
 const TAUNT_GAP_MS: (u64, u64) = (7_000, 18_000);
 /// 방망이를 휘두르는 시간.
-const SWING_MS: u64 = 420;
-/// 방망이를 치켜드는 시간. 바로 휘두르면 동작이 읽히지 않는다.
-const WINDUP_MS: u64 = 150;
+const SWING_MS: u64 = 360;
+
 /// 착지 후 약이 올라 한마디 할 확률(%).
 const SASSY_AFTER_LAND_PERCENT: u64 = 70;
 const LAND_MS: u64 = 300;
@@ -151,8 +150,6 @@ pub enum Behavior {
     Sleep,
     /// 클릭에 대한 반응 — 놀라지 않고 싸가지 없게 군다 (R5)
     Sassy { sassy: SassyKind },
-    /// 방망이를 치켜드는 중 (R14)
-    WindUp,
     /// 방망이를 휘두르는 중. **제자리에서** 휘두른다 — 나는 건 드래그로 던졌을 때뿐이다
     Swing,
     /// 사용자가 집어 든 상태 — 자율 이동을 하지 않는다 (R6)
@@ -364,12 +361,6 @@ impl Pet {
                     self.enter(Behavior::Walk, until);
                 }
             }
-            Behavior::WindUp => {
-                if now_ms >= self.behavior_until_ms {
-                    // 다 치켜들었다 — 이제 휘두른다
-                    self.enter(Behavior::Swing, now_ms + SWING_MS);
-                }
-            }
             Behavior::Swing => {
                 if now_ms >= self.behavior_until_ms {
                     if self.air {
@@ -470,7 +461,8 @@ impl Pet {
         // 제자리에서 맞는다 — 속도를 주지 않는다
         self.vx = 0.0;
         self.vy = 0.0;
-        self.enter(Behavior::WindUp, now_ms + WINDUP_MS);
+        // 치켜드는 단계를 두지 않는다 — 클릭하면 바로 휘두른다
+        self.enter(Behavior::Swing, now_ms + SWING_MS);
     }
 
     /// 킹받는 한마디를 띄운다. 문구는 웹뷰가 고른다.
@@ -553,7 +545,7 @@ impl Pet {
         // 반응·드래그는 고도를 그대로 물려받고, 나머지는 동작이 곧 고도를 정한다.
         // 착지(Land)는 바닥에 닿은 시점이라 확실히 지상이다.
         match behavior {
-            Behavior::Sassy { .. } | Behavior::Dragged | Behavior::WindUp | Behavior::Swing => {}
+            Behavior::Sassy { .. } | Behavior::Dragged | Behavior::Swing => {}
             Behavior::Land => self.air = false,
             other => self.air = other.is_airborne(),
         }
@@ -848,7 +840,7 @@ mod tests {
         p.step(1_000, BOUNDS);
         let before = p.snapshot();
         p.whack(1_000, BOUNDS);
-        assert_eq!(p.behavior(), Behavior::WindUp, "방망이가 닿기 전엔 제자리다");
+        assert_eq!(p.behavior(), Behavior::Swing, "클릭하면 바로 휘두른다");
 
         let mut t = 1_000;
         for _ in 0..30 {
@@ -865,8 +857,8 @@ mod tests {
         let mut p = pet();
         p.step(1_000, BOUNDS);
         p.whack(1_000, BOUNDS);
-        assert_eq!(p.step(1_000 + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Swing);
-        let after = p.step(1_000 + WINDUP_MS + SWING_MS + 20, BOUNDS);
+        assert_eq!(p.behavior(), Behavior::Swing, "클릭 즉시 휘두른다");
+        let after = p.step(1_000 + SWING_MS + 20, BOUNDS);
         assert!(
             matches!(after.behavior, Behavior::Sassy { .. }),
             "휘두르고 나면 약이 올라야 한다 (실제: {:?})",
@@ -906,10 +898,10 @@ mod tests {
 
         p.whack(t, BOUNDS);
         let hit_y = p.snapshot().y;
-        t += WINDUP_MS + 10;
-        let bonked = p.step(t, BOUNDS);
-        assert_eq!(bonked.behavior, Behavior::Swing);
-        assert_eq!(bonked.y, hit_y, "휘두른다고 솟아오르거나 떨어지면 안 된다");
+        assert_eq!(p.behavior(), Behavior::Swing);
+        t += 50;
+        let swinging = p.step(t, BOUNDS);
+        assert_eq!(swinging.y, hit_y, "휘두른다고 솟아오르거나 떨어지면 안 된다");
 
         // 움찔이 끝나면 마저 떨어진다
         let after = p.step(t + SWING_MS + 20, BOUNDS);
@@ -926,8 +918,7 @@ mod tests {
         }
         assert_eq!(p.behavior(), Behavior::Sleep);
         p.whack(t, BOUNDS);
-        assert_eq!(p.behavior(), Behavior::WindUp);
-        assert_eq!(p.step(t + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Swing);
+        assert_eq!(p.behavior(), Behavior::Swing, "클릭 즉시 휘두른다");
     }
 
     #[test]

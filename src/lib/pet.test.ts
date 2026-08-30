@@ -33,7 +33,6 @@ describe("behaviorClass", () => {
       { kind: "swim" },
       { kind: "thrown" },
       { kind: "sleep" },
-      { kind: "wind_up" },
       { kind: "swing" },
       { kind: "sassy", sassy: "turn_away" },
       { kind: "sassy", sassy: "head_flick" },
@@ -61,7 +60,6 @@ describe("behaviorClass", () => {
     // 밑줄이 남아 있으면 pet.css의 하이픈 선택자와 어긋난다.
     // 유휴만 검사하면 wind_up 같은 최상위 동작의 밑줄을 놓친다
     const all: Behavior[] = [
-      { kind: "wind_up" },
       { kind: "swing" },
       { kind: "swim" },
       { kind: "idle", idle: "look_around" },

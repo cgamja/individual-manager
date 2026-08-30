@@ -716,77 +716,25 @@ body,
 
 /* ── 야구방망이 — 한 번 휘두르고 사라진다 ───────────────────────── */
 
-@keyframes pg-bat-swing {
-  0% {
-    transform: rotate(-128deg);
-  }
-  40% {
-    transform: rotate(42deg);
-  }
-  62% {
-    transform: rotate(24deg);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(30deg);
-  }
-}
 
-/* 방망이는 펭귄이 **쥐고 있다**. 무대 안에 두어 좌우 반전과 함께 뒤집힌다.
- * 손잡이 끝이 가까운 쪽 날개 근처에 오도록 축을 잡았다. */
-.pg-bat {
-  position: absolute;
-  left: 74px;
-  top: 20px;
-  width: 30px;
-  height: 60px;
-  transform-origin: 15px 56px;
-  pointer-events: none;
-}
 
-/* 치켜드는 중 — 뒤로 넘긴 자세로 부드럽게 들어간다 */
-.pg-bat--windup {
-  transform: rotate(-128deg);
-  transition: transform 0.15s ease-out;
-}
 
-/* 휘두르기 — 뒤에서 앞으로 후려치고 따라 나간다 */
-.pg-bat--swing {
-  animation: pg-bat-swing 0.42s cubic-bezier(0.3, 0, 0.15, 1) forwards;
-}
 
 /* ── 빠따 — 펭귄이 방망이를 휘두른다 (날아가는 건 던지기 전용) ──── */
-
-/* 치켜드는 동안 몸을 뒤로 젖힌다 */
-@keyframes pg-brace {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(-11deg);
-  }
-}
-/* 치켜들 때 몸을 뒤로 젖힌다 */
-.pg--wind-up .pg-body,
-.pg--wind-up .pg-head {
-  animation: pg-brace 0.15s ease-out forwards;
-}
-/* 방망이를 쥔 날개는 뒤로 넘어간다 */
-.pg--wind-up .pg-wing-near {
-  transform: rotate(-96deg);
-  transition: transform 0.15s ease-out;
-}
 
 /* 휘두르기 — 몸을 앞으로 돌리며 후려친다 */
 @keyframes pg-swing-body {
   0% {
-    transform: rotate(-11deg);
+    transform: rotate(-13deg);
   }
-  40% {
-    transform: rotate(16deg);
+  14% {
+    transform: rotate(-15deg);
   }
-  70% {
-    transform: rotate(6deg);
+  46% {
+    transform: rotate(15deg);
+  }
+  72% {
+    transform: rotate(5deg);
   }
   100% {
     transform: rotate(0deg);
@@ -794,10 +742,10 @@ body,
 }
 @keyframes pg-swing-head {
   0% {
-    transform: rotate(-14deg);
+    transform: rotate(-16deg);
   }
-  40% {
-    transform: rotate(19deg);
+  46% {
+    transform: rotate(20deg);
   }
   100% {
     transform: rotate(0deg);
@@ -806,13 +754,20 @@ body,
 /* 방망이를 쥔 날개가 방망이를 따라 돈다 */
 @keyframes pg-swing-wing {
   0% {
-    transform: rotate(-96deg);
+    transform: rotate(-104deg);
   }
-  40% {
-    transform: rotate(46deg);
+  14% {
+    /* 앤티시페이션 — 치는 반대쪽으로 조금 더 당긴다 */
+    transform: rotate(-118deg);
+  }
+  46% {
+    transform: rotate(48deg);
+  }
+  68% {
+    transform: rotate(30deg);
   }
   100% {
-    transform: rotate(28deg);
+    transform: rotate(22deg);
   }
 }
 /* 반대쪽 날개는 균형을 잡는다 */
@@ -829,14 +784,33 @@ body,
 }
 
 .pg--swing .pg-body {
-  animation: pg-swing-body 0.42s cubic-bezier(0.25, 1.4, 0.4, 1);
+  animation: pg-swing-body 0.42s cubic-bezier(0.28, 0, 0.12, 1);
 }
 .pg--swing .pg-head {
-  animation: pg-swing-head 0.42s cubic-bezier(0.25, 1.4, 0.4, 1);
+  animation: pg-swing-head 0.42s cubic-bezier(0.28, 0, 0.12, 1);
 }
 .pg--swing .pg-wing-near {
-  animation: pg-swing-wing 0.42s cubic-bezier(0.3, 0, 0.15, 1) forwards;
+  animation: pg-swing-wing 0.42s cubic-bezier(0.28, 0, 0.12, 1) forwards;
 }
 .pg--swing .pg-wing-far {
   animation: pg-swing-wing-far 0.42s ease-out;
+}
+
+/* ── 방망이 — 날개와 한 몸으로 돈다 ─────────────────────────────
+ * 축(66,52)과 애니메이션을 `.pg-wing-near`와 똑같이 맞춘다. 축이 다르면
+ * 쥐고 휘두르는 게 아니라 각자 도는 풍차가 된다. */
+.pg-bat {
+  transform-origin: 66px 52px;
+  /* 평소엔 없다. 휘두를 때만 나타난다 */
+  opacity: 0;
+}
+
+.pg--swing .pg-bat {
+  opacity: 1;
+  animation: pg-swing-wing 0.42s cubic-bezier(0.28, 0, 0.12, 1) forwards;
+}
+
+/* 후광에 깔린 복제본은 방망이도 함께 두른다 — 배경에서 방망이만 묻히지 않게 */
+.pg-halo .pg-bat {
+  opacity: inherit;
 }

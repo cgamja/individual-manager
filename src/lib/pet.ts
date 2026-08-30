@@ -23,7 +23,6 @@ export type Behavior =
   | { kind: "swim" }
   | { kind: "sleep" }
   | { kind: "sassy"; sassy: SassyKind }
-  | { kind: "wind_up" }
   | { kind: "swing" }
   | { kind: "dragged" }
   | { kind: "falling" }

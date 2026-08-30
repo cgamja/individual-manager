@@ -47,8 +47,10 @@ export function ServiceIcon({ id }: { id: LauncherServiceId }) {
   const brand = BRANDS[id];
   // 목록에 없는 id는 조용히 아무것도 그리지 않는다 — 깨진 아이콘을 보이느니 비운다
   if (!brand) return null;
+  // 카드에는 이미 라벨(`NOTION` 등)이 붙어 있다. 아이콘까지 이름을 내면 버튼의
+  // 접근 가능한 이름이 "NOTION Notion"이 되므로 여기서는 장식으로 둔다
   return (
-    <svg className="service-icon" viewBox="0 0 24 24" role="img" aria-label={brand.label}>
+    <svg className="service-icon" viewBox="0 0 24 24" aria-hidden="true" data-brand={brand.label}>
       <path fill={brand.color} d={brand.path} />
     </svg>
   );

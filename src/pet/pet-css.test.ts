@@ -15,7 +15,10 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 // 주지 않으므로 파일을 직접 읽는다 (그래서 @types/node가 dev 의존성에 있다)
 const css = readFileSync(resolve("src/pet/pet.css"), "utf8");
 const petRs = readFileSync(resolve("src-tauri/src/pet_bridge.rs"), "utf8");
-const petApp = readFileSync(resolve("src/pet/PetApp.tsx"), "utf8");
+// 화면에 그리는 곳이 둘이다 — 한쪽만 보면 옮겨간 클래스를 놓친다
+const petApp =
+  readFileSync(resolve("src/pet/PetApp.tsx"), "utf8") +
+  readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
 
 /** `--이름: 123px;` 에서 숫자만 꺼낸다. */
 function cssVar(name: string): number | null {
@@ -42,6 +45,7 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "idle", idle: "stretch" },
   { kind: "idle", idle: "shake" },
   { kind: "idle", idle: "shift_feet" },
+  { kind: "swing" },
   { kind: "sassy", sassy: "turn_away" },
   { kind: "sassy", sassy: "head_flick" },
   { kind: "sassy", sassy: "wing_flick" },

@@ -16,6 +16,10 @@ const SNOW = "#f7f9fb";
 const BEAK = "#4a2f2f";
 /** 발 — 분홍빛 살색. */
 const FOOT = "#e3a892";
+/** 방망이 나무결. */
+const BAT_WOOD = "#a1712f";
+/** 방망이 손잡이. */
+const BAT_GRIP = "#26262b";
 
 type PenguinProps = React.ComponentPropsWithoutRef<"svg">;
 
@@ -112,6 +116,21 @@ function Shapes() {
         d="M66 50 C76 57 80 75 74 89 C72 93 68 91 67 87 C64 74 63 60 64 52 Z"
         fill={INK}
       />
+
+      {/*
+       * 야구방망이 — 평소엔 숨어 있고 휘두를 때만 보인다.
+       *
+       * **날개의 연장선으로 그린다.** 손잡이 끝을 날개 끝(약 71,86)에 두고
+       * 팔이 뻗은 방향으로 이어 놓아야, 같은 축(66,52)으로 돌 때 쥐고 휘두르는
+       * 그림이 된다. 팔과 반대 방향으로 그리면 축은 같아도 각도가 어긋나 보인다.
+       */}
+      <g className="pg-bat">
+        <path
+          d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z"
+          fill={BAT_WOOD}
+        />
+        <rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill={BAT_GRIP} />
+      </g>
     </>
   );
 }

@@ -4,6 +4,8 @@ import { Penguin } from "./Penguin";
 import {
   DRAG_THRESHOLD_PX,
   behaviorClass,
+  throwVelocity,
+  verticalClass,
   dragPetBy,
   endPetDrag,
   getPetState,
@@ -20,6 +22,8 @@ interface DragTrack {
   screenX: number;
   screenY: number;
   moved: number;
+  /** 최근 궤적 — 놓는 순간의 속도를 재는 데 쓴다 (던지기 세기). */
+  samples: { x: number; y: number; t: number }[];
 }
 
 /**
@@ -28,6 +32,18 @@ interface DragTrack {
  * 보인다. 이 동작들만 remount로 애니메이션을 되감는다.
  */
 const ONE_SHOT = new Set(["pg--startled", "pg--turn", "pg--land"]);
+
+/** 속도 계산에 남겨 둘 궤적의 길이. 개수로 자르면 포인터 보고 주기(60Hz vs 120Hz)에
+ * 따라 실제로 보는 구간이 달라져 같은 손짓의 세기가 기기마다 달라진다. */
+const SAMPLE_KEEP_MS = 400;
+
+function pushSample(track: DragTrack, x: number, y: number): void {
+  const t = performance.now();
+  track.samples.push({ x, y, t });
+  while (track.samples.length > 2 && t - track.samples[0].t > SAMPLE_KEEP_MS) {
+    track.samples.shift();
+  }
+}
 
 /** 눈동자가 흰자를 벗어나지 않을 만큼만 움직인다 (SVG 좌표 단위). */
 const GAZE_LIMIT = 1.6;
@@ -82,6 +98,7 @@ export function PetApp() {
       screenX: e.screenX,
       screenY: e.screenY,
       moved: 0,
+      samples: [{ x: e.screenX, y: e.screenY, t: performance.now() }],
     };
     dragRef.current = track;
     armedRef.current = false;
@@ -125,6 +142,7 @@ export function PetApp() {
     track.screenX = e.screenX;
     track.screenY = e.screenY;
     track.moved += Math.abs(dx) + Math.abs(dy);
+    pushSample(track, e.screenX, e.screenY);
     if (!armedRef.current) {
       // 아직 드래그 시작이 왕복 중 — 이동량은 누적해 두고 준비되면 흘려보낸다
       pendingRef.current.dx += dx;
@@ -137,6 +155,10 @@ export function PetApp() {
   const handlePointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     const track = dragRef.current;
     if (!track || track.pointerId !== e.pointerId) return;
+    // 놓는 시점을 샘플로 남긴다. 이게 없으면 속도 창이 "마지막으로 움직인 시각"에
+    // 걸려, 세게 뿌린 뒤 손을 멈추고 떼도 옛 속도로 던져진다 (움직임이 없는
+    // pointermove는 아래에서 걸러지므로 정지 구간에는 샘플이 생기지 않는다)
+    pushSample(track, e.screenX, e.screenY);
     dragRef.current = null;
     armedRef.current = false;
     // 놓기 전에 캡처를 풀되, 실패해도 아래 정산은 반드시 진행한다
@@ -160,7 +182,9 @@ export function PetApp() {
       if (track.moved < DRAG_THRESHOLD_PX) {
         await pokePet().catch(() => {});
       } else {
-        await endPetDrag().catch(() => {});
+        // 놓는 순간의 속도가 던지는 세기다 (R12)
+        const { vx, vy } = throwVelocity(track.samples);
+        await endPetDrag(vx, vy).catch(() => {});
       }
     })();
   }, []);
@@ -173,7 +197,11 @@ export function PetApp() {
   // 방향(좌우 반전)은 바깥 무대가, 동작은 SVG가 맡는다. 둘 다 transform을 쓰는데
   // 한 요소에 겹치면 반전이 동작 애니메이션을 뒤집어 버린다.
   const stageClass = `pg-stage${snapshot?.facing === "left" ? " pg-stage--flip" : ""}`;
-  const petClass = `penguin ${snapshot ? behaviorClass(snapshot.behavior) : "pg--walk"}`;
+  const petClass = [
+    "penguin",
+    snapshot ? behaviorClass(snapshot.behavior) : "pg--walk",
+    verticalClass(snapshot?.vertical ?? "level"),
+  ].join(" ");
 
   return (
     <div className={stageClass}>

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DRAG_THRESHOLD_PX, behaviorClass, type Behavior } from "./pet";
+import {
+  DRAG_THRESHOLD_PX,
+  behaviorClass,
+  throwVelocity,
+  verticalClass,
+  type Behavior,
+} from "./pet";
 
 describe("behaviorClass", () => {
   it("동작을_CSS_클래스명으로_매핑한다", () => {
@@ -21,6 +27,8 @@ describe("behaviorClass", () => {
     const all: Behavior[] = [
       { kind: "walk" },
       { kind: "turn" },
+      { kind: "swim" },
+      { kind: "thrown" },
       { kind: "sleep" },
       { kind: "startled" },
       { kind: "dragged" },
@@ -50,5 +58,86 @@ describe("behaviorClass", () => {
 describe("드래그 임계값", () => {
   it("클릭과_드래그를_가르는_임계값이_양수다", () => {
     expect(DRAG_THRESHOLD_PX).toBeGreaterThan(0);
+  });
+});
+
+describe("verticalClass", () => {
+  it("세로_방향을_CSS_클래스명으로_매핑한다", () => {
+    expect(verticalClass("up")).toBe("pg-v--up");
+    expect(verticalClass("down")).toBe("pg-v--down");
+    expect(verticalClass("level")).toBe("pg-v--level");
+  });
+});
+
+describe("throwVelocity", () => {
+  it("궤적에서_초당_속도를_낸다", () => {
+    // 100ms 동안 x로 60px 움직였다 = 600px/s
+    const v = throwVelocity([
+      { x: 0, y: 0, t: 0 },
+      { x: 60, y: -30, t: 100 },
+    ]);
+    expect(v.vx).toBeCloseTo(600, 5);
+    expect(v.vy).toBeCloseTo(-300, 5);
+  });
+
+  it("샘플이_모자라면_영이다", () => {
+    expect(throwVelocity([])).toEqual({ vx: 0, vy: 0 });
+    expect(throwVelocity([{ x: 1, y: 1, t: 1 }])).toEqual({ vx: 0, vy: 0 });
+  });
+
+  it("창_안에_마지막_샘플뿐이어도_직전_샘플로_속도를_낸다", () => {
+    // 포인터 보고가 드물면 최근 120ms 안에 마지막 샘플만 남는다.
+    // 기준점을 마지막 샘플로 잡으면 dt가 0이 되어 던지기가 통째로 죽는다
+    const v = throwVelocity([
+      { x: 0, y: 0, t: 0 },
+      { x: 200, y: 0, t: 200 },
+    ]);
+    expect(v.vx).toBeCloseTo(1000, 5);
+  });
+
+  it("같은_시각_샘플만_있으면_영으로_수렴한다", () => {
+    // 0으로 나누면 Infinity가 나와 펭귄이 화면 밖으로 날아간다
+    const v = throwVelocity([
+      { x: 0, y: 0, t: 5 },
+      { x: 100, y: 0, t: 5 },
+    ]);
+    expect(v).toEqual({ vx: 0, vy: 0 });
+  });
+
+  it("최근_구간만_보므로_초반의_느린_구간에_희석되지_않는다", () => {
+    // 앞에서 오래 머뭇대다 마지막에 확 뿌린 궤적
+    const samples = [
+      { x: 0, y: 0, t: 0 },
+      { x: 2, y: 0, t: 400 },
+      { x: 4, y: 0, t: 800 },
+      { x: 104, y: 0, t: 900 },
+    ];
+    // 전체 평균이면 약 115px/s, 최근 100ms만 보면 1000px/s
+    expect(throwVelocity(samples).vx).toBeCloseTo(1000, 5);
+  });
+
+  it("세게_뿌린_뒤_멈춘_채_떼면_던져지지_않는다", () => {
+    // 생산자(PetApp)는 움직임이 없는 pointermove에는 샘플을 남기지 않고,
+    // 놓는 시점에만 한 번 더 남긴다. 정지 구간이 "같은 좌표의 연속 샘플"로
+    // 나타난다고 가정하면 실제로 만들 수 없는 입력을 검사하게 된다.
+    const samples = [
+      { x: 0, y: 0, t: 0 },
+      { x: 200, y: 0, t: 200 }, // 마지막 움직임
+      { x: 200, y: 0, t: 2200 }, // 2초 멈춰 있다 놓음
+    ];
+    expect(throwVelocity(samples).vx).toBe(0);
+  });
+
+  it("놓는_시점_샘플이_없으면_옛_속도가_그대로_잡힌다", () => {
+    // 위 테스트가 무엇을 지키는지 반대편에서 고정한다 — 놓는 샘플을 빠뜨리면
+    // 2초를 멈춰 있었어도 그때의 속도로 던져진다
+    const withRelease = [
+      { x: 0, y: 0, t: 0 },
+      { x: 200, y: 0, t: 200 },
+      { x: 200, y: 0, t: 2200 },
+    ];
+    const withoutRelease = withRelease.slice(0, 2);
+    expect(throwVelocity(withRelease).vx).toBe(0);
+    expect(throwVelocity(withoutRelease).vx).toBeCloseTo(1000, 5);
   });
 });

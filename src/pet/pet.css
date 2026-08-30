@@ -429,6 +429,99 @@ body,
   transform: none;
 }
 
+/* ── 헤엄 — 공중을 날개로 저어 이동한다 (R11) ──────────────────── */
+
+/* 아델리 펭귄은 날개로 물을 젓는다. 공중 이동도 같은 동작으로 표현하면
+ * "나는" 것보다 이 펭귄답다. */
+@keyframes pg-paddle {
+  0%,
+  100% {
+    transform: rotate(-38deg);
+  }
+  50% {
+    transform: rotate(18deg);
+  }
+}
+@keyframes pg-paddle-far {
+  0%,
+  100% {
+    transform: rotate(38deg);
+  }
+  50% {
+    transform: rotate(-18deg);
+  }
+}
+/* 발은 뒤로 모아 뻗는다 */
+@keyframes pg-trail {
+  0%,
+  100% {
+    transform: translateY(2px) rotate(-12deg);
+  }
+  50% {
+    transform: translateY(4px) rotate(-18deg);
+  }
+}
+
+.pg--swim .pg-wing-near {
+  animation: pg-paddle 0.34s ease-in-out infinite;
+}
+.pg--swim .pg-wing-far {
+  animation: pg-paddle-far 0.34s ease-in-out infinite;
+}
+.pg--swim .pg-foot--near,
+.pg--swim .pg-foot--far {
+  animation: pg-trail 0.34s ease-in-out infinite;
+}
+/* 공중에서는 그림자를 지운다 — 바닥에 붙어 있지 않다 */
+.pg--swim .pg-shadow {
+  opacity: 0;
+}
+
+/* ── 세로 방향에 따른 몸 기울기 ───────────────────────────────────
+ * 진행 방향으로 몸을 눕히면 오르내림이 읽힌다. 지상 동작은 level이라
+ * 이 규칙이 걸리지 않는다(코어가 Level로 고정해 보낸다). */
+/* 기울기는 SVG 루트에 건다. 몸통·머리에 걸면 그 요소에서 돌고 있는 숨쉬기
+ * 애니메이션이 일반 transform 선언을 이겨 기울기가 아예 적용되지 않는다.
+ * 루트는 헤엄 중에 애니메이션이 없어 안전하다(회전은 Turn 전용인데 배타적이다).
+ * 좌우 반전은 부모(.pg-stage)가 하므로, 왼쪽을 볼 때는 이 회전도 함께 미러링돼
+ * 화면상 올바른 방향으로 보인다. */
+.penguin {
+  transition: transform 0.25s ease-out;
+}
+.pg--swim.pg-v--up {
+  transform: rotate(-20deg);
+}
+.pg--swim.pg-v--down {
+  transform: rotate(20deg);
+}
+
+/* ── 던져짐 — 포물선을 그리며 구른다 (R12) ─────────────────────── */
+
+@keyframes pg-tumble {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 창 안에서 몸 전체가 구른다. 창의 궤적(포물선)은 Rust가 그린다. */
+.pg--thrown .pg-body,
+.pg--thrown .pg-head {
+  transform-origin: 50px 76px;
+  animation: pg-tumble 0.65s linear infinite;
+}
+.pg--thrown .pg-wing-near {
+  transform: rotate(-50deg);
+}
+.pg--thrown .pg-wing-far {
+  transform: rotate(50deg);
+}
+.pg--thrown .pg-shadow {
+  opacity: 0;
+}
+
 /* 움직임을 줄이는 시스템 설정을 존중한다 */
 @media (prefers-reduced-motion: reduce) {
   .penguin *,

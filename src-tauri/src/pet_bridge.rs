@@ -12,7 +12,7 @@ use tauri::{
 };
 use tauri_plugin_store::StoreExt;
 
-use crate::pet::{Behavior, Bounds, Facing, Pet, Snapshot};
+use crate::pet::{Behavior, Bounds, Facing, Pet, Snapshot, Vertical};
 use crate::timer_bridge::now_ms;
 
 /// 웹뷰가 구독하는 상태 이벤트.
@@ -28,6 +28,20 @@ const SLEEP_TICK_MS: u64 = 500;
 const BOUNDS_REFRESH_MS: u64 = 2_000;
 
 pub struct PetState(pub Mutex<Pet>);
+
+/// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
+/// **CSS 클래스에 영향을 주는 값은 빠짐없이 들어가야 한다.** 하나라도 빠지면
+/// 그 값만 바뀌는 전이가 웹뷰에 영영 도달하지 않는다(조용한 실패).
+pub type Look = (Behavior, Facing, Vertical);
+
+pub fn look_of(snapshot: &Snapshot) -> Look {
+    (snapshot.behavior, snapshot.facing, snapshot.vertical)
+}
+
+/// 겉모습이 달라졌는가. 매 틱 emit하면 웹뷰가 이유 없이 20Hz로 리렌더한다.
+pub fn should_notify(last: Option<Look>, now: Look) -> bool {
+    last != Some(now)
+}
 
 /// 프론트의 `settings.ts`와 공유하는 저장 위치. 웹뷰가 저장하고 Rust가 읽는다 —
 /// 시작 시점에 펭귄을 띄울지는 웹뷰가 뜨기 전에 정해져야 깜빡임이 없다.
@@ -118,6 +132,7 @@ pub fn bounds_from_work_area(
         left,
         // 영역이 펭귄보다 좁은 극단적 경우에도 right < left가 되지 않게 한다
         right: (left + width - pet_size).max(left),
+        top,
         floor_y: (top + height - pet_size).max(top),
     }
 }
@@ -145,7 +160,9 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
         let mut bounds_read_at: u64 = 0;
         // 웹뷰에 마지막으로 알린 겉모습. 창은 20Hz로 움직이지만 CSS 클래스는
         // 전이할 때만 바뀌므로, 매 틱 emit하면 웹뷰가 이유 없이 20Hz로 리렌더한다.
-        let mut last_look: Option<(Behavior, Facing)> = None;
+        // **세로 방향도 포함해야 한다** — 헤엄 중 오름→내림은 동작도 좌우 방향도
+        // 그대로라, 빠뜨리면 몸 기울기가 영영 갱신되지 않는다.
+        let mut last_look: Option<(Behavior, Facing, Vertical)> = None;
         loop {
             let Some(window) = pet_window(&app) else {
                 // 설정에서 껐거나 아직 만들기 전 — 창이 생길 때까지 느리게 돈다
@@ -172,10 +189,10 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             };
 
             let moves = snapshot.behavior.moves_window();
-            let look = (snapshot.behavior, snapshot.facing);
+            let look = look_of(&snapshot);
             // 졸기로 "전이하는" 그 스냅샷은 반드시 알려야 한다. 움직임 여부로만
             // 거르면 자는 모습이 웹뷰에 영영 도달하지 않아 직전 동작이 그대로 남는다.
-            apply(&window, snapshot, moves, last_look != Some(look));
+            apply(&window, snapshot, moves, should_notify(last_look, look));
             last_look = Some(look);
 
             // 자는 동안에는 창을 옮기지 않고 틱도 느려진다 (R10)
@@ -229,10 +246,11 @@ pub fn pet_drag_by(dx: f64, dy: f64, state: State<'_, PetState>, app: AppHandle)
     flush(&app);
 }
 
-/// 드래그 놓기 — 떨어뜨린다 (R6).
+/// 드래그 놓기 (R6, R12). 웹뷰가 잰 놓는 순간의 속도(논리 px/초)를 그대로 넘긴다 —
+/// 세게 던졌으면 포물선을 그리고, 살짝 놓았으면 제자리에서 떨어진다.
 #[tauri::command]
-pub fn pet_drag_end(state: State<'_, PetState>, app: AppHandle) {
-    state.0.lock().unwrap().drag_end(now_ms());
+pub fn pet_drag_end(vx: f64, vy: f64, state: State<'_, PetState>, app: AppHandle) {
+    state.0.lock().unwrap().drag_end(now_ms(), vx, vy);
     flush(&app);
 }
 
@@ -290,6 +308,46 @@ mod tests {
                 "`{name}`이 lib.rs의 invoke_handler 목록에 없다"
             );
         }
+    }
+
+    use crate::pet::{IdleKind, Vertical};
+
+    #[test]
+    fn 겉모습이_그대로면_다시_알리지_않는다() {
+        let look = (Behavior::Walk, Facing::Right, Vertical::Level);
+        assert!(!should_notify(Some(look), look));
+        assert!(should_notify(None, look), "처음에는 알려야 한다");
+    }
+
+    #[test]
+    fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
+        // 헤엄 중 오름→내림은 동작도 좌우 방향도 그대로다. 이걸 놓치면
+        // 몸 기울기가 영영 갱신되지 않는다
+        let up = (Behavior::Swim, Facing::Right, Vertical::Up);
+        let down = (Behavior::Swim, Facing::Right, Vertical::Down);
+        assert!(should_notify(Some(up), down));
+    }
+
+    #[test]
+    fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
+        let right = (Behavior::Walk, Facing::Right, Vertical::Level);
+        let left = (Behavior::Walk, Facing::Left, Vertical::Level);
+        assert!(should_notify(Some(right), left));
+    }
+
+    #[test]
+    fn 유휴_종류가_바뀌면_웹뷰에_알린다() {
+        let a = (
+            Behavior::Idle { idle: IdleKind::LookAround },
+            Facing::Right,
+            Vertical::Level,
+        );
+        let b = (
+            Behavior::Idle { idle: IdleKind::Shake },
+            Facing::Right,
+            Vertical::Level,
+        );
+        assert!(should_notify(Some(a), b));
     }
 
     #[test]

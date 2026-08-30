@@ -1,3 +1,4 @@
+pub mod launcher_bridge;
 pub mod pet;
 pub mod pet_bridge;
 pub mod pomodoro;
@@ -170,6 +171,7 @@ pub fn run() {
             pet_bridge::pet_drag_end,
             pet_bridge::pet_get_state,
             pet_bridge::pet_set_enabled,
+            launcher_bridge::launcher_open,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

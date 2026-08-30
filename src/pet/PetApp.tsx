@@ -89,7 +89,9 @@ export function PetApp() {
     // 팝오버가 열린다. 이미 드래그 중이면 두 번째 포인터는 무시한다: 기준점을
     // 덮어쓰면 원래 포인터의 다음 이동량이 엉뚱한 값이 돼 펭귄이 순간이동한다.
     if (e.button !== 0) {
-      // 오른쪽(그 외) 버튼 — 창을 연다. 왼쪽은 빠따가 가져갔다
+      // 오른쪽(그 외) 버튼 — 창을 연다. 왼쪽은 빠따가 가져갔다.
+      // 왼쪽을 누르고 있는 중이면 무시한다: 마우스는 모든 버튼이 같은 pointerId를
+      // 쓰기 때문에, 오른쪽을 떼는 pointerup이 진행 중인 드래그를 끝내 버린다
       if (e.button === 2 && !dragRef.current) void openPetPopover().catch(() => {});
       return;
     }
@@ -239,6 +241,7 @@ export function PetApp() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
+          onContextMenu={(e) => e.preventDefault()}
         />
       </div>
     </>

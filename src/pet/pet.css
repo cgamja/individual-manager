@@ -810,7 +810,3 @@ body,
   animation: pg-swing-wing 0.42s cubic-bezier(0.28, 0, 0.12, 1) forwards;
 }
 
-/* 후광에 깔린 복제본은 방망이도 함께 두른다 — 배경에서 방망이만 묻히지 않게 */
-.pg-halo .pg-bat {
-  opacity: inherit;
-}

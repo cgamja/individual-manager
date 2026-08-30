@@ -250,16 +250,16 @@ function Bat({ facing }: { facing: "left" | "right" }) {
   return (
     <svg
       className={`pg-bat ${facing === "left" ? "pg-bat--left" : ""}`}
-      viewBox="0 0 60 120"
+      viewBox="0 0 30 60"
       aria-hidden="true"
       xmlns="http://www.w3.org/2000/svg"
     >
       {/* 손잡이 → 타격부로 갈수록 굵어진다 */}
       <path
-        d="M27 112 L33 112 L38 34 C38 22 34 14 30 14 C26 14 22 22 22 34 Z"
+        d="M13.2 56 L16.8 56 L19.4 17 C19.4 11 17.2 7 15 7 C12.8 7 10.6 11 10.6 17 Z"
         fill="#b98b4e"
       />
-      <rect x="25.5" y="106" width="9" height="12" rx="3" fill="#3a3a3f" />
+      <rect x="12.4" y="53" width="5.2" height="6.5" rx="1.8" fill="#3a3a3f" />
     </svg>
   );
 }

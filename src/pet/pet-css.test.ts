@@ -15,6 +15,7 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 // 주지 않으므로 파일을 직접 읽는다 (그래서 @types/node가 dev 의존성에 있다)
 const css = readFileSync(resolve("src/pet/pet.css"), "utf8");
 const petRs = readFileSync(resolve("src-tauri/src/pet_bridge.rs"), "utf8");
+const petApp = readFileSync(resolve("src/pet/PetApp.tsx"), "utf8");
 
 /** `--이름: 123px;` 에서 숫자만 꺼낸다. */
 function cssVar(name: string): number | null {
@@ -100,5 +101,26 @@ describe("창 여백 상수 동기화", () => {
     expect(a, `CSS에서 --${cssName}를 못 찾았다`).not.toBeNull();
     expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
     expect(a).toBe(b);
+  });
+});
+
+describe("PetApp이 쓰는 클래스에 스타일이 있다", () => {
+  // 실제로 겪은 사고: 말풍선·방망이를 그려 놓고 CSS를 빠뜨렸다. 아무 테스트도
+  // 실패하지 않았고, 방망이가 거대한 정지 이미지로 화면에 남았다.
+  // 동작 클래스(pg--)는 위에서 따로 보고, 여기서는 UI 클래스(pg-)를 본다.
+  const used = new Set<string>();
+  for (const m of petApp.matchAll(/\bpg-[a-z0-9-]+/g)) {
+    const cls = m[0];
+    // 동작·상태 클래스는 코어가 만들어 위 테스트가 담당한다
+    if (cls.startsWith("pg--") || cls.startsWith("pg-v--")) continue;
+    used.add(cls);
+  }
+
+  it("검사할 클래스를 찾았다", () => {
+    expect(used.size).toBeGreaterThan(0);
+  });
+
+  it.each([...used].map((c) => [c] as const))("%s 에 규칙이 있다", (cls) => {
+    expect(css).toContain(`.${cls}`);
   });
 });

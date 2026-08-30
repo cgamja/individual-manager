@@ -74,12 +74,16 @@ pub const PET_LABEL: &str = "pet";
 /// 펭귄 자체가 차지하는 한 변 (논리 px). 이동 경계는 이 값으로 계산한다.
 pub const PET_SIZE: f64 = 140.0;
 /// 펭귄 좌우로 비워 두는 여백 — 방망이가 휘둘러질 자리.
-pub const PET_PAD_X: f64 = 70.0;
+pub const PET_PAD_X: f64 = 44.0;
 /// 펭귄 위로 비워 두는 여백 — 말풍선이 뜰 자리.
-pub const PET_PAD_TOP: f64 = 84.0;
+pub const PET_PAD_TOP: f64 = 64.0;
 
 /// 창은 펭귄보다 크다. 창을 펭귄 크기에 딱 맞추면 말풍선과 방망이가 잘린다.
-/// 여백은 투명하고 포인터 이벤트를 받지 않아 클릭을 가로채지 않는다.
+///
+/// **여백도 클릭을 먹는다.** 투명하다고 통과되지 않는다 — macOS에서는 투명한
+/// 창 영역도 그 창이 히트 테스트를 가져가고, CSS `pointer-events`로는 다른 앱에
+/// 넘길 수 없다(KTD3에서 클릭 통과를 안 쓰기로 했다). 그래서 여백은 말풍선과
+/// 방망이에 꼭 필요한 만큼만 둔다.
 pub const PET_WINDOW_W: f64 = PET_SIZE + PET_PAD_X * 2.0;
 pub const PET_WINDOW_H: f64 = PET_SIZE + PET_PAD_TOP;
 
@@ -151,12 +155,19 @@ pub fn bounds_from_work_area(
     let top = f64::from(origin.1) / scale;
     let width = f64::from(size.0) / scale;
     let height = f64::from(size.1) / scale;
+    // 경계는 **창 전체**가 화면 안에 들어오도록 잡는다. 펭귄 크기만 빼면
+    // 창의 여백(말풍선·방망이)이 화면 밖으로 나가, 정작 벽에 붙었을 때
+    // 방망이가 안 보이고 위쪽에서는 말풍선이 메뉴바 뒤로 숨는다.
+    let min_x = left + PET_PAD_X;
+    let max_x = left + width - pet_size - PET_PAD_X;
+    let min_y = top + PET_PAD_TOP;
+    let max_y = top + height - pet_size;
     Bounds {
-        left,
-        // 영역이 펭귄보다 좁은 극단적 경우에도 right < left가 되지 않게 한다
-        right: (left + width - pet_size).max(left),
-        top,
-        floor_y: (top + height - pet_size).max(top),
+        left: min_x,
+        // 영역이 창보다 좁은 극단적 경우에도 right < left가 되지 않게 한다
+        right: max_x.max(min_x),
+        top: min_y.min(max_y),
+        floor_y: max_y.max(min_y),
     }
 }
 
@@ -519,28 +530,48 @@ mod tests {
     }
 
     #[test]
-    fn 작업_영역을_논리_좌표_경계로_변환한다() {
-        // 배율 1.0, 메뉴바 25px를 뺀 1440x875 영역
+    fn 경계는_창_여백까지_화면_안에_들어오게_잡는다() {
+        // 배율 1.0, 메뉴바 25px를 뺀 1440x875 영역.
+        // 펭귄만이 아니라 말풍선·방망이 자리까지 화면 안이어야 한다
         let b = bounds_from_work_area((0, 25), (1440, 875), 1.0, 140.0);
-        assert_eq!(b.left, 0.0);
-        assert_eq!(b.right, 1440.0 - 140.0);
+        assert_eq!(b.left, PET_PAD_X, "왼쪽 여백만큼 안으로 들어와야 한다");
+        assert_eq!(b.right, 1440.0 - 140.0 - PET_PAD_X);
+        assert_eq!(b.top, 25.0 + PET_PAD_TOP, "말풍선이 메뉴바 뒤로 숨으면 안 된다");
         assert_eq!(b.floor_y, 25.0 + 875.0 - 140.0);
+    }
+
+    #[test]
+    fn 어느_경계에_서도_창_전체가_화면_안이다() {
+        let area = (0.0, 25.0, 1440.0, 875.0);
+        let b = bounds_from_work_area((0, 25), (1440, 875), 1.0, PET_SIZE);
+        for (px, py) in [
+            (b.left, b.top),
+            (b.right, b.top),
+            (b.left, b.floor_y),
+            (b.right, b.floor_y),
+        ] {
+            let (wx, wy) = window_origin(px, py);
+            assert!(wx >= area.0 - 0.001, "창이 왼쪽으로 벗어남: {wx}");
+            assert!(wx + PET_WINDOW_W <= area.0 + area.2 + 0.001, "오른쪽으로 벗어남");
+            assert!(wy >= area.1 - 0.001, "창이 위로 벗어남: {wy}");
+            assert!(wy + PET_WINDOW_H <= area.1 + area.3 + 0.001, "아래로 벗어남");
+        }
     }
 
     #[test]
     fn 레티나_배율에서도_논리_좌표로_환산한다() {
         // 물리 2880x1750 = 논리 1440x875 (배율 2.0)
         let b = bounds_from_work_area((0, 50), (2880, 1750), 2.0, 140.0);
-        assert_eq!(b.left, 0.0);
-        assert_eq!(b.right, 1440.0 - 140.0);
+        assert_eq!(b.left, PET_PAD_X);
+        assert_eq!(b.right, 1440.0 - 140.0 - PET_PAD_X);
         assert_eq!(b.floor_y, 25.0 + 875.0 - 140.0);
     }
 
     #[test]
     fn 보조_모니터처럼_원점이_음수여도_경계가_밀린다() {
         let b = bounds_from_work_area((-1920, 0), (1920, 1080), 1.0, 140.0);
-        assert_eq!(b.left, -1920.0);
-        assert_eq!(b.right, -1920.0 + 1920.0 - 140.0);
+        assert_eq!(b.left, -1920.0 + PET_PAD_X);
+        assert_eq!(b.right, -1920.0 + 1920.0 - 140.0 - PET_PAD_X);
     }
 
     #[test]

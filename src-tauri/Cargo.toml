@@ -21,19 +21,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 tauri-plugin-positioner = { version = "2.3.3", features = ["tray-icon"] }
 tauri-plugin-store = "2.4.4"
 tauri-plugin-notification = "2.3.3"
-# TLS: 0.13에서 "rustls-tls"가 "rustls"로 개명됨 (rustls 백엔드 + OS 신뢰 저장소 검증)
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
-# macOS Keychain 토큰 보관 (기본 feature = apple-native store)
-keyring = "4"
-# "오늘" 판정은 Rust가 소유한다 (KTD3) — 로컬 날짜 YYYY-MM-DD 생성 전용
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
-tokio = { version = "1", features = ["time"] }
 
-[dev-dependencies]
-tokio = { version = "1", features = ["rt", "macros", "time"] }
-wiremock = "0.6"
+# v2.0에서 걷어낸 것 (앱이 서비스 API를 직접 부르지 않는다 — PRINCIPLE 1):
+#   reqwest·keyring·chrono·tokio·serde_json, dev의 wiremock
 

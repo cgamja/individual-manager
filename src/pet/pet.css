@@ -1,8 +1,10 @@
-/* 바탕화면 펭귄 창의 스타일.
+/* 바탕화면 펭귄의 스타일과 동작 애니메이션.
  *
  * 창은 투명이다. `macOSPrivateApi: true`만으로는 부족하고 html/body 배경을
  * 명시적으로 투명하게 둬야 흰 사각형이 보이지 않는다 (KTD6).
  *
+ * 책임 분리 (KTD2): 창이 어디 있고 지금 무슨 동작인지는 Rust가 정하고,
+ * 부위가 어떻게 움직이는지는 여기가 정한다. Rust는 `pg--*` 클래스 하나만 바꾼다.
  * 애니메이션은 transform과 opacity만 쓴다 — GPU 합성 대상이라 상주 앱에서도 싸다.
  * `backdrop-filter`는 macOS 투명 창에서 깨지므로 쓰지 않는다.
  */
@@ -16,20 +18,409 @@ body,
   height: 100%;
   background: transparent;
   overflow: hidden;
-  /* 펭귄을 드래그해도 텍스트 선택 커서가 뜨지 않게 한다 */
   user-select: none;
   -webkit-user-select: none;
-  cursor: default;
 }
 
-#pet-root {
+/* 무대 — 진행 방향(좌우 반전)만 담당한다. 동작 애니메이션과 transform이
+ * 겹치지 않도록 층을 나눠 둔다. */
+.pg-stage {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: flex-end;
   justify-content: center;
+}
+
+.pg-stage--flip {
+  transform: scaleX(-1);
 }
 
 .penguin {
   width: 100%;
   height: 100%;
   overflow: visible;
+  cursor: grab;
+}
+
+.pg--dragged {
+  cursor: grabbing;
+}
+
+/* SVG 부위의 회전축. 퍼센트는 요소의 바운딩 박스 기준이라 부위마다 어긋나므로
+ * viewBox 좌표로 직접 지정한다. */
+.pg-head {
+  transform-origin: 50px 44px;
+}
+.pg-body {
+  transform-origin: 50px 113px;
+}
+.pg-eye {
+  transform-origin: 57.5px 27.5px;
+}
+.pg-wing-near {
+  transform-origin: 66px 52px;
+}
+.pg-wing-far {
+  transform-origin: 38px 54px;
+}
+.pg-foot--near,
+.pg-foot--far {
+  transform-origin: 56px 112px;
+}
+
+/* ── 베이스 레이어 — 동작과 무관하게 항상 돈다 ─────────────────────
+ * 살아 있다는 느낌의 바닥. 이게 없으면 유휴 상태가 정지 화면처럼 보인다. */
+
+@keyframes pg-breathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.022);
+  }
+}
+
+/* 4~7초에 한 번, 가끔 두 번 연속으로 깜빡인다 */
+@keyframes pg-blink {
+  0%,
+  91%,
+  100% {
+    transform: scaleY(1);
+  }
+  92.5% {
+    transform: scaleY(0.08);
+  }
+  94% {
+    transform: scaleY(1);
+  }
+  95.5% {
+    transform: scaleY(0.08);
+  }
+  97% {
+    transform: scaleY(1);
+  }
+}
+
+.pg-body {
+  animation: pg-breathe 3.2s ease-in-out infinite;
+}
+
+.pg-eye {
+  animation: pg-blink 5.5s linear infinite;
+}
+
+/* ── 걷기 ──────────────────────────────────────────────────────── */
+
+@keyframes pg-step {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(4px, -5px);
+  }
+}
+
+/* 뒤뚱거림 — 몸통이 좌우로 기울고 살짝 위아래로 뜬다 */
+@keyframes pg-waddle {
+  0%,
+  100% {
+    transform: rotate(-5deg) translateY(0);
+  }
+  50% {
+    transform: rotate(5deg) translateY(-2px);
+  }
+}
+
+.pg--walk .pg-foot--near {
+  animation: pg-step 0.52s ease-in-out infinite;
+}
+.pg--walk .pg-foot--far {
+  /* 반 박자 밀어 두 발이 교차하게 한다 */
+  animation: pg-step 0.52s ease-in-out infinite -0.26s;
+}
+.pg--walk .pg-body,
+.pg--walk .pg-head {
+  animation: pg-waddle 0.52s ease-in-out infinite;
+}
+
+/* ── 방향 전환 — 제자리에서 돈다 (R4) ──────────────────────────── */
+
+@keyframes pg-turn {
+  0% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(0.12);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+.pg--turn {
+  animation: pg-turn 0.25s ease-in-out;
+}
+
+/* ── 유휴 동작 ─────────────────────────────────────────────────── */
+
+@keyframes pg-look-around {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-13deg);
+  }
+  60% {
+    transform: rotate(13deg);
+  }
+}
+
+.pg--idle-look-around .pg-head {
+  animation: pg-look-around 2.6s ease-in-out infinite;
+}
+
+@keyframes pg-stretch-wing {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  40%,
+  60% {
+    transform: rotate(-42deg);
+  }
+}
+@keyframes pg-stretch-wing-far {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  40%,
+  60% {
+    transform: rotate(42deg);
+  }
+}
+@keyframes pg-stretch-body {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.08) translateY(-3px);
+  }
+}
+
+.pg--idle-stretch .pg-wing-near {
+  animation: pg-stretch-wing 1.6s ease-in-out infinite;
+}
+.pg--idle-stretch .pg-wing-far {
+  animation: pg-stretch-wing-far 1.6s ease-in-out infinite;
+}
+.pg--idle-stretch .pg-body {
+  animation: pg-stretch-body 1.6s ease-in-out infinite;
+}
+
+/* 몸 털기 — 빠른 좌우 진동 */
+@keyframes pg-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  20% {
+    transform: translateX(-3px) rotate(-4deg);
+  }
+  40% {
+    transform: translateX(3px) rotate(4deg);
+  }
+  60% {
+    transform: translateX(-2px) rotate(-3deg);
+  }
+  80% {
+    transform: translateX(2px) rotate(3deg);
+  }
+}
+
+.pg--idle-shake .pg-body,
+.pg--idle-shake .pg-head {
+  animation: pg-shake 0.42s ease-in-out infinite;
+}
+
+/* 발 갈아 딛기 — 한 발씩 번갈아 든다 */
+@keyframes pg-shift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.pg--idle-shift-feet .pg-foot--near {
+  animation: pg-shift 1.4s ease-in-out infinite;
+}
+.pg--idle-shift-feet .pg-foot--far {
+  animation: pg-shift 1.4s ease-in-out infinite -0.7s;
+}
+
+/* ── 졸기 ──────────────────────────────────────────────────────── */
+
+@keyframes pg-doze {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(0.94);
+  }
+  50% {
+    transform: translateY(3px) scaleY(0.92);
+  }
+}
+
+@keyframes pg-nod {
+  0%,
+  100% {
+    transform: rotate(6deg) translateY(2px);
+  }
+  50% {
+    transform: rotate(12deg) translateY(5px);
+  }
+}
+
+.pg--sleep .pg-body {
+  animation: pg-doze 4s ease-in-out infinite;
+}
+.pg--sleep .pg-head {
+  animation: pg-nod 4s ease-in-out infinite;
+}
+/* 자는 동안에는 눈을 감고 있는다 */
+.pg--sleep .pg-eye {
+  animation: none;
+  transform: scaleY(0.12);
+}
+
+/* ── 반응 ──────────────────────────────────────────────────────── */
+
+/* 놀람 — 위로 튀며 날개를 활짝 편다 (R5) */
+@keyframes pg-startle-body {
+  0% {
+    transform: translateY(0) scaleY(1);
+  }
+  30% {
+    transform: translateY(-7px) scaleY(1.06);
+  }
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+}
+@keyframes pg-startle-wing {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(-55deg);
+  }
+}
+@keyframes pg-startle-wing-far {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(55deg);
+  }
+}
+
+.pg--startled .pg-body,
+.pg--startled .pg-head {
+  animation: pg-startle-body 0.4s ease-out;
+}
+.pg--startled .pg-wing-near {
+  animation: pg-startle-wing 0.4s ease-out;
+}
+.pg--startled .pg-wing-far {
+  animation: pg-startle-wing-far 0.4s ease-out;
+}
+
+/* 매달림 — 집어 든 동안 날개는 위로, 발은 버둥거린다 (R6) */
+@keyframes pg-dangle-wing {
+  0%,
+  100% {
+    transform: rotate(-30deg);
+  }
+  50% {
+    transform: rotate(-38deg);
+  }
+}
+@keyframes pg-dangle-wing-far {
+  0%,
+  100% {
+    transform: rotate(30deg);
+  }
+  50% {
+    transform: rotate(38deg);
+  }
+}
+@keyframes pg-kick {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-8deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(8deg);
+  }
+}
+
+.pg--dragged .pg-wing-near {
+  animation: pg-dangle-wing 0.5s ease-in-out infinite;
+}
+.pg--dragged .pg-wing-far {
+  animation: pg-dangle-wing-far 0.5s ease-in-out infinite;
+}
+.pg--dragged .pg-foot--near {
+  animation: pg-kick 0.32s ease-in-out infinite;
+}
+.pg--dragged .pg-foot--far {
+  animation: pg-kick 0.32s ease-in-out infinite -0.16s;
+}
+/* 들려 있는 동안에는 그림자를 지운다 — 바닥에 붙어 있지 않다 */
+.pg--dragged .pg-shadow,
+.pg--falling .pg-shadow {
+  opacity: 0;
+}
+
+/* 낙하 — 날개를 뒤로 젖히고 떨어진다 */
+.pg--falling .pg-wing-near {
+  transform: rotate(-22deg);
+}
+.pg--falling .pg-wing-far {
+  transform: rotate(22deg);
+}
+
+/* 착지 — 눌렸다 펴진다 (R6) */
+@keyframes pg-land {
+  0% {
+    transform: scaleY(0.78) scaleX(1.12);
+  }
+  60% {
+    transform: scaleY(1.04) scaleX(0.98);
+  }
+  100% {
+    transform: scaleY(1) scaleX(1);
+  }
+}
+
+.pg--land .pg-body,
+.pg--land .pg-head {
+  animation: pg-land 0.3s ease-out;
+}
+
+/* 움직임을 줄이는 시스템 설정을 존중한다 */
+@media (prefers-reduced-motion: reduce) {
+  .penguin *,
+  .penguin {
+    animation: none !important;
+  }
 }

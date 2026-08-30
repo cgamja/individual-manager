@@ -41,7 +41,7 @@ fn hide_popover(_app: &AppHandle, window: &WebviewWindow) {
     let _ = window.hide();
 }
 
-fn toggle_popover(app: &AppHandle) {
+pub(crate) fn toggle_popover(app: &AppHandle) {
     let Some(window) = main_window(app) else {
         return;
     };
@@ -109,10 +109,18 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // 바탕화면 펭귄 — 실패해도 앱 본체는 계속 뜬다 (장식 기능이 셸을 막지 않는다)
+            // 바탕화면 펭귄 — 실패해도 앱 본체는 계속 뜬다 (장식 기능이 셸을 막지 않는다).
+            // 실제 이동 영역은 첫 틱에서 모니터를 읽어 정정하므로 여기서는 잠정값이다.
+            let start = timer_bridge::now_ms();
+            app.manage(pet_bridge::PetState(Mutex::new(pet::Pet::new(
+                start,
+                start,
+                pet::Bounds { left: 0.0, right: 800.0, floor_y: 400.0 },
+            ))));
             if let Err(err) = pet_bridge::create_pet_window(app.handle()) {
                 eprintln!("펭귄 창 생성 실패: {err}");
             }
+            pet_bridge::spawn_pet_tick_thread(app.handle().clone());
 
             Ok(())
         })

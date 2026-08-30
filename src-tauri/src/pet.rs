@@ -18,12 +18,15 @@ const TURN_MS: u64 = 250;
 const STARTLED_MS: u64 = 400;
 const LAND_MS: u64 = 300;
 /// 마지막 자극(클릭·드래그) 이후 이만큼 지나면 졸기로 넘어간다.
-const SLEEP_AFTER_MS: u64 = 90_000;
+/// 길게 잡는다 — 펭귄이 깨어서 돌아다니는 게 이 기능의 목적이고, 졸기는 양념이다.
+const SLEEP_AFTER_MS: u64 = 300_000;
 
 const WALK_MS: (u64, u64) = (2_500, 6_000);
-const IDLE_MS: (u64, u64) = (1_500, 4_000);
+const IDLE_MS: (u64, u64) = (1_200, 3_200);
 /// 졸기는 끝이 있다 — 깨어나 다시 움직인다. 종착 상태가 아니다.
-const SLEEP_MS: (u64, u64) = (20_000, 45_000);
+const SLEEP_MS: (u64, u64) = (12_000, 25_000);
+/// 유휴가 끝났을 때 다시 걸을 확률(%). 멈춰 있는 시간보다 걷는 시간이 길어야 한다.
+const WALK_AGAIN_PERCENT: u64 = 72;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -283,7 +286,7 @@ impl Pet {
         // 걷다 쉬거나, 쉬다 걷는다
         if matches!(self.behavior, Behavior::Walk) {
             self.enter_idle(now_ms);
-        } else if self.range((0, 99)) < 55 {
+        } else if self.range((0, 99)) < WALK_AGAIN_PERCENT {
             let until = now_ms + self.range(WALK_MS);
             self.enter(Behavior::Walk, until);
         } else {
@@ -447,12 +450,27 @@ mod tests {
     }
 
     #[test]
-    fn 구십초_이상_자극이_없으면_졸기로_전이한다() {
+    fn 오랫동안_자극이_없으면_졸기로_전이한다() {
         let mut p = pet();
-        let seen = drive(&mut p, 100, 120_000, 250, BOUNDS);
+        let seen = drive(&mut p, 100, SLEEP_AFTER_MS + 30_000, 250, BOUNDS);
         assert!(
             seen.iter().any(|s| s.behavior == Behavior::Sleep),
-            "90초가 지나면 졸기가 나와야 한다"
+            "자극 없이 오래 두면 졸기가 나와야 한다"
+        );
+    }
+
+    #[test]
+    fn 졸기_전까지는_걷는_시간이_멈춰_있는_시간보다_길다() {
+        let mut p = pet();
+        let seen = drive(&mut p, 100, 120_000, 100, BOUNDS);
+        let walking = seen
+            .iter()
+            .filter(|s| matches!(s.behavior, Behavior::Walk | Behavior::Turn))
+            .count();
+        assert!(
+            walking * 2 > seen.len(),
+            "걷는 비중이 절반을 넘어야 한다 (걷기 {walking} / 전체 {})",
+            seen.len()
         );
     }
 
@@ -461,7 +479,7 @@ mod tests {
         let mut p = pet();
         // 졸 때까지 진행시킨다
         let mut t = 100;
-        while p.behavior() != Behavior::Sleep && t < 200_000 {
+        while p.behavior() != Behavior::Sleep && t < SLEEP_AFTER_MS + 60_000 {
             p.step(t, BOUNDS);
             t += 250;
         }
@@ -483,7 +501,7 @@ mod tests {
     fn 클릭은_졸기_상태에서도_놀람으로_깨운다() {
         let mut p = pet();
         let mut t = 100;
-        while p.behavior() != Behavior::Sleep && t < 200_000 {
+        while p.behavior() != Behavior::Sleep && t < SLEEP_AFTER_MS + 60_000 {
             p.step(t, BOUNDS);
             t += 250;
         }

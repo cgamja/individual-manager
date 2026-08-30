@@ -17,14 +17,17 @@ const BEAK = "#4a2f2f";
 /** 발 — 분홍빛 살색. */
 const FOOT = "#e3a892";
 
-export function Penguin() {
+type PenguinProps = React.ComponentPropsWithoutRef<"svg">;
+
+export function Penguin({ className = "penguin", ...rest }: PenguinProps) {
   return (
     <svg
-      className="penguin"
+      className={className}
       viewBox="0 0 100 130"
       role="img"
       aria-label="펭귄"
       xmlns="http://www.w3.org/2000/svg"
+      {...rest}
     >
       {/* 바닥 그림자 — 착지·점프에서 크기가 변해 높이를 읽히게 한다 */}
       <ellipse id="shadow" className="pg-shadow" cx="50" cy="123" rx="23" ry="4.5" fill={INK} opacity="0.18" />

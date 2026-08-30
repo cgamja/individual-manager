@@ -14,6 +14,19 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 // vitest는 프로젝트 루트에서 돈다. `?raw`는 vitest의 CSS 처리에 걸려 원본을
 // 주지 않으므로 파일을 직접 읽는다 (그래서 @types/node가 dev 의존성에 있다)
 const css = readFileSync(resolve("src/pet/pet.css"), "utf8");
+const petRs = readFileSync(resolve("src-tauri/src/pet_bridge.rs"), "utf8");
+
+/** `--이름: 123px;` 에서 숫자만 꺼낸다. */
+function cssVar(name: string): number | null {
+  const m = css.match(new RegExp(`--${name}:\\s*([0-9.]+)px`));
+  return m ? Number(m[1]) : null;
+}
+
+/** `pub const 이름: f64 = 123.0;` 에서 숫자만 꺼낸다. */
+function rustConst(name: string): number | null {
+  const m = petRs.match(new RegExp(`pub const ${name}: f64 = ([0-9.]+)`));
+  return m ? Number(m[1]) : null;
+}
 
 const ALL_BEHAVIORS: Behavior[] = [
   { kind: "walk" },
@@ -70,5 +83,22 @@ describe("pet.css 커버리지", () => {
       const uses = countExact(css, name);
       expect(uses, `@keyframes ${name}가 정의만 되고 쓰이지 않는다`).toBeGreaterThan(1);
     }
+  });
+});
+
+describe("창 여백 상수 동기화", () => {
+  // 창은 펭귄보다 크다(말풍선·방망이 자리). Rust는 창을 그만큼 물려 놓고,
+  // CSS는 그만큼 안으로 들여 펭귄을 그린다. 둘이 어긋나면 펭귄이 화면
+  // 경계에서 엉뚱한 자리에 서는데, 눈으로만 잡힌다.
+  it.each([
+    ["pg-size", "PET_SIZE"],
+    ["pg-pad-x", "PET_PAD_X"],
+    ["pg-pad-top", "PET_PAD_TOP"],
+  ])("--%s 가 Rust의 %s 와 같다", (cssName, rustName) => {
+    const a = cssVar(cssName);
+    const b = rustConst(rustName);
+    expect(a, `CSS에서 --${cssName}를 못 찾았다`).not.toBeNull();
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(a).toBe(b);
   });
 });

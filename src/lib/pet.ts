@@ -28,6 +28,14 @@ export type Behavior =
   | { kind: "thrown" }
   | { kind: "land" };
 
+/** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
+export interface Speech {
+  /** 발화 번호. 같은 대사가 연달아 나와도 새 말풍선으로 알아본다. */
+  seq: number;
+  /** 대사 추첨값. `TAUNTS[roll % TAUNTS.length]`로 고른다. */
+  roll: number;
+}
+
 export interface PetSnapshot {
   x: number;
   y: number;
@@ -35,8 +43,46 @@ export interface PetSnapshot {
   vertical: Vertical;
   /** 바닥에서 떠 있는가. 동작만으로는 알 수 없다 (공중에서 클릭한 경우). */
   air: boolean;
+  speech: Speech | null;
+  /** 빠따를 맞은 누적 횟수. 늘어날 때마다 방망이를 한 번 휘두른다. */
+  whack_seq: number;
   behavior: Behavior;
 }
+
+/**
+ * 펭귄이 하는 킹받는 말들.
+ *
+ * 코어는 추첨값만 주고 문구는 여기서 고른다 — 문구를 고치자고 Rust를 다시
+ * 빌드할 이유가 없다. 늘리려면 줄만 추가하면 된다.
+ */
+export const TAUNTS: readonly string[] = [
+  "그래서 뭐 어쩌라고",
+  "일 안 해요?",
+  "그거 마감 언제였더라~",
+  "손가락 안 아파요?",
+  "또 클릭이야? 되게 심심한가 봐",
+  "지금 딴짓하는 거 다 보여요",
+  "그 코드 어제도 안 됐잖아요",
+  "저 근무 중인데요",
+  "때린다고 빨라지나",
+  "월급 루팡 신고할까",
+  "카톡 답장은 하고 이러는 거죠?",
+  "쉬는 거 아니고 대기 중입니다",
+  "내가 왜 여기 있어야 하지",
+  "그거 아까도 실패했어요",
+  "커밋은 하고 노는 거예요?",
+  "빠따 맞을 짓은 그쪽이 했는데",
+  "테스트는 돌려보고 하는 말이죠?",
+  "아 진짜 왜요",
+  "그 PR 리뷰 언제 볼 건데",
+  "생산성 0.02% 감소했습니다",
+  "이럴 시간에 한 줄이라도",
+  "펭귄한테 화풀이하지 마세요",
+];
+
+/** 추첨값으로 대사를 고른다. 목록이 비어도 터지지 않는다. */
+export const tauntFor = (roll: number): string =>
+  TAUNTS.length === 0 ? "" : TAUNTS[Math.abs(roll) % TAUNTS.length];
 
 export const EVENT_PET_STATE = "pet://state";
 
@@ -59,8 +105,11 @@ export const isOneShot = (cls: string): boolean =>
 
 export const getPetState = (): Promise<PetSnapshot> => invoke("pet_get_state");
 
-/** 펭귄 클릭 — 놀라게 하고 팝오버를 연다. */
-export const pokePet = (): Promise<void> => invoke("pet_poke");
+/** 빠따 — 왼쪽 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로). */
+export const whackPet = (): Promise<void> => invoke("pet_whack");
+
+/** 오른쪽 클릭 — 펭귄 옆에서 타이머·설정 창을 연다. 왼쪽은 빠따가 가져갔다. */
+export const openPetPopover = (): Promise<void> => invoke("pet_open_popover");
 
 export const startPetDrag = (): Promise<void> => invoke("pet_drag_start");
 

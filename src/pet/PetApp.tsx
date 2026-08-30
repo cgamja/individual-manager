@@ -11,8 +11,10 @@ import {
   endPetDrag,
   getPetState,
   onPetState,
-  pokePet,
+  openPetPopover,
   startPetDrag,
+  tauntFor,
+  whackPet,
   type PetSnapshot,
 } from "../lib/pet";
 
@@ -86,7 +88,12 @@ export function PetApp() {
     // 주 버튼만 드래그를 시작한다 — 우클릭까지 받으면 놓을 때 클릭으로 해석돼
     // 팝오버가 열린다. 이미 드래그 중이면 두 번째 포인터는 무시한다: 기준점을
     // 덮어쓰면 원래 포인터의 다음 이동량이 엉뚱한 값이 돼 펭귄이 순간이동한다.
-    if (e.button !== 0 || dragRef.current) return;
+    if (e.button !== 0) {
+      // 오른쪽(그 외) 버튼 — 창을 연다. 왼쪽은 빠따가 가져갔다
+      if (e.button === 2 && !dragRef.current) void openPetPopover().catch(() => {});
+      return;
+    }
+    if (dragRef.current) return;
     // 포인터를 캡처해야 커서가 펭귄 밖으로 나가도 드래그가 끊기지 않는다
     e.currentTarget.setPointerCapture(e.pointerId);
     const track: DragTrack = {
@@ -176,7 +183,8 @@ export function PetApp() {
       }
       // 거의 안 움직였으면 옮길 의도가 아니라 클릭이다 (R5)
       if (track.moved < DRAG_THRESHOLD_PX) {
-        await pokePet().catch(() => {});
+        // 거의 안 움직였으면 옮길 의도가 아니라 빠따다
+        await whackPet().catch(() => {});
       } else {
         // 놓는 순간의 속도가 던지는 세기다 (R12)
         const { vx, vy } = throwVelocity(track.samples);
@@ -204,9 +212,23 @@ export function PetApp() {
     .filter(Boolean)
     .join(" ");
 
+  const speech = snapshot?.speech ?? null;
+
   return (
-    <div className={stageClass}>
-      <Penguin
+    <>
+      {/* 말풍선 — 창 위쪽 여백에 뜬다. key로 발화마다 다시 나타나게 한다 */}
+      {speech && (
+        <div className="pg-bubble" key={speech.seq} role="status">
+          {tauntFor(speech.roll)}
+        </div>
+      )}
+      {/* 방망이 — 맞은 횟수가 늘 때마다 한 번 휘둘러진다.
+          key가 바뀌면 remount되어 연타해도 매번 새로 재생된다 */}
+      {snapshot && snapshot.whack_seq > 0 && (
+        <Bat key={snapshot.whack_seq} facing={snapshot.facing} />
+      )}
+      <div className={stageClass}>
+        <Penguin
         key={restartKey}
         className={petClass}
         style={
@@ -216,8 +238,28 @@ export function PetApp() {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        />
+      </div>
+    </>
+  );
+}
+
+/** 야구방망이 한 번 휘두르기. 펭귄이 날아가는 쪽 반대편에서 들어온다. */
+function Bat({ facing }: { facing: "left" | "right" }) {
+  return (
+    <svg
+      className={`pg-bat ${facing === "left" ? "pg-bat--left" : ""}`}
+      viewBox="0 0 60 120"
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* 손잡이 → 타격부로 갈수록 굵어진다 */}
+      <path
+        d="M27 112 L33 112 L38 34 C38 22 34 14 30 14 C26 14 22 22 22 34 Z"
+        fill="#b98b4e"
       />
-    </div>
+      <rect x="25.5" y="106" width="9" height="12" rx="3" fill="#3a3a3f" />
+    </svg>
   );
 }

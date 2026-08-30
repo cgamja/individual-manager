@@ -24,6 +24,36 @@ fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
 }
 
+/// 팝오버를 지정한 자리에 놓고 연다. `at`이 없으면 트레이 밑(기존 동작).
+pub(crate) fn toggle_popover_at(app: &AppHandle, at: Option<(f64, f64)>) {
+    let Some(window) = main_window(app) else {
+        return;
+    };
+    if window.is_visible().unwrap_or(false) {
+        hide_popover(app, &window);
+        return;
+    }
+    let recently_blurred = app
+        .state::<ShellState>()
+        .hidden_at
+        .lock()
+        .unwrap()
+        .is_some_and(|t| t.elapsed().as_millis() < TOGGLE_RACE_WINDOW_MS);
+    if recently_blurred {
+        return;
+    }
+    match at {
+        Some((x, y)) => {
+            let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+            // Accessory 정책에서는 app.show() → set_focus() 순서여야 포커스가 잡힌다
+            let _ = app.show();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        None => show_popover(app, &window),
+    }
+}
+
 fn show_popover(app: &AppHandle, window: &WebviewWindow) {
     // TrayCenter는 positioner가 트레이 이벤트에서 캐시해 둔 좌표를 쓴다. 트레이를
     // 한 번도 건드리지 않은 채 펭귄 클릭으로 들어오면 캐시가 비어 실패하므로,
@@ -45,25 +75,9 @@ fn hide_popover(_app: &AppHandle, window: &WebviewWindow) {
     let _ = window.hide();
 }
 
+/// 트레이 클릭 — 메뉴바 밑에서 연다.
 pub(crate) fn toggle_popover(app: &AppHandle) {
-    let Some(window) = main_window(app) else {
-        return;
-    };
-    if window.is_visible().unwrap_or(false) {
-        hide_popover(app, &window);
-        return;
-    }
-    let recently_blurred = app
-        .state::<ShellState>()
-        .hidden_at
-        .lock()
-        .unwrap()
-        .is_some_and(|t| t.elapsed().as_millis() < TOGGLE_RACE_WINDOW_MS);
-    if recently_blurred {
-        // blur 숨김이 먼저 처리된 같은 클릭 — 닫기 의도로 간주한다
-        return;
-    }
-    show_popover(app, &window);
+    toggle_popover_at(app, None);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

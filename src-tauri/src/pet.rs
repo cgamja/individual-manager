@@ -170,6 +170,9 @@ pub struct Snapshot {
     pub y: f64,
     pub facing: Facing,
     pub vertical: Vertical,
+    /// 바닥에서 떠 있는가. 동작만으로는 알 수 없다 — 공중에서 클릭하면
+    /// 지상 동작인 반응을 하면서도 떠 있다.
+    pub air: bool,
     pub behavior: Behavior,
 }
 
@@ -239,6 +242,7 @@ impl Pet {
             y: self.y,
             facing: self.facing,
             vertical: self.vertical(),
+            air: self.air,
             behavior: self.behavior,
         }
     }
@@ -404,7 +408,10 @@ impl Pet {
     pub fn drag_start(&mut self, now_ms: u64) {
         self.last_stimulus_ms = now_ms;
         self.vy = 0.0;
-        self.air = true; // 들려 있는 동안은 바닥에 붙어 있지 않다
+        // air를 여기서 세우지 않는다. 프론트는 클릭인지 드래그인지 알기 전에
+        // 모든 pointerdown에서 drag_start를 부르므로, 여기서 띄워 버리면 땅에서
+        // 클릭해도 반응 뒤에 헛낙하 + 착지 스쿼시가 붙는다. 실제로 들어 올렸다면
+        // drag_end가 Thrown/Falling으로 들어가며 air를 스스로 세운다.
         self.enter(Behavior::Dragged, now_ms);
     }
 
@@ -744,6 +751,46 @@ mod tests {
         assert!(matches!(p.behavior(), Behavior::Sassy { .. }));
         let s = p.step(1_000 + SASSY_MS + 10, BOUNDS);
         assert!(matches!(s.behavior, Behavior::Idle { .. }));
+    }
+
+    #[test]
+    fn 땅에서_클릭하면_반응_뒤에_헛낙하가_붙지_않는다() {
+        // 프론트는 클릭인지 드래그인지 알기 전에 모든 pointerdown에서 drag_start를
+        // 부른다. poke만 직접 부르는 테스트는 이 조합을 영영 재현하지 못한다
+        let mut p = pet();
+        p.step(1_000, BOUNDS);
+        let ground = p.snapshot().y;
+        p.drag_start(1_000);
+        p.poke(1_050);
+
+        let mut seen = Vec::new();
+        let mut t = 1_050;
+        while t < 1_050 + SASSY_MS + 2_000 {
+            t += 50;
+            seen.push(p.step(t, BOUNDS).behavior);
+        }
+        assert!(
+            !seen.contains(&Behavior::Falling) && !seen.contains(&Behavior::Land),
+            "땅에서 클릭했는데 낙하·착지가 끼어들었다: {seen:?}"
+        );
+        assert_eq!(p.snapshot().y, ground, "고도가 변하면 안 된다");
+    }
+
+    #[test]
+    fn 들어_올렸다_놓으면_여전히_떨어진다() {
+        // 위 수정이 드래그를 망가뜨리지 않았는지 반대편에서 고정한다
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -300.0);
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 0.0, 0.0);
+        assert_eq!(p.behavior(), Behavior::Falling);
+        let mut t = 1_100;
+        while p.behavior() == Behavior::Falling && t < 8_000 {
+            t += 50;
+            p.step(t, BOUNDS);
+        }
+        assert_eq!(p.behavior(), Behavior::Land);
     }
 
     #[test]

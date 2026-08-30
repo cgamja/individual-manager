@@ -35,6 +35,12 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "sassy", sassy: "butt_wiggle" },
 ];
 
+/** `name`이 더 긴 이름의 앞부분으로 끼어든 경우를 빼고 센다. */
+function countExact(haystack: string, name: string): number {
+  const re = new RegExp(`(?<![\\w-])${name}(?![\\w-])`, "g");
+  return [...haystack.matchAll(re)].length;
+}
+
 describe("pet.css 커버리지", () => {
   it.each(ALL_BEHAVIORS.map((b) => [behaviorClass(b)] as const))(
     "%s 동작에 대응하는 규칙이 있다",
@@ -59,8 +65,9 @@ describe("pet.css 커버리지", () => {
     const defined = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
     expect(defined.length).toBeGreaterThan(0);
     for (const name of defined) {
-      // 정의부 1회 + 사용부 최소 1회
-      const uses = css.split(name).length - 1;
+      // \b는 하이픈 앞에서도 성립해 pg-turn이 pg-turn-away 안에서 잡힌다.
+      // 이름 뒤에 이어지는 글자·하이픈이 없어야 진짜 그 이름을 쓴 것이다
+      const uses = countExact(css, name);
       expect(uses, `@keyframes ${name}가 정의만 되고 쓰이지 않는다`).toBeGreaterThan(1);
     }
   });

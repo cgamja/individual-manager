@@ -33,6 +33,8 @@ export interface PetSnapshot {
   y: number;
   facing: Facing;
   vertical: Vertical;
+  /** 바닥에서 떠 있는가. 동작만으로는 알 수 없다 (공중에서 클릭한 경우). */
+  air: boolean;
   behavior: Behavior;
 }
 

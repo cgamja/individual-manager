@@ -197,7 +197,12 @@ export function PetApp() {
     "penguin",
     snapshot ? behaviorClass(snapshot.behavior) : "pg--walk",
     verticalClass(snapshot?.vertical ?? "level"),
-  ].join(" ");
+    // 그림자는 동작이 아니라 "떠 있는가"로 지운다 — 공중에서 클릭하면 지상
+    // 동작(반응)을 하면서도 떠 있어서, 동작으로 판정하면 그림자가 되살아난다
+    snapshot?.air ? "pg-air" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className={stageClass}>

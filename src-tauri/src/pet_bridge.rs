@@ -32,10 +32,15 @@ pub struct PetState(pub Mutex<Pet>);
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
 /// **CSS 클래스에 영향을 주는 값은 빠짐없이 들어가야 한다.** 하나라도 빠지면
 /// 그 값만 바뀌는 전이가 웹뷰에 영영 도달하지 않는다(조용한 실패).
-pub type Look = (Behavior, Facing, Vertical);
+pub type Look = (Behavior, Facing, Vertical, bool);
 
 pub fn look_of(snapshot: &Snapshot) -> Look {
-    (snapshot.behavior, snapshot.facing, snapshot.vertical)
+    (
+        snapshot.behavior,
+        snapshot.facing,
+        snapshot.vertical,
+        snapshot.air,
+    )
 }
 
 /// 겉모습이 달라졌는가. 매 틱 emit하면 웹뷰가 이유 없이 20Hz로 리렌더한다.
@@ -162,7 +167,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
         // 전이할 때만 바뀌므로, 매 틱 emit하면 웹뷰가 이유 없이 20Hz로 리렌더한다.
         // **세로 방향도 포함해야 한다** — 헤엄 중 오름→내림은 동작도 좌우 방향도
         // 그대로라, 빠뜨리면 몸 기울기가 영영 갱신되지 않는다.
-        let mut last_look: Option<(Behavior, Facing, Vertical)> = None;
+        let mut last_look: Option<Look> = None;
         loop {
             let Some(window) = pet_window(&app) else {
                 // 설정에서 껐거나 아직 만들기 전 — 창이 생길 때까지 느리게 돈다
@@ -240,13 +245,16 @@ fn popover_anchor(app: &AppHandle, pet_x: f64, pet_y: f64) -> Option<(f64, f64)>
     let monitor = pet_window(app)?.current_monitor().ok().flatten()?;
     let scale = monitor.scale_factor();
     let area = monitor.work_area();
+    // 팝오버 크기는 **팝오버가 있는 화면**의 배율로 나눠야 한다. 펭귄 쪽 배율을
+    // 쓰면 배율이 다른 모니터가 섞였을 때 크기를 절반으로 오인해 화면 밖으로 나간다
+    let popover_scale = popover.scale_factor().unwrap_or(scale);
     let size = popover.inner_size().ok()?;
     Some(popover_position_near(
         (pet_x, pet_y),
         PET_SIZE,
         (
-            f64::from(size.width) / scale,
-            f64::from(size.height) / scale,
+            f64::from(size.width) / popover_scale,
+            f64::from(size.height) / popover_scale,
         ),
         (
             f64::from(area.position.x) / scale,
@@ -368,7 +376,7 @@ mod tests {
         }
     }
 
-    use crate::pet::{IdleKind, Vertical};
+    use crate::pet::{IdleKind, SassyKind, Vertical};
 
     /// 1440x900 작업 영역, 360x540 팝오버, 140px 펭귄.
     const AREA: (f64, f64, f64, f64) = (0.0, 25.0, 1440.0, 875.0);
@@ -421,7 +429,7 @@ mod tests {
 
     #[test]
     fn 겉모습이_그대로면_다시_알리지_않는다() {
-        let look = (Behavior::Walk, Facing::Right, Vertical::Level);
+        let look = (Behavior::Walk, Facing::Right, Vertical::Level, false);
         assert!(!should_notify(Some(look), look));
         assert!(should_notify(None, look), "처음에는 알려야 한다");
     }
@@ -430,16 +438,25 @@ mod tests {
     fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
         // 헤엄 중 오름→내림은 동작도 좌우 방향도 그대로다. 이걸 놓치면
         // 몸 기울기가 영영 갱신되지 않는다
-        let up = (Behavior::Swim, Facing::Right, Vertical::Up);
-        let down = (Behavior::Swim, Facing::Right, Vertical::Down);
+        let up = (Behavior::Swim, Facing::Right, Vertical::Up, true);
+        let down = (Behavior::Swim, Facing::Right, Vertical::Down, true);
         assert!(should_notify(Some(up), down));
     }
 
     #[test]
     fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
-        let right = (Behavior::Walk, Facing::Right, Vertical::Level);
-        let left = (Behavior::Walk, Facing::Left, Vertical::Level);
+        let right = (Behavior::Walk, Facing::Right, Vertical::Level, false);
+        let left = (Behavior::Walk, Facing::Left, Vertical::Level, false);
         assert!(should_notify(Some(right), left));
+    }
+
+    #[test]
+    fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
+        // 공중에서 클릭하면 동작·방향은 그대로인 채 air만 달라지는 순간이 있다.
+        // 놓치면 그림자가 공중에 떠 있는 채로 남는다
+        let ground = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, false);
+        let air = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, true);
+        assert!(should_notify(Some(ground), air));
     }
 
     #[test]
@@ -448,11 +465,13 @@ mod tests {
             Behavior::Idle { idle: IdleKind::LookAround },
             Facing::Right,
             Vertical::Level,
+            false,
         );
         let b = (
             Behavior::Idle { idle: IdleKind::Shake },
             Facing::Right,
             Vertical::Level,
+            false,
         );
         assert!(should_notify(Some(a), b));
     }

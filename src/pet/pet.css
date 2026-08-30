@@ -362,8 +362,9 @@ body,
     transform: rotate(-68deg);
   }
 }
+/* SASSY_MS(900ms) 안에 끝나야 한다 — 넘치면 자세가 중간에 잘린다 */
 .pg--sassy-wing-flick .pg-wing-near {
-  animation: pg-wing-flick 0.55s ease-in-out 2;
+  animation: pg-wing-flick 0.45s ease-in-out 2;
 }
 .pg--sassy-wing-flick .pg-head {
   transform: rotate(-16deg);
@@ -436,7 +437,7 @@ body,
 }
 .pg--sassy-butt-wiggle .pg-tail {
   transform-origin: 33px 100px;
-  animation: pg-tail-wag 0.35s ease-in-out 3;
+  animation: pg-tail-wag 0.3s ease-in-out 3;
 }
 
 /* 매달림 — 집어 든 동안 날개는 위로, 발은 버둥거린다 (R6) */
@@ -480,9 +481,9 @@ body,
 .pg--dragged .pg-foot--far {
   animation: pg-kick 0.32s ease-in-out infinite -0.16s;
 }
-/* 들려 있는 동안에는 그림자를 지운다 — 바닥에 붙어 있지 않다 */
-.pg--dragged .pg-shadow,
-.pg--falling .pg-shadow {
+/* 그림자는 "떠 있는가" 하나로 지운다. 동작별로 나열하면 새 동작을 추가할 때마다
+ * 빠뜨리고, 공중에서 클릭했을 때처럼 지상 동작인데 떠 있는 경우를 놓친다. */
+.pg-air .pg-shadow {
   opacity: 0;
 }
 
@@ -567,11 +568,6 @@ body,
 .pg--swim .pg-foot--far {
   animation: pg-trail 0.34s ease-in-out infinite;
 }
-/* 공중에서는 그림자를 지운다 — 바닥에 붙어 있지 않다 */
-.pg--swim .pg-shadow {
-  opacity: 0;
-}
-
 /* ── 세로 방향에 따른 몸 기울기 ───────────────────────────────────
  * 진행 방향으로 몸을 눕히면 오르내림이 읽힌다. 지상 동작은 level이라
  * 이 규칙이 걸리지 않는다(코어가 Level로 고정해 보낸다). */
@@ -612,9 +608,6 @@ body,
 }
 .pg--thrown .pg-wing-far {
   transform: rotate(50deg);
-}
-.pg--thrown .pg-shadow {
-  opacity: 0;
 }
 
 /* 움직임을 줄이는 시스템 설정을 존중한다 */

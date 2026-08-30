@@ -25,7 +25,8 @@ const ARRIVE_EPSILON: f64 = 6.0;
 const MAX_STEP_MS: u64 = 250;
 
 const TURN_MS: u64 = 250;
-const STARTLED_MS: u64 = 400;
+/// 싸가지 반응의 길이. 한 박자 확실히 보여야 킹받는다.
+const SASSY_MS: u64 = 900;
 const LAND_MS: u64 = 300;
 /// 마지막 자극(클릭·드래그) 이후 이만큼 지나면 졸기로 넘어간다.
 /// 길게 잡는다 — 펭귄이 깨어서 돌아다니는 게 이 기능의 목적이고, 졸기는 양념이다.
@@ -87,6 +88,30 @@ pub enum IdleKind {
     ShiftFeet,
 }
 
+/// 클릭했을 때의 반응. 놀라는 대신 **싸가지 없게** 군다 — 이게 이 펭귄의 성격이다.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SassyKind {
+    /// 등을 홱 돌린다
+    TurnAway,
+    /// 고개만 홱 돌려 외면한다
+    HeadFlick,
+    /// 날개를 휘휘 저어 쫓아낸다
+    WingFlick,
+    /// 눈을 굴린다
+    EyeRoll,
+    /// 엉덩이를 흔든다
+    ButtWiggle,
+}
+
+const SASSY_KINDS: [SassyKind; 5] = [
+    SassyKind::TurnAway,
+    SassyKind::HeadFlick,
+    SassyKind::WingFlick,
+    SassyKind::EyeRoll,
+    SassyKind::ButtWiggle,
+];
+
 const IDLE_KINDS: [IdleKind; 4] = [
     IdleKind::LookAround,
     IdleKind::Stretch,
@@ -104,8 +129,8 @@ pub enum Behavior {
     /// 공중을 헤엄쳐 목적지로 이동한다 — 위아래로 다니는 수단 (R11)
     Swim,
     Sleep,
-    /// 클릭에 놀람 (R5)
-    Startled,
+    /// 클릭에 대한 반응 — 놀라지 않고 싸가지 없게 군다 (R5)
+    Sassy { sassy: SassyKind },
     /// 사용자가 집어 든 상태 — 자율 이동을 하지 않는다 (R6)
     Dragged,
     Falling,
@@ -121,7 +146,7 @@ impl Behavior {
         !matches!(self, Behavior::Sleep)
     }
 
-    /// 공중에 떠 있는 동작인가. 바닥에 붙이지 않고 위아래 경계만 지킨다.
+    /// 스스로 고도를 만드는 동작인가 (진입하면 공중 상태가 된다).
     pub fn is_airborne(self) -> bool {
         matches!(self, Behavior::Swim | Behavior::Falling | Behavior::Thrown)
     }
@@ -145,6 +170,9 @@ pub struct Snapshot {
     pub y: f64,
     pub facing: Facing,
     pub vertical: Vertical,
+    /// 바닥에서 떠 있는가. 동작만으로는 알 수 없다 — 공중에서 클릭하면
+    /// 지상 동작인 반응을 하면서도 떠 있다.
+    pub air: bool,
     pub behavior: Behavior,
 }
 
@@ -160,10 +188,15 @@ pub struct Pet {
     last_stimulus_ms: u64,
     /// 직전 유휴 종류 — 같은 동작이 연달아 나오지 않게 한다 (R3).
     last_idle: Option<IdleKind>,
+    /// 직전 반응 종류 — 연타할 때 같은 반응만 나오면 심심하다.
+    last_sassy: Option<SassyKind>,
     /// 좌우 속도 (논리 px/초) — 던져졌을 때만 0이 아니다.
     vx: f64,
     /// 낙하 속도 (논리 px/초).
     vy: f64,
+    /// 바닥에서 떠 있는가. 동작만으로 판정하면 공중에서 클릭했을 때
+    /// (지상 동작인) 반응 동작이 펭귄을 바닥으로 끌어내린다.
+    air: bool,
     /// 헤엄쳐 갈 목적지.
     target: (f64, f64),
     /// 직전 step의 y — 세로 방향(오름/내림)을 이걸로 판정한다.
@@ -193,8 +226,10 @@ impl Pet {
             last_step_ms: start_ms,
             last_stimulus_ms: start_ms,
             last_idle: None,
+            last_sassy: None,
             vx: 0.0,
             vy: 0.0,
+            air: false,
             target: (bounds.left, bounds.floor_y),
             last_y: bounds.floor_y,
             rng: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
@@ -207,6 +242,7 @@ impl Pet {
             y: self.y,
             facing: self.facing,
             vertical: self.vertical(),
+            air: self.air,
             behavior: self.behavior,
         }
     }
@@ -214,7 +250,7 @@ impl Pet {
     /// 세로 방향은 직전 step 대비 y 변화로 정한다 — 헤엄·낙하·던지기가
     /// 각자 다른 속도 필드를 쓰므로 위치 변화가 유일하게 공통된 기준이다.
     fn vertical(&self) -> Vertical {
-        if !self.behavior.is_airborne() {
+        if !self.air {
             return Vertical::Level;
         }
         let dy = self.y - self.last_y;
@@ -277,9 +313,18 @@ impl Pet {
                     self.enter(Behavior::Walk, until);
                 }
             }
-            Behavior::Startled | Behavior::Land => {
+            Behavior::Sassy { .. } => {
                 if now_ms >= self.behavior_until_ms {
-                    // 놀람·착지 뒤에는 유휴로 한 박자 쉰다
+                    if self.air {
+                        // 공중에서 반응했다면 이제 내려앉는다
+                        self.enter(Behavior::Falling, now_ms);
+                    } else {
+                        self.enter_idle(now_ms);
+                    }
+                }
+            }
+            Behavior::Land => {
+                if now_ms >= self.behavior_until_ms {
                     self.enter_idle(now_ms);
                 }
             }
@@ -345,19 +390,28 @@ impl Pet {
     /// 같은 step의 clamp가 펭귄을 바닥으로 순간이동시킨다.
     pub fn poke(&mut self, now_ms: u64) {
         self.last_stimulus_ms = now_ms;
-        if self.behavior.is_airborne() {
-            self.vx = 0.0;
-            self.vy = 0.0;
-            self.enter(Behavior::Falling, now_ms);
-        } else {
-            self.enter(Behavior::Startled, now_ms + STARTLED_MS);
+        // 떠 있든 서 있든 **그 자리에서** 반응한다. 공중에서 눌렀다고 떨어지거나
+        // 바닥으로 끌려가면 "올라가다 누르면 맨 아래로 간다"가 된다.
+        self.vx = 0.0;
+        self.vy = 0.0;
+        let mut sassy = SASSY_KINDS[self.range((0, 4)) as usize];
+        if Some(sassy) == self.last_sassy {
+            let next =
+                (SASSY_KINDS.iter().position(|k| *k == sassy).unwrap() + 1) % SASSY_KINDS.len();
+            sassy = SASSY_KINDS[next];
         }
+        self.last_sassy = Some(sassy);
+        self.enter(Behavior::Sassy { sassy }, now_ms + SASSY_MS);
     }
 
     /// 드래그 시작 — 자율 이동을 멈춘다 (R6).
     pub fn drag_start(&mut self, now_ms: u64) {
         self.last_stimulus_ms = now_ms;
         self.vy = 0.0;
+        // air를 여기서 세우지 않는다. 프론트는 클릭인지 드래그인지 알기 전에
+        // 모든 pointerdown에서 drag_start를 부르므로, 여기서 띄워 버리면 땅에서
+        // 클릭해도 반응 뒤에 헛낙하 + 착지 스쿼시가 붙는다. 실제로 들어 올렸다면
+        // drag_end가 Thrown/Falling으로 들어가며 air를 스스로 세운다.
         self.enter(Behavior::Dragged, now_ms);
     }
 
@@ -402,6 +456,13 @@ impl Pet {
     }
 
     fn enter(&mut self, behavior: Behavior, until_ms: u64) {
+        // 반응·드래그는 고도를 그대로 물려받고, 나머지는 동작이 곧 고도를 정한다.
+        // 착지(Land)는 바닥에 닿은 시점이라 확실히 지상이다.
+        match behavior {
+            Behavior::Sassy { .. } | Behavior::Dragged => {}
+            Behavior::Land => self.air = false,
+            other => self.air = other.is_airborne(),
+        }
         self.behavior = behavior;
         self.behavior_until_ms = until_ms;
     }
@@ -460,8 +521,9 @@ impl Pet {
             return;
         }
         self.x = self.x.clamp(bounds.left, bounds.right.max(bounds.left));
-        if self.behavior.is_airborne() {
-            // 공중에서는 위아래 경계만 지킨다 — 바닥에 붙이면 헤엄이 성립하지 않는다
+        if self.air {
+            // 공중에서는 위아래 경계만 지킨다 — 바닥에 붙이면 헤엄이 성립하지 않고,
+            // 공중에서 클릭했을 때 펭귄이 바닥으로 끌려간다
             self.y = self.y.clamp(bounds.top.min(bounds.floor_y), bounds.floor_y);
         } else {
             self.y = bounds.floor_y;
@@ -669,7 +731,7 @@ mod tests {
     }
 
     #[test]
-    fn 클릭은_졸기_상태에서도_놀람으로_깨운다() {
+    fn 클릭은_졸기_상태에서도_깨워서_반응하게_한다() {
         let mut p = pet();
         let mut t = 100;
         while p.behavior() != Behavior::Sleep && t < SLEEP_AFTER_MS + 60_000 {
@@ -679,15 +741,73 @@ mod tests {
         assert_eq!(p.behavior(), Behavior::Sleep);
 
         p.poke(t);
-        assert_eq!(p.behavior(), Behavior::Startled);
+        assert!(matches!(p.behavior(), Behavior::Sassy { .. }));
     }
 
     #[test]
-    fn 놀람이_끝나면_유휴로_돌아온다() {
+    fn 반응이_끝나면_유휴로_돌아온다() {
         let mut p = pet();
         p.poke(1_000);
-        let s = p.step(1_000 + STARTLED_MS + 10, BOUNDS);
+        assert!(matches!(p.behavior(), Behavior::Sassy { .. }));
+        let s = p.step(1_000 + SASSY_MS + 10, BOUNDS);
         assert!(matches!(s.behavior, Behavior::Idle { .. }));
+    }
+
+    #[test]
+    fn 땅에서_클릭하면_반응_뒤에_헛낙하가_붙지_않는다() {
+        // 프론트는 클릭인지 드래그인지 알기 전에 모든 pointerdown에서 drag_start를
+        // 부른다. poke만 직접 부르는 테스트는 이 조합을 영영 재현하지 못한다
+        let mut p = pet();
+        p.step(1_000, BOUNDS);
+        let ground = p.snapshot().y;
+        p.drag_start(1_000);
+        p.poke(1_050);
+
+        let mut seen = Vec::new();
+        let mut t = 1_050;
+        while t < 1_050 + SASSY_MS + 2_000 {
+            t += 50;
+            seen.push(p.step(t, BOUNDS).behavior);
+        }
+        assert!(
+            !seen.contains(&Behavior::Falling) && !seen.contains(&Behavior::Land),
+            "땅에서 클릭했는데 낙하·착지가 끼어들었다: {seen:?}"
+        );
+        assert_eq!(p.snapshot().y, ground, "고도가 변하면 안 된다");
+    }
+
+    #[test]
+    fn 들어_올렸다_놓으면_여전히_떨어진다() {
+        // 위 수정이 드래그를 망가뜨리지 않았는지 반대편에서 고정한다
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -300.0);
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 0.0, 0.0);
+        assert_eq!(p.behavior(), Behavior::Falling);
+        let mut t = 1_100;
+        while p.behavior() == Behavior::Falling && t < 8_000 {
+            t += 50;
+            p.step(t, BOUNDS);
+        }
+        assert_eq!(p.behavior(), Behavior::Land);
+    }
+
+    #[test]
+    fn 연타하면_같은_반응이_연달아_나오지_않는다() {
+        let mut p = pet();
+        let mut seen = Vec::new();
+        for i in 0..12 {
+            p.poke(1_000 + i * 2_000);
+            if let Behavior::Sassy { sassy } = p.behavior() {
+                seen.push(sassy);
+            }
+            p.step(1_000 + i * 2_000 + SASSY_MS + 10, BOUNDS);
+        }
+        assert_eq!(seen.len(), 12);
+        for pair in seen.windows(2) {
+            assert_ne!(pair[0], pair[1], "같은 반응이 연달아 나왔다");
+        }
     }
 
     #[test]
@@ -872,7 +992,7 @@ mod tests {
     }
 
     #[test]
-    fn 공중에서_클릭하면_바닥으로_순간이동하지_않는다() {
+    fn 공중에서_클릭해도_그_자리에_머문다() {
         let mut p = pet();
         // 헤엄에 들어갈 때까지 진행시킨다
         let mut t = 100;
@@ -890,12 +1010,21 @@ mod tests {
         assert!(height < BOUNDS.floor_y - 50.0, "충분히 떠 있어야 한다");
 
         p.poke(t);
-        let after = p.step(t + 50, BOUNDS);
-        assert!(
-            after.y < BOUNDS.floor_y - 20.0,
-            "클릭했다고 바닥으로 순간이동하면 안 된다 (y={})",
-            after.y
-        );
+        assert!(matches!(p.behavior(), Behavior::Sassy { .. }));
+        // 반응하는 동안 고도가 유지돼야 한다 — 떨어지지도, 끌려가지도 않는다
+        let mut t2 = t;
+        for _ in 0..8 {
+            t2 += 50;
+            let after = p.step(t2, BOUNDS);
+            assert!(
+                (after.y - height).abs() < 1.0,
+                "반응 중에 고도가 바뀌었다 (전 {height}, 후 {})",
+                after.y
+            );
+        }
+        // 반응이 끝나면 그제서야 내려온다
+        p.step(t + SASSY_MS + 60, BOUNDS);
+        assert_eq!(p.behavior(), Behavior::Falling, "반응 뒤에는 내려앉는다");
     }
 
     #[test]

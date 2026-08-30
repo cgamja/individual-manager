@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DRAG_THRESHOLD_PX,
   behaviorClass,
+  isOneShot,
   throwVelocity,
   verticalClass,
   type Behavior,
@@ -30,7 +31,11 @@ describe("behaviorClass", () => {
       { kind: "swim" },
       { kind: "thrown" },
       { kind: "sleep" },
-      { kind: "startled" },
+      { kind: "sassy", sassy: "turn_away" },
+      { kind: "sassy", sassy: "head_flick" },
+      { kind: "sassy", sassy: "wing_flick" },
+      { kind: "sassy", sassy: "eye_roll" },
+      { kind: "sassy", sassy: "butt_wiggle" },
       { kind: "dragged" },
       { kind: "falling" },
       { kind: "land" },
@@ -41,6 +46,11 @@ describe("behaviorClass", () => {
     ];
     const classes = all.map(behaviorClass);
     expect(new Set(classes).size).toBe(all.length);
+  });
+
+  it("싸가지_반응도_종류까지_내려간다", () => {
+    expect(behaviorClass({ kind: "sassy", sassy: "turn_away" })).toBe("pg--sassy-turn-away");
+    expect(behaviorClass({ kind: "sassy", sassy: "butt_wiggle" })).toBe("pg--sassy-butt-wiggle");
   });
 
   it("클래스명은_CSS_선택자로_쓸_수_있는_형태다", () => {
@@ -139,5 +149,24 @@ describe("throwVelocity", () => {
     const withoutRelease = withRelease.slice(0, 2);
     expect(throwVelocity(withRelease).vx).toBe(0);
     expect(throwVelocity(withoutRelease).vx).toBeCloseTo(1000, 5);
+  });
+});
+
+describe("isOneShot", () => {
+  it("한_번짜리_동작을_가려낸다", () => {
+    // 이걸 놓치면 연타했을 때 애니메이션이 되감기지 않아 첫 번만 반응한 것처럼 보인다
+    expect(isOneShot("pg--turn")).toBe(true);
+    expect(isOneShot("pg--land")).toBe(true);
+    expect(isOneShot("pg--sassy-eye-roll")).toBe(true);
+    expect(isOneShot("pg--walk")).toBe(false);
+    expect(isOneShot("pg--swim")).toBe(false);
+    expect(isOneShot("pg--sleep")).toBe(false);
+  });
+
+  it("모든_싸가지_반응이_한_번짜리로_잡힌다", () => {
+    const kinds = ["turn_away", "head_flick", "wing_flick", "eye_roll", "butt_wiggle"] as const;
+    for (const sassy of kinds) {
+      expect(isOneShot(behaviorClass({ kind: "sassy", sassy }))).toBe(true);
+    }
   });
 });

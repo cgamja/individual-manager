@@ -8,13 +8,21 @@ export type Vertical = "up" | "down" | "level";
 
 export type IdleKind = "look_around" | "stretch" | "shake" | "shift_feet";
 
+/** 클릭했을 때의 반응 — 놀라지 않고 싸가지 없게 군다. */
+export type SassyKind =
+  | "turn_away"
+  | "head_flick"
+  | "wing_flick"
+  | "eye_roll"
+  | "butt_wiggle";
+
 export type Behavior =
   | { kind: "walk" }
   | { kind: "turn" }
   | { kind: "idle"; idle: IdleKind }
   | { kind: "swim" }
   | { kind: "sleep" }
-  | { kind: "startled" }
+  | { kind: "sassy"; sassy: SassyKind }
   | { kind: "dragged" }
   | { kind: "falling" }
   | { kind: "thrown" }
@@ -25,6 +33,8 @@ export interface PetSnapshot {
   y: number;
   facing: Facing;
   vertical: Vertical;
+  /** 바닥에서 떠 있는가. 동작만으로는 알 수 없다 (공중에서 클릭한 경우). */
+  air: boolean;
   behavior: Behavior;
 }
 
@@ -37,10 +47,15 @@ export const DRAG_THRESHOLD_PX = 4;
  * 동작 → CSS 클래스. 유휴는 종류까지 내려가야 두리번과 기지개가 구분된다.
  * CSS는 이 클래스 하나만 보고 부위 애니메이션을 고른다 (KTD2).
  */
-export const behaviorClass = (behavior: Behavior): string =>
-  behavior.kind === "idle"
-    ? `pg--idle-${behavior.idle.replace(/_/g, "-")}`
-    : `pg--${behavior.kind}`;
+export const behaviorClass = (behavior: Behavior): string => {
+  if (behavior.kind === "idle") return `pg--idle-${behavior.idle.replace(/_/g, "-")}`;
+  if (behavior.kind === "sassy") return `pg--sassy-${behavior.sassy.replace(/_/g, "-")}`;
+  return `pg--${behavior.kind}`;
+};
+
+/** 한 번만 재생하고 멈추는 동작인가. 같은 클래스가 다시 와도 되감아야 한다. */
+export const isOneShot = (cls: string): boolean =>
+  cls === "pg--turn" || cls === "pg--land" || cls.startsWith("pg--sassy-");
 
 export const getPetState = (): Promise<PetSnapshot> => invoke("pet_get_state");
 

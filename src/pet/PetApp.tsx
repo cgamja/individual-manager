@@ -4,6 +4,7 @@ import { Penguin } from "./Penguin";
 import {
   DRAG_THRESHOLD_PX,
   behaviorClass,
+  isOneShot,
   throwVelocity,
   verticalClass,
   dragPetBy,
@@ -26,12 +27,7 @@ interface DragTrack {
   samples: { x: number; y: number; t: number }[];
 }
 
-/**
- * 한 번만 재생되는 동작. 같은 동작이 연달아 오면 클래스 문자열이 그대로라
- * CSS 애니메이션이 다시 시작되지 않는다 — 연타했는데 첫 번에만 반응하는 것처럼
- * 보인다. 이 동작들만 remount로 애니메이션을 되감는다.
- */
-const ONE_SHOT = new Set(["pg--startled", "pg--turn", "pg--land"]);
+
 
 /** 속도 계산에 남겨 둘 궤적의 길이. 개수로 자르면 포인터 보고 주기(60Hz vs 120Hz)에
  * 따라 실제로 보는 구간이 달라져 같은 손짓의 세기가 기기마다 달라진다. */
@@ -75,7 +71,7 @@ export function PetApp() {
       if (!cancelled && initial) setSnapshot(initial);
       unlisten = await onPetState((next) => {
         setSnapshot(next);
-        if (ONE_SHOT.has(behaviorClass(next.behavior))) {
+        if (isOneShot(behaviorClass(next.behavior))) {
           setRestartKey((k) => k + 1);
         }
       });
@@ -201,7 +197,12 @@ export function PetApp() {
     "penguin",
     snapshot ? behaviorClass(snapshot.behavior) : "pg--walk",
     verticalClass(snapshot?.vertical ?? "level"),
-  ].join(" ");
+    // 그림자는 동작이 아니라 "떠 있는가"로 지운다 — 공중에서 클릭하면 지상
+    // 동작(반응)을 하면서도 떠 있어서, 동작으로 판정하면 그림자가 되살아난다
+    snapshot?.air ? "pg-air" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className={stageClass}>

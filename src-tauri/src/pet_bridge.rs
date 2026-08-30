@@ -32,10 +32,15 @@ pub struct PetState(pub Mutex<Pet>);
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
 /// **CSS 클래스에 영향을 주는 값은 빠짐없이 들어가야 한다.** 하나라도 빠지면
 /// 그 값만 바뀌는 전이가 웹뷰에 영영 도달하지 않는다(조용한 실패).
-pub type Look = (Behavior, Facing, Vertical);
+pub type Look = (Behavior, Facing, Vertical, bool);
 
 pub fn look_of(snapshot: &Snapshot) -> Look {
-    (snapshot.behavior, snapshot.facing, snapshot.vertical)
+    (
+        snapshot.behavior,
+        snapshot.facing,
+        snapshot.vertical,
+        snapshot.air,
+    )
 }
 
 /// 겉모습이 달라졌는가. 매 틱 emit하면 웹뷰가 이유 없이 20Hz로 리렌더한다.
@@ -162,7 +167,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
         // 전이할 때만 바뀌므로, 매 틱 emit하면 웹뷰가 이유 없이 20Hz로 리렌더한다.
         // **세로 방향도 포함해야 한다** — 헤엄 중 오름→내림은 동작도 좌우 방향도
         // 그대로라, 빠뜨리면 몸 기울기가 영영 갱신되지 않는다.
-        let mut last_look: Option<(Behavior, Facing, Vertical)> = None;
+        let mut last_look: Option<Look> = None;
         loop {
             let Some(window) = pet_window(&app) else {
                 // 설정에서 껐거나 아직 만들기 전 — 창이 생길 때까지 느리게 돈다
@@ -223,12 +228,73 @@ fn flush(app: &AppHandle) -> Option<Snapshot> {
     Some(snapshot)
 }
 
-/// 펭귄 클릭 — 놀라게 하고 팝오버를 연다 (R5).
+/// 펭귄 클릭 — 그 자리에서 싸가지 있게 반응하고, **펭귄 옆에서** 팝오버를 연다 (R5).
+/// 메뉴바 밑에서 열면 눌렀는데 화면 반대편에서 뜨는 셈이라 연결이 끊긴다.
 #[tauri::command]
 pub fn pet_poke(state: State<'_, PetState>, app: AppHandle) {
     state.0.lock().unwrap().poke(now_ms());
-    flush(&app);
-    crate::toggle_popover(&app);
+    let snapshot = flush(&app);
+    let at = snapshot.and_then(|s| popover_anchor(&app, s.x, s.y));
+    crate::toggle_popover_at(&app, at);
+}
+
+/// 펭귄 위치에서 팝오버를 놓을 자리를 구한다. 모니터를 못 읽으면 `None`을
+/// 돌려 트레이 밑(기존 동작)으로 떨어진다.
+fn popover_anchor(app: &AppHandle, pet_x: f64, pet_y: f64) -> Option<(f64, f64)> {
+    let popover = app.get_webview_window("main")?;
+    let monitor = pet_window(app)?.current_monitor().ok().flatten()?;
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area();
+    // 팝오버 크기는 **팝오버가 있는 화면**의 배율로 나눠야 한다. 펭귄 쪽 배율을
+    // 쓰면 배율이 다른 모니터가 섞였을 때 크기를 절반으로 오인해 화면 밖으로 나간다
+    let popover_scale = popover.scale_factor().unwrap_or(scale);
+    let size = popover.inner_size().ok()?;
+    Some(popover_position_near(
+        (pet_x, pet_y),
+        PET_SIZE,
+        (
+            f64::from(size.width) / popover_scale,
+            f64::from(size.height) / popover_scale,
+        ),
+        (
+            f64::from(area.position.x) / scale,
+            f64::from(area.position.y) / scale,
+            f64::from(area.size.width) / scale,
+            f64::from(area.size.height) / scale,
+        ),
+    ))
+}
+
+/// 펭귄과 팝오버 사이 여백 (논리 px).
+const POPOVER_GAP: f64 = 8.0;
+
+/// 펭귄 옆에 팝오버를 놓을 좌표. 오른쪽을 우선하되 넘치면 왼쪽으로 접고,
+/// 그래도 안 되면 영역 안으로 자른다. 세로는 펭귄 높이에 맞추되 화면을 넘지 않는다.
+///
+/// 순수 함수로 떼어 낸 이유는 화면 밖으로 나가는 실수가 눈으로만 잡히기 때문이다.
+/// `area`는 (left, top, width, height).
+pub fn popover_position_near(
+    pet: (f64, f64),
+    pet_size: f64,
+    popover: (f64, f64),
+    area: (f64, f64, f64, f64),
+) -> (f64, f64) {
+    let (pet_x, pet_y) = pet;
+    let (pop_w, pop_h) = popover;
+    let (area_x, area_y, area_w, area_h) = area;
+    let (right_edge, bottom_edge) = (area_x + area_w, area_y + area_h);
+
+    let to_right = pet_x + pet_size + POPOVER_GAP;
+    let x = if to_right + pop_w <= right_edge {
+        to_right
+    } else {
+        // 오른쪽이 모자라면 펭귄 왼쪽에 붙인다
+        pet_x - pop_w - POPOVER_GAP
+    };
+    // 영역보다 팝오버가 크면 max가 min보다 작아져 clamp가 패닉한다
+    let x = x.clamp(area_x, (right_edge - pop_w).max(area_x));
+    let y = pet_y.clamp(area_y, (bottom_edge - pop_h).max(area_y));
+    (x, y)
 }
 
 /// 드래그 시작 — 자율 이동을 멈춘다 (R6).
@@ -310,11 +376,60 @@ mod tests {
         }
     }
 
-    use crate::pet::{IdleKind, Vertical};
+    use crate::pet::{IdleKind, SassyKind, Vertical};
+
+    /// 1440x900 작업 영역, 360x540 팝오버, 140px 펭귄.
+    const AREA: (f64, f64, f64, f64) = (0.0, 25.0, 1440.0, 875.0);
+    const POP: (f64, f64) = (360.0, 540.0);
+
+    #[test]
+    fn 팝오버는_펭귄_오른쪽에_붙는다() {
+        // 세로로 여유가 있는 높이에서 — 펭귄 높이에 그대로 맞춘다
+        let (x, y) = popover_position_near((200.0, 120.0), PET_SIZE, POP, AREA);
+        assert_eq!(x, 200.0 + PET_SIZE + POPOVER_GAP);
+        assert_eq!(y, 120.0);
+    }
+
+    #[test]
+    fn 아래쪽_펭귄에서는_팝오버가_화면_안으로_올라온다() {
+        // 팝오버(540)가 작업 영역(875)에서 차지하는 몫이 커, 아래쪽에서는
+        // 펭귄 높이에 맞출 수 없다. 잘리는 대신 위로 올라와야 한다
+        let (_, y) = popover_position_near((200.0, 760.0), PET_SIZE, POP, AREA);
+        assert_eq!(y, AREA.1 + AREA.3 - POP.1);
+        assert!(y < 760.0, "펭귄보다 위로 올라와야 한다");
+    }
+
+    #[test]
+    fn 오른쪽이_모자라면_펭귄_왼쪽에_붙는다() {
+        // 오른쪽 끝 근처 — 오른쪽에 붙이면 화면을 넘는다
+        let (x, _) = popover_position_near((1200.0, 400.0), PET_SIZE, POP, AREA);
+        assert_eq!(x, 1200.0 - POP.0 - POPOVER_GAP);
+    }
+
+    #[test]
+    fn 어느_위치에서도_화면을_벗어나지_않는다() {
+        for px in [0.0, 300.0, 700.0, 1100.0, 1300.0] {
+            for py in [25.0, 300.0, 700.0, 760.0] {
+                let (x, y) = popover_position_near((px, py), PET_SIZE, POP, AREA);
+                assert!(x >= AREA.0, "왼쪽으로 벗어남: {x}");
+                assert!(x + POP.0 <= AREA.0 + AREA.2 + 0.001, "오른쪽으로 벗어남: {x}");
+                assert!(y >= AREA.1, "위로 벗어남: {y}");
+                assert!(y + POP.1 <= AREA.1 + AREA.3 + 0.001, "아래로 벗어남: {y}");
+            }
+        }
+    }
+
+    #[test]
+    fn 팝오버가_영역보다_커도_패닉하지_않는다() {
+        // clamp는 max < min이면 패닉한다
+        let tiny = (0.0, 0.0, 200.0, 200.0);
+        let (x, y) = popover_position_near((10.0, 10.0), PET_SIZE, POP, tiny);
+        assert_eq!((x, y), (0.0, 0.0));
+    }
 
     #[test]
     fn 겉모습이_그대로면_다시_알리지_않는다() {
-        let look = (Behavior::Walk, Facing::Right, Vertical::Level);
+        let look = (Behavior::Walk, Facing::Right, Vertical::Level, false);
         assert!(!should_notify(Some(look), look));
         assert!(should_notify(None, look), "처음에는 알려야 한다");
     }
@@ -323,16 +438,25 @@ mod tests {
     fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
         // 헤엄 중 오름→내림은 동작도 좌우 방향도 그대로다. 이걸 놓치면
         // 몸 기울기가 영영 갱신되지 않는다
-        let up = (Behavior::Swim, Facing::Right, Vertical::Up);
-        let down = (Behavior::Swim, Facing::Right, Vertical::Down);
+        let up = (Behavior::Swim, Facing::Right, Vertical::Up, true);
+        let down = (Behavior::Swim, Facing::Right, Vertical::Down, true);
         assert!(should_notify(Some(up), down));
     }
 
     #[test]
     fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
-        let right = (Behavior::Walk, Facing::Right, Vertical::Level);
-        let left = (Behavior::Walk, Facing::Left, Vertical::Level);
+        let right = (Behavior::Walk, Facing::Right, Vertical::Level, false);
+        let left = (Behavior::Walk, Facing::Left, Vertical::Level, false);
         assert!(should_notify(Some(right), left));
+    }
+
+    #[test]
+    fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
+        // 공중에서 클릭하면 동작·방향은 그대로인 채 air만 달라지는 순간이 있다.
+        // 놓치면 그림자가 공중에 떠 있는 채로 남는다
+        let ground = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, false);
+        let air = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, true);
+        assert!(should_notify(Some(ground), air));
     }
 
     #[test]
@@ -341,11 +465,13 @@ mod tests {
             Behavior::Idle { idle: IdleKind::LookAround },
             Facing::Right,
             Vertical::Level,
+            false,
         );
         let b = (
             Behavior::Idle { idle: IdleKind::Shake },
             Facing::Right,
             Vertical::Level,
+            false,
         );
         assert!(should_notify(Some(a), b));
     }

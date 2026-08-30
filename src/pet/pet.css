@@ -302,46 +302,142 @@ body,
 
 /* ── 반응 ──────────────────────────────────────────────────────── */
 
-/* 놀람 — 위로 튀며 날개를 활짝 편다 (R5) */
-@keyframes pg-startle-body {
+/* ── 클릭 반응 — 놀라지 않고 싸가지 없게 군다 (R5) ────────────────
+ * 다섯 가지를 번갈아 낸다(코어가 같은 반응을 연속으로 고르지 않는다).
+ * 전부 한 번 재생하고 그 자세로 버틴다 — 되돌아오지 않는 게 킹받는 핵심이다. */
+
+/* 등을 홱 돌리고 안 돌아본다 */
+@keyframes pg-turn-away {
   0% {
-    transform: translateY(0) scaleY(1);
-  }
-  30% {
-    transform: translateY(-7px) scaleY(1.06);
-  }
-  100% {
-    transform: translateY(0) scaleY(1);
-  }
-}
-@keyframes pg-startle-wing {
-  0%,
-  100% {
-    transform: rotate(0deg);
+    transform: scaleX(1) translateX(0);
   }
   35% {
-    transform: rotate(-55deg);
+    transform: scaleX(0.15) translateX(-4px);
+  }
+  70% {
+    transform: scaleX(-1) translateX(-8px);
+  }
+  100% {
+    transform: scaleX(-1) translateX(-6px);
   }
 }
-@keyframes pg-startle-wing-far {
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-  35% {
-    transform: rotate(55deg);
-  }
+.pg--sassy-turn-away {
+  animation: pg-turn-away 0.5s ease-out forwards;
 }
 
-.pg--startled .pg-body,
-.pg--startled .pg-head {
-  animation: pg-startle-body 0.4s ease-out;
+/* 고개만 홱 돌려 외면한다 */
+@keyframes pg-head-flick {
+  0% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-46deg);
+  }
+  100% {
+    transform: rotate(-38deg);
+  }
 }
-.pg--startled .pg-wing-near {
-  animation: pg-startle-wing 0.4s ease-out;
+.pg--sassy-head-flick .pg-head {
+  animation: pg-head-flick 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) forwards;
 }
-.pg--startled .pg-wing-far {
-  animation: pg-startle-wing-far 0.4s ease-out;
+/* 부리를 살짝 치켜든 채로 버틴다 */
+.pg--sassy-head-flick .pg-body {
+  animation: none;
+  transform: rotate(-4deg);
+}
+
+/* 날개를 휘휘 저어 쫓아낸다 */
+@keyframes pg-wing-flick {
+  0%,
+  100% {
+    transform: rotate(-34deg);
+  }
+  25% {
+    transform: rotate(-72deg);
+  }
+  50% {
+    transform: rotate(-30deg);
+  }
+  75% {
+    transform: rotate(-68deg);
+  }
+}
+/* SASSY_MS(900ms) 안에 끝나야 한다 — 넘치면 자세가 중간에 잘린다 */
+.pg--sassy-wing-flick .pg-wing-near {
+  animation: pg-wing-flick 0.45s ease-in-out 2;
+}
+.pg--sassy-wing-flick .pg-head {
+  transform: rotate(-16deg);
+}
+
+/* 눈을 굴린다 — 눈동자만 크게 한 바퀴 */
+@keyframes pg-eye-roll {
+  0% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(0.4px, -1.9px);
+  }
+  40% {
+    transform: translate(1.7px, -0.6px);
+  }
+  60% {
+    transform: translate(0.6px, 1.5px);
+  }
+  80% {
+    transform: translate(-1.5px, -0.4px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+.pg--sassy-eye-roll .pg-gaze {
+  /* 시선 추적(--gaze-*)을 덮어써야 하므로 애니메이션으로 건다 */
+  animation: pg-eye-roll 0.8s ease-in-out 1;
+}
+/* 굴리는 동안 고개를 살짝 젖힌다 */
+.pg--sassy-eye-roll .pg-head {
+  transform: rotate(-8deg);
+}
+
+/* 엉덩이를 흔든다 */
+@keyframes pg-butt-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(9deg);
+  }
+  35% {
+    transform: rotate(-9deg);
+  }
+  55% {
+    transform: rotate(8deg);
+  }
+  75% {
+    transform: rotate(-7deg);
+  }
+}
+@keyframes pg-tail-wag {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-16deg);
+  }
+  75% {
+    transform: rotate(16deg);
+  }
+}
+.pg--sassy-butt-wiggle .pg-body {
+  transform-origin: 50px 46px;
+  animation: pg-butt-wiggle 0.7s ease-in-out 1.3;
+}
+.pg--sassy-butt-wiggle .pg-tail {
+  transform-origin: 33px 100px;
+  animation: pg-tail-wag 0.3s ease-in-out 3;
 }
 
 /* 매달림 — 집어 든 동안 날개는 위로, 발은 버둥거린다 (R6) */
@@ -385,9 +481,9 @@ body,
 .pg--dragged .pg-foot--far {
   animation: pg-kick 0.32s ease-in-out infinite -0.16s;
 }
-/* 들려 있는 동안에는 그림자를 지운다 — 바닥에 붙어 있지 않다 */
-.pg--dragged .pg-shadow,
-.pg--falling .pg-shadow {
+/* 그림자는 "떠 있는가" 하나로 지운다. 동작별로 나열하면 새 동작을 추가할 때마다
+ * 빠뜨리고, 공중에서 클릭했을 때처럼 지상 동작인데 떠 있는 경우를 놓친다. */
+.pg-air .pg-shadow {
   opacity: 0;
 }
 
@@ -472,11 +568,6 @@ body,
 .pg--swim .pg-foot--far {
   animation: pg-trail 0.34s ease-in-out infinite;
 }
-/* 공중에서는 그림자를 지운다 — 바닥에 붙어 있지 않다 */
-.pg--swim .pg-shadow {
-  opacity: 0;
-}
-
 /* ── 세로 방향에 따른 몸 기울기 ───────────────────────────────────
  * 진행 방향으로 몸을 눕히면 오르내림이 읽힌다. 지상 동작은 level이라
  * 이 규칙이 걸리지 않는다(코어가 Level로 고정해 보낸다). */
@@ -517,9 +608,6 @@ body,
 }
 .pg--thrown .pg-wing-far {
   transform: rotate(50deg);
-}
-.pg--thrown .pg-shadow {
-  opacity: 0;
 }
 
 /* 움직임을 줄이는 시스템 설정을 존중한다 */

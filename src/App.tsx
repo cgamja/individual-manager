@@ -28,7 +28,15 @@ import {
   type TodoPageMeta,
   type TodoSnapshot,
 } from "./lib/notion";
-import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settings";
+import {
+  DEFAULT_PET_SETTINGS,
+  DEFAULT_SETTINGS,
+  loadPetSettings,
+  loadSettings,
+  savePetSettings,
+  saveSettings,
+} from "./lib/settings";
+import { setPetEnabled } from "./lib/pet";
 import {
   getTimerState,
   onTick,
@@ -69,6 +77,7 @@ function App() {
   const [snapshot, setSnapshot] = useState<TimerSnapshot>({ state: "idle" });
   const [config, setConfig] = useState<TimerConfig>(DEFAULT_SETTINGS);
   const [notifGranted, setNotifGranted] = useState(true);
+  const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
   const [saveFailed, setSaveFailed] = useState(false);
   const [notionStatus, setNotionStatus] = useState<ConnectionState>({
     state: "not_configured",
@@ -139,6 +148,8 @@ function App() {
 
     (async () => {
       // 저장된 설정을 Rust 코어에 반영한 뒤 상태를 동기화한다
+      const savedPet = await loadPetSettings().catch(() => DEFAULT_PET_SETTINGS);
+      if (!cancelled) setPetEnabledState(savedPet.enabled);
       const saved = await loadSettings().catch(() => DEFAULT_SETTINGS);
       const applied = await setTimerConfig(saved).catch(() => DEFAULT_SETTINGS);
       if (cancelled) return;
@@ -211,6 +222,19 @@ function App() {
       // 저장 실패는 Rust 코어 상태와 별개 — 사용자에게 알리고 이번 실행에서만 유지됨을 알린다
       console.error("설정 저장 실패:", err);
       setSaveFailed(true);
+    }
+  }, []);
+
+  /** 펭귄 on/off (R8) — Rust가 창을 만들거나 닫고, 저장은 여기서 한다.
+   * 커맨드가 실패하면 화면 표시를 되돌린다 — 켜지지 않았는데 켜진 것처럼 보이지 않게. */
+  const handlePetEnabledChange = useCallback(async (next: boolean) => {
+    setPetEnabledState(next);
+    try {
+      await setPetEnabled(next);
+      await savePetSettings({ enabled: next });
+    } catch (err) {
+      console.error("펭귄 설정 변경 실패:", err);
+      setPetEnabledState(!next);
     }
   }, []);
 
@@ -453,6 +477,8 @@ function App() {
         config={config}
         disabled={snapshot.state !== "idle"}
         onChange={handleConfigChange}
+        petEnabled={petEnabled}
+        onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
       />
       <NotionCard
         status={notionStatus}

@@ -8,6 +8,15 @@ export const DEFAULT_SETTINGS: TimerConfig = {
 
 const STORE_FILE = "settings.json";
 const TIMER_KEY = "timer";
+/** Rust의 `pet_bridge::PET_KEY`와 같은 키 — 시작 시점 판단을 Rust가 직접 읽는다. */
+const PET_KEY = "pet";
+
+export interface PetSettings {
+  enabled: boolean;
+}
+
+/** 사용자가 직접 요청한 기능이라 기본은 켜짐이다 (A2). */
+export const DEFAULT_PET_SETTINGS: PetSettings = { enabled: true };
 
 /** 저장된 타이머 설정을 로드한다. 없으면 기본값(25/5). */
 export async function loadSettings(): Promise<TimerConfig> {
@@ -20,4 +29,18 @@ export async function loadSettings(): Promise<TimerConfig> {
 export async function saveSettings(config: TimerConfig): Promise<void> {
   const store = await load(STORE_FILE);
   await store.set(TIMER_KEY, config);
+}
+
+/** 저장된 펭귄 설정을 로드한다. 없으면 켜짐. */
+export async function loadPetSettings(): Promise<PetSettings> {
+  const store = await load(STORE_FILE);
+  const value = await store.get<PetSettings>(PET_KEY);
+  // 저장된 값이 깨져 있어도 켜짐으로 수렴시킨다 — 펭귄이 조용히 사라지지 않게
+  return typeof value?.enabled === "boolean" ? value : DEFAULT_PET_SETTINGS;
+}
+
+/** 펭귄 설정을 저장한다. Rust는 다음 실행의 시작 시점에 이 값을 읽는다. */
+export async function savePetSettings(settings: PetSettings): Promise<void> {
+  const store = await load(STORE_FILE);
+  await store.set(PET_KEY, settings);
 }

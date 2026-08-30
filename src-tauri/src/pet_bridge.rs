@@ -10,6 +10,7 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
+use tauri_plugin_store::StoreExt;
 
 use crate::pet::{Bounds, Pet, Snapshot};
 use crate::timer_bridge::now_ms;
@@ -25,6 +26,21 @@ const TICK_MS: u64 = 50;
 const SLEEP_TICK_MS: u64 = 500;
 
 pub struct PetState(pub Mutex<Pet>);
+
+/// 프론트의 `settings.ts`와 공유하는 저장 위치. 웹뷰가 저장하고 Rust가 읽는다 —
+/// 시작 시점에 펭귄을 띄울지는 웹뷰가 뜨기 전에 정해져야 깜빡임이 없다.
+const SETTINGS_FILE: &str = "settings.json";
+const PET_KEY: &str = "pet";
+
+/// 저장된 켜짐 여부. 값이 없으면 켜짐이 기본이다 — 사용자가 직접 요청한
+/// 기능이라 opt-in으로 숨기지 않는다 (A2).
+pub fn pet_enabled(app: &AppHandle) -> bool {
+    app.store(SETTINGS_FILE)
+        .ok()
+        .and_then(|store| store.get(PET_KEY))
+        .and_then(|value| value.get("enabled").and_then(|v| v.as_bool()))
+        .unwrap_or(true)
+}
 
 /// 펫 창 라벨. `capabilities/default.json`의 `windows`에도 같은 값이 들어 있어야
 /// 이벤트가 전달된다 — 빠뜨리면 조용히 아무것도 오지 않는다 (KTD8).
@@ -194,6 +210,19 @@ pub fn pet_drag_by(dx: f64, dy: f64, state: State<'_, PetState>, app: AppHandle)
 pub fn pet_drag_end(state: State<'_, PetState>, app: AppHandle) {
     state.0.lock().unwrap().drag_end(now_ms());
     flush(&app);
+}
+
+/// 펭귄을 켜고 끈다 (R8). 끄면 창을 숨기지 않고 닫는다 — 틱 스레드도
+/// 창이 없으면 느린 대기로 떨어져 자원을 쓰지 않는다.
+/// 저장은 웹뷰가 담당한다 (기존 타이머 설정과 같은 방식).
+#[tauri::command]
+pub fn pet_set_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
+    if enabled {
+        create_pet_window(&app).map(|_| ()).map_err(|e| e.to_string())
+    } else {
+        close_pet_window(&app);
+        Ok(())
+    }
 }
 
 /// 웹뷰가 처음 뜰 때 현재 상태를 한 번 받아 간다 (첫 틱을 기다리지 않게).

@@ -117,8 +117,10 @@ pub fn run() {
                 start,
                 pet::Bounds { left: 0.0, right: 800.0, floor_y: 400.0 },
             ))));
-            if let Err(err) = pet_bridge::create_pet_window(app.handle()) {
-                eprintln!("펭귄 창 생성 실패: {err}");
+            if pet_bridge::pet_enabled(app.handle()) {
+                if let Err(err) = pet_bridge::create_pet_window(app.handle()) {
+                    eprintln!("펭귄 창 생성 실패: {err}");
+                }
             }
             pet_bridge::spawn_pet_tick_thread(app.handle().clone());
 

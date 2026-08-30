@@ -49,5 +49,9 @@ export const dragPetBy = (dx: number, dy: number): Promise<void> =>
 
 export const endPetDrag = (): Promise<void> => invoke("pet_drag_end");
 
+/** 펭귄을 켜고 끈다 (R8). 끄면 창이 닫힌다. */
+export const setPetEnabled = (enabled: boolean): Promise<void> =>
+  invoke("pet_set_enabled", { enabled });
+
 export const onPetState = (cb: (snapshot: PetSnapshot) => void): Promise<UnlistenFn> =>
   listen<PetSnapshot>(EVENT_PET_STATE, (event) => cb(event.payload));

@@ -70,7 +70,10 @@ export function Penguin({ className = "penguin", ...rest }: PenguinProps) {
         <path d="M64 29 L77 32.5 L64 36.5 Z" fill={BEAK} />
         {/* 흰 눈테 — 아델리 펭귄의 식별 특징 */}
         <ellipse cx="57" cy="27" rx="5.2" ry="6.2" fill={SNOW} />
-        <circle id="eye" className="pg-eye" cx="57.5" cy="27.5" r="2.5" fill={INK} />
+        {/* 눈동자는 시선 추적용 그룹 안에 둔다 — 깜빡임과 회전축이 겹치지 않게 */}
+        <g className="pg-gaze">
+          <circle id="eye" className="pg-eye" cx="57.5" cy="27.5" r="2.5" fill={INK} />
+        </g>
       </g>
 
       {/* 가까운 쪽 날개 — 몸통 앞이라 기지개·놀람에서 가장 잘 보인다 */}

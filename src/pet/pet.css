@@ -417,6 +417,18 @@ body,
   animation: pg-land 0.3s ease-out;
 }
 
+/* 시선 추적 — 눈동자만 커서 쪽으로 밀린다 (R7). 깜빡임은 .pg-eye가 따로
+ * 담당하므로 두 transform이 겹치지 않는다. */
+.pg-gaze {
+  transform: translate(var(--gaze-x, 0), var(--gaze-y, 0));
+  transition: transform 0.18s ease-out;
+}
+
+/* 눈을 감고 있을 때는 시선도 멈춘다 */
+.pg--sleep .pg-gaze {
+  transform: none;
+}
+
 /* 움직임을 줄이는 시스템 설정을 존중한다 */
 @media (prefers-reduced-motion: reduce) {
   .penguin *,

@@ -12,7 +12,7 @@ use tauri::{
 };
 use tauri_plugin_store::StoreExt;
 
-use crate::pet::{Bounds, Pet, Snapshot};
+use crate::pet::{Behavior, Bounds, Facing, Pet, Snapshot};
 use crate::timer_bridge::now_ms;
 
 /// 웹뷰가 구독하는 상태 이벤트.
@@ -24,6 +24,8 @@ pub const EVENT_PET_STATE: &str = "pet://state";
 const TICK_MS: u64 = 50;
 /// 졸고 있을 때의 틱 간격 — 깨어날 시각만 확인하면 되므로 길게 잡는다 (R10).
 const SLEEP_TICK_MS: u64 = 500;
+/// 모니터 작업 영역을 다시 읽는 주기.
+const BOUNDS_REFRESH_MS: u64 = 2_000;
 
 pub struct PetState(pub Mutex<Pet>);
 
@@ -79,6 +81,9 @@ pub fn create_pet_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         // 키보드 포커스를 뺏지 않는다 (R9)
         .focused(false)
         .visible(true)
+        // 다른 Space로 가리거나 가려져도 CSS 애니메이션이 스로틀되지 않게 한다
+        // (솔루션 문서 함정 1의 보조 대응. macOS 14+)
+        .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .build()
         .inspect(|window| {
             // Accessory 정책 아래에서는 빌더의 visible만으로 화면에 나오지 않는 경우가 있다
@@ -137,13 +142,24 @@ fn current_bounds(window: &WebviewWindow) -> Option<Bounds> {
 pub fn spawn_pet_tick_thread(app: AppHandle) {
     std::thread::spawn(move || {
         let mut bounds: Option<Bounds> = None;
+        let mut bounds_read_at: u64 = 0;
+        // 웹뷰에 마지막으로 알린 겉모습. 창은 20Hz로 움직이지만 CSS 클래스는
+        // 전이할 때만 바뀌므로, 매 틱 emit하면 웹뷰가 이유 없이 20Hz로 리렌더한다.
+        let mut last_look: Option<(Behavior, Facing)> = None;
         loop {
             let Some(window) = pet_window(&app) else {
                 // 설정에서 껐거나 아직 만들기 전 — 창이 생길 때까지 느리게 돈다
                 std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
                 continue;
             };
-            bounds = current_bounds(&window).or(bounds);
+            // current_monitor()는 이벤트 루프를 왕복하는 블로킹 호출이라 20Hz로
+            // 부르면 상주 비용이 아깝다. 모니터·해상도는 자주 바뀌지 않으므로
+            // 2초에 한 번만 다시 읽는다.
+            let now = now_ms();
+            if bounds.is_none() || now.saturating_sub(bounds_read_at) >= BOUNDS_REFRESH_MS {
+                bounds = current_bounds(&window).or(bounds);
+                bounds_read_at = now;
+            }
             let Some(area) = bounds else {
                 std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
                 continue;
@@ -152,33 +168,41 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             let snapshot = {
                 let state = app.state::<PetState>();
                 let mut pet = state.0.lock().unwrap();
-                pet.step(now_ms(), area)
+                pet.step(now, area)
             };
 
-            let interval = if snapshot.behavior.moves_window() {
-                apply(&window, snapshot);
-                TICK_MS
-            } else {
-                // 자는 동안에는 창을 옮기지도, 이벤트를 쏘지도 않는다 (R10)
-                SLEEP_TICK_MS
-            };
+            let moves = snapshot.behavior.moves_window();
+            let look = (snapshot.behavior, snapshot.facing);
+            // 졸기로 "전이하는" 그 스냅샷은 반드시 알려야 한다. 움직임 여부로만
+            // 거르면 자는 모습이 웹뷰에 영영 도달하지 않아 직전 동작이 그대로 남는다.
+            apply(&window, snapshot, moves, last_look != Some(look));
+            last_look = Some(look);
+
+            // 자는 동안에는 창을 옮기지 않고 틱도 느려진다 (R10)
+            let interval = if moves { TICK_MS } else { SLEEP_TICK_MS };
             std::thread::sleep(Duration::from_millis(interval));
         }
     });
 }
 
-/// 스냅샷을 창 위치와 웹뷰 상태에 반영한다.
-fn apply(window: &WebviewWindow, snapshot: Snapshot) {
-    let _ = window.set_position(LogicalPosition::new(snapshot.x, snapshot.y));
-    let _ = window.emit(EVENT_PET_STATE, snapshot);
+/// 스냅샷을 창 위치와 웹뷰 상태에 반영한다. 창 이동과 상태 통지는 조건이
+/// 다르다 — 자는 펭귄은 움직이지 않지만 "잔다"는 사실은 알려야 한다.
+fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, notify: bool) {
+    if move_window {
+        let _ = window.set_position(LogicalPosition::new(snapshot.x, snapshot.y));
+    }
+    if notify {
+        let _ = window.emit(EVENT_PET_STATE, snapshot);
+    }
 }
 
 /// 커맨드가 상태를 바꾼 뒤 즉시 화면에 반영한다 — 다음 틱(최대 500ms)을
-/// 기다리면 클릭·드래그 반응이 굼떠 보인다.
+/// 기다리면 클릭·드래그 반응이 굼떠 보인다. 커맨드는 항상 동작을 바꾸므로
+/// 이동과 통지를 모두 한다.
 fn flush(app: &AppHandle) -> Option<Snapshot> {
     let window = pet_window(app)?;
     let snapshot = app.state::<PetState>().0.lock().unwrap().snapshot();
-    apply(&window, snapshot);
+    apply(&window, snapshot, true, true);
     Some(snapshot)
 }
 
@@ -235,6 +259,38 @@ pub fn pet_get_state(state: State<'_, PetState>) -> Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 등록을 빠뜨리면 컴파일도 되고 테스트도 통과하는데 런타임에서 모든 IPC가
+    /// reject된다 — 커맨드는 `pub`이라 dead_code 경고도 안 뜬다. 실제로 한 번
+    /// 놓쳤던 사각지대라 소스를 직접 대조한다.
+    #[test]
+    fn 모든_펫_커맨드가_invoke_handler에_등록되어_있다() {
+        let bridge = include_str!("pet_bridge.rs");
+        let lib = include_str!("lib.rs");
+
+        let mut commands = Vec::new();
+        let mut lines = bridge.lines().peekable();
+        while let Some(line) = lines.next() {
+            if line.trim() != "#[tauri::command]" {
+                continue;
+            }
+            let signature = lines.peek().expect("커맨드 속성 뒤에 함수가 없다");
+            let name = signature
+                .trim()
+                .strip_prefix("pub fn ")
+                .and_then(|rest| rest.split('(').next())
+                .expect("`pub fn 이름(` 형태를 기대한다");
+            commands.push(name.to_string());
+        }
+
+        assert!(!commands.is_empty(), "커맨드를 하나도 찾지 못했다 — 탐지가 깨졌다");
+        for name in commands {
+            assert!(
+                lib.contains(&format!("pet_bridge::{name},")),
+                "`{name}`이 lib.rs의 invoke_handler 목록에 없다"
+            );
+        }
+    }
 
     #[test]
     fn 작업_영역을_논리_좌표_경계로_변환한다() {

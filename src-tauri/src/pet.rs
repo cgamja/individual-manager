@@ -182,8 +182,15 @@ impl Pet {
             }
             Behavior::Walk => {
                 self.x += self.facing.sign() * WALK_SPEED * dt;
-                // 경계에 닿으면 넘지 않고 제자리에서 돈다 (R2)
-                if self.x <= bounds.left {
+                // 걸어다닐 폭이 없는 화면(펭귄보다 좁은 작업 영역)에서는 양쪽 경계가
+                // 겹쳐 매 step마다 Turn으로 들어가 영원히 제자리에서 돈다.
+                // 그럴 때는 회전을 건너뛰고 평소처럼 유휴로 넘어가게 둔다.
+                if bounds.right <= bounds.left {
+                    self.x = bounds.left;
+                    if now_ms >= self.behavior_until_ms {
+                        self.pick_next(now_ms);
+                    }
+                } else if self.x <= bounds.left {
                     self.x = bounds.left;
                     self.enter(Behavior::Turn, now_ms + TURN_MS);
                 } else if self.x >= bounds.right {
@@ -566,6 +573,19 @@ mod tests {
         }
         assert_eq!(p.behavior(), Behavior::Land, "바닥에 닿으면 착지한다");
         assert_eq!(p.snapshot().y, BOUNDS.floor_y);
+    }
+
+    #[test]
+    fn 걸어다닐_폭이_없는_화면에서도_영원히_돌지_않는다() {
+        // 작업 영역이 펭귄보다 좁으면 양쪽 경계가 겹쳐 매 step이 Turn이 된다
+        let narrow = Bounds { left: 10.0, right: 10.0, floor_y: 50.0 };
+        let mut p = Pet::new(5, 0, narrow);
+        let seen = drive(&mut p, 100, 40_000, 250, narrow);
+        assert!(
+            seen.iter().any(|s| !matches!(s.behavior, Behavior::Turn)),
+            "회전 말고 다른 동작으로 넘어가야 한다"
+        );
+        assert!(seen.iter().all(|s| s.x == narrow.left));
     }
 
     #[test]

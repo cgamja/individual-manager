@@ -231,9 +231,19 @@ function App() {
     setPetEnabledState(next);
     try {
       await setPetEnabled(next);
+    } catch (err) {
+      // 창을 못 만들거나 못 닫았다 — 표시만 되돌린다
+      console.error("펭귄 표시 변경 실패:", err);
+      setPetEnabledState(!next);
+      return;
+    }
+    try {
       await savePetSettings({ enabled: next });
     } catch (err) {
-      console.error("펭귄 설정 변경 실패:", err);
+      // 창은 바뀌었는데 저장만 실패했다. 표시만 되돌리면 "꺼짐인데 떠 있는"
+      // 상태가 되므로 창도 함께 원복해 화면과 실제를 맞춘다
+      console.error("펭귄 설정 저장 실패:", err);
+      await setPetEnabled(!next).catch(() => {});
       setPetEnabledState(!next);
     }
   }, []);

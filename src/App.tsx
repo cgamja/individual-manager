@@ -20,10 +20,12 @@ import {
   openTodoPage,
   saveNotionToken,
   setNotionDatabase,
+  setTodoPerformance,
   testNotionConnection,
   toggleTodo,
   type ConnectionState,
   type TodoOutcome,
+  type TodoPageMeta,
   type TodoSnapshot,
 } from "./lib/notion";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settings";
@@ -48,6 +50,19 @@ function errorMessage(err: unknown): string {
     : typeof err === "string"
       ? err
       : String(err);
+}
+
+/** 목록이 실린 스냅샷 — 쓰기 핸들러가 다루는 유일한 상태다. */
+type LoadedTodoSnapshot = Extract<TodoSnapshot, { state: "loaded" }>;
+
+/** 스냅샷의 페이지 메타를 쓰기 커맨드 인자 형태로 뽑는다 (KTD1) —
+ * 스냅샷의 null("값 없음")은 인자에서 생략(undefined)과 같은 뜻이다. */
+function todoMeta(snapshot: LoadedTodoSnapshot): TodoPageMeta {
+  return {
+    performance: snapshot.performance ?? undefined,
+    rangeStart: snapshot.range_start ?? undefined,
+    rangeEnd: snapshot.range_end ?? undefined,
+  };
 }
 
 function App() {
@@ -244,17 +259,28 @@ function App() {
   }, [runNotionCommand]);
 
   /**
-   * 쓰기 실패 후 1회 재조회 — 타임아웃 뒤 실제로 반영됐다면 재조회가 그 결과를
-   * 드러낸다. 날짜 전환 중(loaded && !is_today)이면 그 날짜(openTodoPage)로
-   * 재조회해 오늘로 튕기지 않게 하고, 오늘이면 getTodoList. 결과는 순번이
-   * 여전히 최신일 때만 반영하고 재조회 자체의 실패는 삼킨다.
+   * 쓰기 실패 후 1회 재조회 — 날짜 전환 중(loaded && !is_today)이면 그
+   * 날짜(openTodoPage)로 재조회해 오늘로 튕기지 않게 하고, 오늘이면 getTodoList.
+   * 결과는 순번이 여전히 최신일 때만 반영하고 재조회 자체의 실패는 삼킨다.
+   *
+   * 두 경로가 드러내는 것이 다르다. 오늘 경로(getTodoList)는 원격을 다시 읽으므로
+   * 타임아웃 뒤 실제로 반영됐다면 그 결과가 목록·수행도에 드러난다. 열기
+   * 경로(openTodoPage)는 children만 다시 읽고 페이지 메타는 여기서 넘긴 값을
+   * 그대로 되받는 설계라(KTD1), 목록은 최신이 되지만 수행도·적용 구간은 화면에
+   * 남아 있던 직전 값 그대로다 — 저장이 확인되지 않은 값을 선택된 것처럼
+   * 보이게 하지 않는다 (R9).
    */
   const refetchAfterTodoFailure = useCallback(
     async (seq: number) => {
       const current = todoSnapshotRef.current;
       const actual =
         current?.state === "loaded" && !current.is_today
-          ? await openTodoPage(current.page_id, current.title, current.date)
+          ? await openTodoPage(
+              current.page_id,
+              current.title,
+              current.date,
+              todoMeta(current),
+            )
               .then((o) => o.snapshot)
               .catch(() => null)
           : await getTodoList().catch(() => null);
@@ -306,8 +332,11 @@ function App() {
     (text: string, category: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
       const { page_id, title, date } = todoSnapshot;
-      // category = 선택된 헤딩 텍스트 — 백엔드가 해당 헤딩 아래에 삽입한다
-      return runTodoCommand(() => addTodo(page_id, text, title, date, category));
+      // category = 선택된 헤딩 텍스트 — 백엔드가 해당 헤딩 아래에 삽입한다.
+      // 수행도·적용 구간은 children 재조회가 주지 않는 페이지 메타라 되실어 준다 (KTD1)
+      return runTodoCommand(() =>
+        addTodo(page_id, text, title, date, category, todoMeta(todoSnapshot)),
+      );
     },
     [todoSnapshot, runTodoCommand],
   );
@@ -315,7 +344,9 @@ function App() {
     (blockId: string, checked: boolean) => {
       if (todoSnapshot?.state !== "loaded") return;
       const { page_id, title, date } = todoSnapshot;
-      void runTodoCommand(() => toggleTodo(page_id, blockId, checked, title, date));
+      void runTodoCommand(() =>
+        toggleTodo(page_id, blockId, checked, title, date, todoMeta(todoSnapshot)),
+      );
     },
     [todoSnapshot, runTodoCommand],
   );
@@ -323,7 +354,22 @@ function App() {
     (blockId: string, text: string): Promise<boolean> => {
       if (todoSnapshot?.state !== "loaded") return Promise.resolve(false);
       const { page_id, title, date } = todoSnapshot;
-      return runTodoCommand(() => editTodo(page_id, blockId, text, title, date));
+      return runTodoCommand(() =>
+        editTodo(page_id, blockId, text, title, date, todoMeta(todoSnapshot)),
+      );
+    },
+    [todoSnapshot, runTodoCommand],
+  );
+  /** 수행도 즉시 저장 (R3) — `handleTodoToggle` 전례로 busy·seq·실패 재조회를
+   * 공통 경로에 맡긴다. 직전 값을 함께 넘겨 확인되지 않은 값이 되실리지 않게 한다 (R9). */
+  const handleTodoSetPerformance = useCallback(
+    (performance: string) => {
+      if (todoSnapshot?.state !== "loaded") return;
+      const { page_id, title, date } = todoSnapshot;
+      // meta.performance는 화면에 지금 보이는 직전 값이다 — 시도값은 별도 인자다
+      void runTodoCommand(() =>
+        setTodoPerformance(page_id, title, date, performance, todoMeta(todoSnapshot)),
+      );
     },
     [todoSnapshot, runTodoCommand],
   );
@@ -346,6 +392,9 @@ function App() {
             page_id: created.page_id,
             title: created.title,
             date: created.date,
+            performance: created.performance,
+            range_start: created.range_start,
+            range_end: created.range_end,
           };
         }
         // created — snapshot이 null이면 생성은 됐지만 재조회만 실패한 것 (notice로 안내)
@@ -366,10 +415,16 @@ function App() {
     },
     [applyTodoSnapshot, beginTodoTurn, endTodoTurnIfCurrent, refetchAfterTodoFailure],
   );
-  /** exists의 기존 행 열기 — openTodoPage는 TodoOutcome을 돌려줘 공통 경로를 탄다. */
+  /** exists의 기존 행 열기 — openTodoPage는 TodoOutcome을 돌려줘 공통 경로를 탄다.
+   * 수행도·적용 구간은 exists가 실어 준 그 행의 값 그대로다 (KTD1) — 여러 날을
+   * 덮는 행을 이 경로로 열어도 구간 표시가 사라지지 않는다 (R10). */
   const handleTodoOpenPage = useCallback(
-    (pageId: string, title: string, date: string): Promise<boolean> =>
-      runTodoCommand(() => openTodoPage(pageId, title, date)),
+    (
+      pageId: string,
+      title: string,
+      date: string,
+      meta: TodoPageMeta,
+    ): Promise<boolean> => runTodoCommand(() => openTodoPage(pageId, title, date, meta)),
     [runTodoCommand],
   );
 
@@ -392,6 +447,7 @@ function App() {
         onEdit={handleTodoEdit}
         onCreateRow={handleTodoCreateRow}
         onOpenPage={handleTodoOpenPage}
+        onSetPerformance={handleTodoSetPerformance}
       />
       <SettingsCard
         config={config}

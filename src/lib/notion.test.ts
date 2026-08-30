@@ -11,6 +11,7 @@ import {
   openTodoPage,
   saveNotionToken,
   setNotionDatabase,
+  setTodoPerformance,
   testNotionConnection,
   toggleTodo,
   type CreateRowOutcome,
@@ -93,6 +94,9 @@ describe("Todo 커맨드 래퍼", () => {
     title: "[TODO]",
     items: [{ id: "b1", text: "가짜 항목", checked: false, category: null }],
     is_today: true,
+    performance: "일부",
+    range_start: null,
+    range_end: null,
   };
   const OUTCOME: TodoOutcome = { snapshot: SNAPSHOT, notice: null };
 
@@ -213,5 +217,113 @@ describe("Todo 커맨드 래퍼", () => {
 
     await editTodo("page-1", "b1", "수정", "[TODO]", "2026-08-12");
     expect(calls[3].args).toMatchObject({ date: "2026-08-12" });
+  });
+
+  it("수행도_래퍼가_인자를_그대로_전달한다", async () => {
+    const calls = captureIPC(OUTCOME);
+
+    const result = await setTodoPerformance(
+      "page-1",
+      "[TODO]",
+      "2026-08-10",
+      "완료",
+      { performance: "일부", rangeStart: "2026-08-12", rangeEnd: "2026-08-14" },
+    );
+
+    expect(calls[0].cmd).toBe("notion_todo_set_performance");
+    expect(calls[0].args).toMatchObject({
+      pageId: "page-1",
+      pageTitle: "[TODO]",
+      date: "2026-08-10",
+      performance: "완료",
+      meta: {
+        // 저장이 확인되지 않은 경로에서 되실을 직전 값 (R9)
+        performance: "일부",
+        rangeStart: "2026-08-12",
+        rangeEnd: "2026-08-14",
+      },
+    });
+    expect(result).toEqual(OUTCOME);
+
+    // 미지정 행에서의 첫 선택 — 직전 값·구간을 모르면 meta 자체가 없다
+    await setTodoPerformance("page-1", "[TODO]", undefined, "미완");
+    expect(calls[1].args).toMatchObject({
+      date: undefined,
+      performance: "미완",
+      meta: undefined,
+    });
+  });
+
+  it("쓰기_래퍼가_현재_수행도를_함께_전달한다", async () => {
+    const calls = captureIPC(OUTCOME);
+
+    const META = {
+      rangeStart: "2026-08-12",
+      rangeEnd: "2026-08-14",
+    };
+
+    await addTodo("page-1", "새 할 일", "[TODO]", "2026-08-10", "기타", {
+      performance: "완료",
+      ...META,
+    });
+    expect(calls[0].args).toMatchObject({
+      meta: { performance: "완료", ...META },
+    });
+
+    await toggleTodo("page-1", "b1", true, "[TODO]", "2026-08-10", {
+      performance: "일부",
+      ...META,
+    });
+    expect(calls[1].args).toMatchObject({
+      meta: { performance: "일부", ...META },
+    });
+
+    await editTodo("page-1", "b1", "수정", "[TODO]", "2026-08-10", {
+      performance: "미완",
+      ...META,
+    });
+    expect(calls[2].args).toMatchObject({
+      meta: { performance: "미완", ...META },
+    });
+
+    // 미지정 행 — 넘길 값이 없으면 meta 자체가 실리지 않는다
+    await toggleTodo("page-1", "b1", false, "[TODO]", "2026-08-10");
+    expect(calls[3].args).toMatchObject({ meta: undefined });
+  });
+
+  it("open_page_래퍼가_수행도와_적용_구간을_전달한다", async () => {
+    const calls = captureIPC(OUTCOME);
+    // "기존 행 열기"가 넘기는 값 — exists가 실어 준 수행도·적용 구간이 그대로 흘러야 한다
+    const EXISTS: CreateRowOutcome = {
+      state: "exists",
+      page_id: "page-9",
+      title: "휴가",
+      date: "2026-08-10",
+      performance: "일부",
+      range_start: "2026-08-12",
+      range_end: "2026-08-14",
+    };
+
+    await openTodoPage(EXISTS.page_id, EXISTS.title, EXISTS.date, {
+      performance: EXISTS.performance ?? undefined,
+      rangeStart: EXISTS.range_start ?? undefined,
+      rangeEnd: EXISTS.range_end ?? undefined,
+    });
+
+    expect(calls[0].cmd).toBe("notion_todo_open_page");
+    expect(calls[0].args).toMatchObject({
+      pageId: "page-9",
+      pageTitle: "휴가",
+      date: "2026-08-10",
+      meta: {
+        performance: "일부",
+        rangeStart: "2026-08-12",
+        rangeEnd: "2026-08-14",
+      },
+    });
+
+    // 값을 모르면 생략 — 기존 3-인자 호출도 그대로 동작한다
+    await openTodoPage("page-9", "휴가", "2026-08-10");
+    expect(calls[1].args).toMatchObject({ meta: undefined });
   });
 });

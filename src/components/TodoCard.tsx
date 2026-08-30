@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import type { TodoItem, TodoSnapshot } from "../lib/notion";
+import type { TodoItem, TodoPageMeta, TodoSnapshot } from "../lib/notion";
 
 /** 행 만들기 폼이 제출하는 파라미터 — lib/notion createTodoRow와 동일 형태.
  * 행 생성은 미래 [TODO] 전용이라 날짜 하나만 받는다. */
@@ -10,12 +10,27 @@ export interface CreateRowFormParams {
 /** 행 만들기 제출 결과 — 카드가 폼 접힘/유지·기존 행 안내를 결정하는 데 쓴다. */
 export type CreateRowFormResult =
   | { state: "created" }
-  | { state: "exists"; page_id: string; title: string; date: string }
+  | {
+      state: "exists";
+      page_id: string;
+      title: string;
+      date: string;
+      /** 겹친 행의 현재 수행도 — "기존 행 열기"가 그대로 넘긴다 (KTD1). */
+      performance: string | null;
+      /** 겹친 행의 적용 구간 — 함께 넘겨야 여러 날을 덮는 행을 열었을 때도
+       * 구간 표시가 남는다 (R10). */
+      range_start: string | null;
+      range_end: string | null;
+    }
   | { state: "failed" };
 
 /** 추가 시 고를 수 있는 카테고리 — 페이지 본문의 헤딩 텍스트와 일치해야 한다. */
 const ADD_CATEGORIES = ["공부", "기타"];
 const DEFAULT_CATEGORY = "공부";
+
+/** 수행도 4단계 — Rust `PERFORMANCE_OPTIONS`의 표시용 사본이다 (KTD2).
+ * 권위는 Rust 상수이고 어긋나도 커맨드 가드가 최종 방어선이다. 순서는 달성도 순. */
+const PERFORMANCES = ["완료", "일부", "미완", "기타"];
 
 interface TodoCardProps {
   /** null = 첫 로드 전 ("불러오는 중…"). 스냅샷이 있으면 busy 중에도 목록을 유지한다. */
@@ -33,8 +48,16 @@ interface TodoCardProps {
   onEdit: (blockId: string, text: string) => Promise<boolean>;
   /** created일 때만 폼을 접는다 — exists는 기존 행 안내, failed는 입력 유지. */
   onCreateRow: (params: CreateRowFormParams) => Promise<CreateRowFormResult>;
-  /** resolve가 true(열기 성공)일 때만 폼을 접는다. */
-  onOpenPage: (pageId: string, title: string, date: string) => Promise<boolean>;
+  /** resolve가 true(열기 성공)일 때만 폼을 접는다.
+   * meta는 exists가 실어 준 그 행의 수행도·적용 구간 — 열기 스냅샷에 그대로 실린다 (KTD1). */
+  onOpenPage: (
+    pageId: string,
+    title: string,
+    date: string,
+    meta: TodoPageMeta,
+  ) => Promise<boolean>;
+  /** 수행도 즉시 저장 (R3) — 카드는 같은 값 재클릭을 걸러서(R4) 호출하지 않는다. */
+  onSetPerformance: (performance: string) => void;
 }
 
 /** 오늘 할 일 카드 — 오늘 페이지의 to_do 블록 조회·추가·토글·편집 + [TODO] 행 만들기·날짜 전환. */
@@ -48,6 +71,7 @@ export function TodoCard({
   onEdit,
   onCreateRow,
   onOpenPage,
+  onSetPerformance,
 }: TodoCardProps) {
   const [addRaw, setAddRaw] = useState("");
   const [addCategory, setAddCategory] = useState(DEFAULT_CATEGORY);
@@ -57,11 +81,10 @@ export function TodoCard({
   // 행 만들기 폼 — 입력 초안만 로컬 state로 둔다
   const [formOpen, setFormOpen] = useState(false);
   const [rowStart, setRowStart] = useState("");
-  const [existsInfo, setExistsInfo] = useState<{
-    page_id: string;
-    title: string;
-    date: string;
-  } | null>(null);
+  const [existsInfo, setExistsInfo] = useState<Extract<
+    CreateRowFormResult,
+    { state: "exists" }
+  > | null>(null);
 
   // 날짜가 있는 스냅샷(no_page·loaded)에서만 폼·전환 UI가 의미가 있다
   const snapshotDate =
@@ -129,11 +152,7 @@ export function TodoCard({
       if (result.state === "created") {
         closeForm();
       } else if (result.state === "exists") {
-        setExistsInfo({
-          page_id: result.page_id,
-          title: result.title,
-          date: result.date,
-        });
+        setExistsInfo(result);
       }
       // failed — 배너는 App이 띄우고 입력은 유지한다 (R10)
     } catch {
@@ -141,10 +160,23 @@ export function TodoCard({
     }
   };
 
+  /** 수행도 선택 — 즉시 저장이고(KTD4) 같은 값 재클릭은 요청 없이 무동작이다 (R4). */
+  const pickPerformance = (value: string, current: string | null) => {
+    if (isBusy || value === current) return;
+    onSetPerformance(value);
+  };
+
   const openExisting = async () => {
     if (isBusy || existsInfo === null) return;
     try {
-      if (await onOpenPage(existsInfo.page_id, existsInfo.title, existsInfo.date)) {
+      if (
+        await onOpenPage(existsInfo.page_id, existsInfo.title, existsInfo.date, {
+          // null("값 없음")은 인자에서 생략(undefined)과 같은 뜻이다 (App todoMeta와 같은 규칙)
+          performance: existsInfo.performance ?? undefined,
+          rangeStart: existsInfo.range_start ?? undefined,
+          rangeEnd: existsInfo.range_end ?? undefined,
+        })
+      ) {
         closeForm();
       }
     } catch {
@@ -206,6 +238,37 @@ export function TodoCard({
         </div>
       ) : (
         <>
+          {/* 수행도 줄 — 하루(또는 그 행이 덮는 구간) 전체의 값이라 개별 할 일보다 위에 둔다.
+              360px 헤더는 이미 버튼으로 차 있어 헤더 안에는 자리가 없다 */}
+          <div className="todo-perf">
+            <div className="todo-perfs" role="group" aria-label="수행도">
+              {PERFORMANCES.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className="todo-perf-pill"
+                  aria-pressed={snapshot.performance === value}
+                  disabled={isBusy}
+                  onClick={() => pickPerformance(value, snapshot.performance)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+            {snapshot.performance === null && (
+              <span className="todo-perf-empty">미지정</span>
+            )}
+            {/* 범위 행 — 이 값이 하루가 아니라 구간 전체에 적용된다는 사실을
+                누르기 전에 보여준다 (R10). 시작·끝이 같으면 하루 행이라 적지 않는다 */}
+            {snapshot.range_start !== null &&
+              snapshot.range_end !== null &&
+              snapshot.range_start !== snapshot.range_end && (
+                <span className="todo-perf-range">
+                  {snapshot.range_start}~{snapshot.range_end} 적용
+                </span>
+              )}
+          </div>
+
           {snapshot.items.length === 0 ? (
             <p className="todo-status" role="status">
               오늘 할 일이 아직 없어요 — 아래에서 추가해 보세요

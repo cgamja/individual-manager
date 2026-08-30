@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import { LauncherFan } from "./components/LauncherFan";
 import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
 import { TimerCard } from "./components/TimerCard";
+import { DEFAULT_LAUNCHER, openInBrowser, type LauncherService } from "./lib/launcher";
 import { ensureNotificationPermission } from "./lib/notification";
 import { setPetEnabled } from "./lib/pet";
 import {
   DEFAULT_PET_SETTINGS,
   DEFAULT_SETTINGS,
+  loadLauncher,
   loadPetSettings,
   loadSettings,
   loadTaunts,
@@ -30,7 +33,7 @@ import {
 import "./App.css";
 
 /**
- * 팝오버 — v2.0에서 앱이 직접 소유하는 것은 타이머와 설정뿐이다.
+ * 팝오버 — 최상위는 런처다 (PRD §5.2). 앱이 직접 소유하는 것은 타이머와 설정뿐이고,
  * 서비스 조회·기록은 Claude Code가, 깊은 작업은 Chrome으로 연 원래 웹 UI가 맡는다
  * (PRINCIPLE 1·2).
  */
@@ -41,6 +44,9 @@ function App() {
   const [saveFailed, setSaveFailed] = useState(false);
   const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
+  const [launcher, setLauncher] = useState<readonly LauncherService[]>(DEFAULT_LAUNCHER);
+  /** 펭귄 on/off와 대사 편집은 다섯 번째 카드가 아니라 여기 들어간다 (A4). */
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     let unlistenTick: UnlistenFn | undefined;
@@ -51,6 +57,9 @@ function App() {
       if (!cancelled) setPetEnabledState(savedPet.enabled);
       const savedTaunts = await loadTaunts().catch(() => []);
       if (!cancelled) setTaunts(savedTaunts);
+      // 저장된 게 없으면 기본 목록으로 수렴한다 — 편집 UI는 후속 작업이다
+      const savedLauncher = await loadLauncher().catch(() => [...DEFAULT_LAUNCHER]);
+      if (!cancelled) setLauncher(savedLauncher);
       // 저장된 설정을 Rust 코어에 반영한 뒤 상태를 동기화한다
       const saved = await loadSettings().catch(() => DEFAULT_SETTINGS);
       const applied = await setTimerConfig(saved).catch(() => DEFAULT_SETTINGS);
@@ -152,21 +161,42 @@ function App() {
 
   return (
     <main className="popover">
-      <TimerCard
-        snapshot={snapshot}
-        onStart={handleStart}
-        onPause={handlePause}
-        onResume={handleResume}
-        onReset={handleReset}
+      <LauncherFan
+        services={launcher}
+        onOpen={openInBrowser}
+        timerPanel={
+          <TimerCard
+            snapshot={snapshot}
+            onStart={handleStart}
+            onPause={handlePause}
+            onResume={handleResume}
+            onReset={handleReset}
+          />
+        }
       />
-      <SettingsCard
-        config={config}
-        disabled={snapshot.state !== "idle"}
-        onChange={handleConfigChange}
-        petEnabled={petEnabled}
-        onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
-      />
-      <TauntCard lines={taunts} onChange={(next) => void handleTauntsChange(next)} />
+      <div className="launcher-foot">
+        <button
+          type="button"
+          className="launcher-gear"
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((open) => !open)}
+        >
+          설정
+        </button>
+        <span className="launcher-hint">Esc · 접기 / 닫기</span>
+      </div>
+      {settingsOpen && (
+        <>
+          <SettingsCard
+            config={config}
+            disabled={snapshot.state !== "idle"}
+            onChange={handleConfigChange}
+            petEnabled={petEnabled}
+            onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
+          />
+          <TauntCard lines={taunts} onChange={(next) => void handleTauntsChange(next)} />
+        </>
+      )}
       {!notifGranted && (
         <p className="notif-hint" role="status">
           알림 권한이 꺼져 있어요 — 세션 종료는 이 카드에서 확인돼요

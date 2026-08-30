@@ -1,5 +1,3 @@
-pub mod notion;
-pub mod notion_bridge;
 pub mod pet;
 pub mod pet_bridge;
 pub mod pomodoro;
@@ -151,19 +149,6 @@ pub fn run() {
             timer_bridge::timer_get_state,
             timer_bridge::timer_get_config,
             timer_bridge::timer_set_config,
-            notion_bridge::notion_save_token,
-            notion_bridge::notion_delete_token,
-            notion_bridge::notion_set_database,
-            notion_bridge::notion_get_status,
-            notion_bridge::notion_test_connection,
-            notion_bridge::notion_todo_list,
-            notion_bridge::notion_todo_create_page,
-            notion_bridge::notion_todo_create_row,
-            notion_bridge::notion_todo_open_page,
-            notion_bridge::notion_todo_add,
-            notion_bridge::notion_todo_toggle,
-            notion_bridge::notion_todo_edit,
-            notion_bridge::notion_todo_set_performance,
             pet_bridge::pet_poke,
             pet_bridge::pet_drag_start,
             pet_bridge::pet_drag_by,

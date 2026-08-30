@@ -754,29 +754,28 @@ body,
 /* 방망이를 쥔 날개가 방망이를 따라 돈다 */
 @keyframes pg-swing-wing {
   0% {
-    transform: rotate(-104deg);
-  }
-  14% {
-    /* 앤티시페이션 — 치는 반대쪽으로 조금 더 당긴다 */
-    transform: rotate(-118deg);
-  }
-  46% {
-    transform: rotate(48deg);
-  }
-  68% {
-    transform: rotate(30deg);
-  }
-  100% {
-    transform: rotate(22deg);
-  }
-}
-/* 반대쪽 날개는 균형을 잡는다 */
-@keyframes pg-swing-wing-far {
-  0% {
-    transform: rotate(34deg);
+    /* 뒤로 치켜든 자세에서 곧바로 시작한다 (뜸 들이지 않는다).
+     * 방망이가 아래를 향해 그려져 있으므로 **뒤로 드는 것이 양의 회전**이다 —
+     * 부호를 반대로 잡으면 앞으로 든 채 앞으로 휘두르는 그림이 된다. */
+    transform: rotate(112deg);
   }
   40% {
-    transform: rotate(-24deg);
+    transform: rotate(-46deg);
+  }
+  62% {
+    transform: rotate(-28deg);
+  }
+  100% {
+    transform: rotate(-22deg);
+  }
+}
+/* 반대쪽 날개는 균형을 잡는다 — 가까운 쪽과 반대로 움직인다 */
+@keyframes pg-swing-wing-far {
+  0% {
+    transform: rotate(-30deg);
+  }
+  40% {
+    transform: rotate(26deg);
   }
   100% {
     transform: rotate(0deg);
@@ -784,13 +783,13 @@ body,
 }
 
 .pg--swing .pg-body {
-  animation: pg-swing-body 0.42s cubic-bezier(0.28, 0, 0.12, 1);
+  animation: pg-swing-body 0.35s cubic-bezier(0.22, 0, 0.1, 1);
 }
 .pg--swing .pg-head {
-  animation: pg-swing-head 0.42s cubic-bezier(0.28, 0, 0.12, 1);
+  animation: pg-swing-head 0.35s cubic-bezier(0.22, 0, 0.1, 1);
 }
 .pg--swing .pg-wing-near {
-  animation: pg-swing-wing 0.42s cubic-bezier(0.28, 0, 0.12, 1) forwards;
+  animation: pg-swing-wing 0.35s cubic-bezier(0.22, 0, 0.1, 1) forwards;
 }
 .pg--swing .pg-wing-far {
   animation: pg-swing-wing-far 0.42s ease-out;
@@ -807,6 +806,6 @@ body,
 
 .pg--swing .pg-bat {
   opacity: 1;
-  animation: pg-swing-wing 0.42s cubic-bezier(0.28, 0, 0.12, 1) forwards;
+  animation: pg-swing-wing 0.35s cubic-bezier(0.22, 0, 0.1, 1) forwards;
 }
 

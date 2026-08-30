@@ -480,20 +480,19 @@ body,
 /* ── 세로 방향에 따른 몸 기울기 ───────────────────────────────────
  * 진행 방향으로 몸을 눕히면 오르내림이 읽힌다. 지상 동작은 level이라
  * 이 규칙이 걸리지 않는다(코어가 Level로 고정해 보낸다). */
-.pg--swim.pg-v--up .pg-body,
-.pg--swim.pg-v--up .pg-head {
-  transform: rotate(-22deg);
+/* 기울기는 SVG 루트에 건다. 몸통·머리에 걸면 그 요소에서 돌고 있는 숨쉬기
+ * 애니메이션이 일반 transform 선언을 이겨 기울기가 아예 적용되지 않는다.
+ * 루트는 헤엄 중에 애니메이션이 없어 안전하다(회전은 Turn 전용인데 배타적이다).
+ * 좌우 반전은 부모(.pg-stage)가 하므로, 왼쪽을 볼 때는 이 회전도 함께 미러링돼
+ * 화면상 올바른 방향으로 보인다. */
+.penguin {
   transition: transform 0.25s ease-out;
 }
-.pg--swim.pg-v--down .pg-body,
-.pg--swim.pg-v--down .pg-head {
-  transform: rotate(22deg);
-  transition: transform 0.25s ease-out;
+.pg--swim.pg-v--up {
+  transform: rotate(-20deg);
 }
-.pg--swim.pg-v--level .pg-body,
-.pg--swim.pg-v--level .pg-head {
-  transform: rotate(0deg);
-  transition: transform 0.25s ease-out;
+.pg--swim.pg-v--down {
+  transform: rotate(20deg);
 }
 
 /* ── 던져짐 — 포물선을 그리며 구른다 (R12) ─────────────────────── */

@@ -27,6 +27,18 @@ const MAX_STEP_MS: u64 = 250;
 const TURN_MS: u64 = 250;
 /// 싸가지 반응의 길이. 한 박자 확실히 보여야 킹받는다.
 const SASSY_MS: u64 = 900;
+/// 킹받는 한마디가 떠 있는 시간.
+const SPEECH_MS: u64 = 3_200;
+/// 한마디와 다음 한마디 사이 간격. 클릭과 무관하게 알아서 떠든다.
+const TAUNT_GAP_MS: (u64, u64) = (7_000, 18_000);
+/// 빠따로 날려 보내는 속도 (논리 px/초).
+const BAT_VX: (u64, u64) = (540, 1_050);
+const BAT_VY: (u64, u64) = (620, 1_000);
+/// 방망이가 닿기까지의 시간. 이 동안 펭귄은 제자리에서 움찔하며 기다린다 —
+/// 클릭하자마자 날아가면 방망이가 허공을 치는 그림이 된다.
+const WINDUP_MS: u64 = 120;
+/// 착지 후 약이 올라 한마디 할 확률(%).
+const SASSY_AFTER_LAND_PERCENT: u64 = 70;
 const LAND_MS: u64 = 300;
 /// 마지막 자극(클릭·드래그) 이후 이만큼 지나면 졸기로 넘어간다.
 /// 길게 잡는다 — 펭귄이 깨어서 돌아다니는 게 이 기능의 목적이고, 졸기는 양념이다.
@@ -63,6 +75,16 @@ impl Facing {
             Facing::Right => 1.0,
         }
     }
+}
+
+/// 펭귄이 지금 하는 말. **문구 자체는 웹뷰가 갖는다** — 대사는 표현이고,
+/// 코어는 "언제 무엇을 뽑았는지"만 안다.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
+pub struct Speech {
+    /// 발화 번호. 같은 대사가 연달아 나와도 웹뷰가 새 말풍선으로 알아본다.
+    pub seq: u64,
+    /// 대사 추첨값. 웹뷰가 `목록[roll % 목록길이]`로 고른다.
+    pub roll: u64,
 }
 
 /// 지금 오르는 중인지 내려가는 중인지. 웹뷰가 몸 기울기를 고르는 데 쓴다.
@@ -131,6 +153,8 @@ pub enum Behavior {
     Sleep,
     /// 클릭에 대한 반응 — 놀라지 않고 싸가지 없게 군다 (R5)
     Sassy { sassy: SassyKind },
+    /// 방망이가 날아오는 중 — 아직 맞지 않았다 (R14)
+    WindUp,
     /// 사용자가 집어 든 상태 — 자율 이동을 하지 않는다 (R6)
     Dragged,
     Falling,
@@ -173,6 +197,11 @@ pub struct Snapshot {
     /// 바닥에서 떠 있는가. 동작만으로는 알 수 없다 — 공중에서 클릭하면
     /// 지상 동작인 반응을 하면서도 떠 있다.
     pub air: bool,
+    /// 지금 떠 있는 말풍선. 없으면 조용하다.
+    pub speech: Option<Speech>,
+    /// 빠따를 맞은 횟수. 늘어날 때마다 웹뷰가 방망이를 한 번 휘두른다.
+    /// 연타해도 매번 보이려면 상태가 아니라 **횟수**여야 한다.
+    pub whack_seq: u64,
     pub behavior: Behavior,
 }
 
@@ -190,6 +219,14 @@ pub struct Pet {
     last_idle: Option<IdleKind>,
     /// 직전 반응 종류 — 연타할 때 같은 반응만 나오면 심심하다.
     last_sassy: Option<SassyKind>,
+    speech: Option<Speech>,
+    speech_until_ms: u64,
+    speech_seq: u64,
+    whack_seq: u64,
+    /// 맞는 순간 실릴 속도. WindUp이 끝나면 여기에 실려 날아간다.
+    pending_launch: (f64, f64),
+    /// 다음 한마디 시각. 말은 클릭이 아니라 시간에 맞춰 나온다.
+    next_taunt_ms: u64,
     /// 좌우 속도 (논리 px/초) — 던져졌을 때만 0이 아니다.
     vx: f64,
     /// 낙하 속도 (논리 px/초).
@@ -227,6 +264,12 @@ impl Pet {
             last_stimulus_ms: start_ms,
             last_idle: None,
             last_sassy: None,
+            speech: None,
+            speech_until_ms: 0,
+            speech_seq: 0,
+            whack_seq: 0,
+            pending_launch: (0.0, 0.0),
+            next_taunt_ms: start_ms + TAUNT_GAP_MS.0,
             vx: 0.0,
             vy: 0.0,
             air: false,
@@ -243,6 +286,8 @@ impl Pet {
             facing: self.facing,
             vertical: self.vertical(),
             air: self.air,
+            speech: self.speech,
+            whack_seq: self.whack_seq,
             behavior: self.behavior,
         }
     }
@@ -273,6 +318,15 @@ impl Pet {
         self.last_step_ms = now_ms;
         let dt = elapsed as f64 / 1000.0;
         self.last_y = self.y;
+        if self.speech.is_some() && now_ms >= self.speech_until_ms {
+            self.speech = None;
+        }
+        // 말은 클릭과 무관하게 몇 초 간격으로 알아서 나온다
+        if self.speech.is_none() && now_ms >= self.next_taunt_ms {
+            self.say(now_ms);
+            let gap = self.range(TAUNT_GAP_MS);
+            self.next_taunt_ms = now_ms + SPEECH_MS + gap;
+        }
 
         match self.behavior {
             // 사용자가 들고 있는 동안에는 물리도 자율 이동도 없다 (R6)
@@ -313,6 +367,15 @@ impl Pet {
                     self.enter(Behavior::Walk, until);
                 }
             }
+            Behavior::WindUp => {
+                if now_ms >= self.behavior_until_ms {
+                    // 방망이가 닿았다 — 이제 날아간다
+                    let (vx, vy) = self.pending_launch;
+                    self.vx = vx;
+                    self.vy = vy;
+                    self.enter(Behavior::Thrown, now_ms);
+                }
+            }
             Behavior::Sassy { .. } => {
                 if now_ms >= self.behavior_until_ms {
                     if self.air {
@@ -325,7 +388,12 @@ impl Pet {
             }
             Behavior::Land => {
                 if now_ms >= self.behavior_until_ms {
-                    self.enter_idle(now_ms);
+                    // 맞고 떨어졌으면 일어나서 약을 올린다
+                    if self.range((0, 99)) < SASSY_AFTER_LAND_PERCENT {
+                        self.enter_sassy(now_ms);
+                    } else {
+                        self.enter_idle(now_ms);
+                    }
                 }
             }
             Behavior::Swim => {
@@ -388,12 +456,50 @@ impl Pet {
     ///
     /// 공중에서 찔리면 놀라 떨어진다. `Startled`는 지상 동작이라 그대로 넣으면
     /// 같은 step의 clamp가 펭귄을 바닥으로 순간이동시킨다.
-    pub fn poke(&mut self, now_ms: u64) {
+    /// 빠따 — 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로).
+    /// 공중에서 다시 때리면 그 자리에서 또 날아가므로 계속 저글링할 수 있다.
+    pub fn whack(&mut self, now_ms: u64, bounds: Bounds) {
         self.last_stimulus_ms = now_ms;
-        // 떠 있든 서 있든 **그 자리에서** 반응한다. 공중에서 눌렀다고 떨어지거나
-        // 바닥으로 끌려가면 "올라가다 누르면 맨 아래로 간다"가 된다.
+        self.whack_seq += 1;
+        // 보고 있는 쪽으로 날아간다 — 방망이가 뒤에서 오는 그림이 된다.
+        // 벽에 붙어 있으면 화면 안쪽으로 보낸다
+        let toward_right = if bounds.right <= bounds.left {
+            // 경계를 못 읽었다 — 벽 판정이 무의미하니 보고 있는 쪽으로 보낸다
+            self.facing == Facing::Right
+        } else if self.x <= bounds.left + 1.0 {
+            true
+        } else if self.x >= bounds.right - 1.0 {
+            false
+        } else {
+            self.facing == Facing::Right
+        };
+        let vx = self.range(BAT_VX) as f64;
+        self.pending_launch = (
+            if toward_right { vx } else { -vx },
+            -(self.range(BAT_VY) as f64),
+        );
+        // 아직 맞지 않았다 — 지금 속도는 0으로 두고 그 자리에서 기다린다
         self.vx = 0.0;
         self.vy = 0.0;
+        self.facing = if toward_right { Facing::Right } else { Facing::Left };
+        self.enter(Behavior::WindUp, now_ms + WINDUP_MS);
+    }
+
+    /// 킹받는 한마디를 띄운다. 문구는 웹뷰가 고른다.
+    pub fn say(&mut self, now_ms: u64) {
+        self.speech_seq += 1;
+        // u64를 그대로 보내면 JS의 배정밀도에서 하위 비트가 잘려 대사 절반이
+        // 영영 안 나온다 (2^63 근처 값은 2^11의 배수라 나머지가 짝수로 고정된다)
+        let roll = self.next_u64() % 100_000;
+        self.speech = Some(Speech {
+            seq: self.speech_seq,
+            roll,
+        });
+        self.speech_until_ms = now_ms + SPEECH_MS;
+    }
+
+    /// 싸가지 반응 하나를 고른다 — 직전과 같은 종류는 피한다.
+    fn enter_sassy(&mut self, now_ms: u64) {
         let mut sassy = SASSY_KINDS[self.range((0, 4)) as usize];
         if Some(sassy) == self.last_sassy {
             let next =
@@ -731,52 +837,6 @@ mod tests {
     }
 
     #[test]
-    fn 클릭은_졸기_상태에서도_깨워서_반응하게_한다() {
-        let mut p = pet();
-        let mut t = 100;
-        while p.behavior() != Behavior::Sleep && t < SLEEP_AFTER_MS + 60_000 {
-            p.step(t, BOUNDS);
-            t += 250;
-        }
-        assert_eq!(p.behavior(), Behavior::Sleep);
-
-        p.poke(t);
-        assert!(matches!(p.behavior(), Behavior::Sassy { .. }));
-    }
-
-    #[test]
-    fn 반응이_끝나면_유휴로_돌아온다() {
-        let mut p = pet();
-        p.poke(1_000);
-        assert!(matches!(p.behavior(), Behavior::Sassy { .. }));
-        let s = p.step(1_000 + SASSY_MS + 10, BOUNDS);
-        assert!(matches!(s.behavior, Behavior::Idle { .. }));
-    }
-
-    #[test]
-    fn 땅에서_클릭하면_반응_뒤에_헛낙하가_붙지_않는다() {
-        // 프론트는 클릭인지 드래그인지 알기 전에 모든 pointerdown에서 drag_start를
-        // 부른다. poke만 직접 부르는 테스트는 이 조합을 영영 재현하지 못한다
-        let mut p = pet();
-        p.step(1_000, BOUNDS);
-        let ground = p.snapshot().y;
-        p.drag_start(1_000);
-        p.poke(1_050);
-
-        let mut seen = Vec::new();
-        let mut t = 1_050;
-        while t < 1_050 + SASSY_MS + 2_000 {
-            t += 50;
-            seen.push(p.step(t, BOUNDS).behavior);
-        }
-        assert!(
-            !seen.contains(&Behavior::Falling) && !seen.contains(&Behavior::Land),
-            "땅에서 클릭했는데 낙하·착지가 끼어들었다: {seen:?}"
-        );
-        assert_eq!(p.snapshot().y, ground, "고도가 변하면 안 된다");
-    }
-
-    #[test]
     fn 들어_올렸다_놓으면_여전히_떨어진다() {
         // 위 수정이 드래그를 망가뜨리지 않았는지 반대편에서 고정한다
         let mut p = pet();
@@ -794,20 +854,134 @@ mod tests {
     }
 
     #[test]
-    fn 연타하면_같은_반응이_연달아_나오지_않는다() {
+    fn 빠따를_맞으면_날아간다() {
         let mut p = pet();
-        let mut seen = Vec::new();
-        for i in 0..12 {
-            p.poke(1_000 + i * 2_000);
-            if let Behavior::Sassy { sassy } = p.behavior() {
-                seen.push(sassy);
+        p.step(1_000, BOUNDS);
+        let before = p.snapshot();
+        p.whack(1_000, BOUNDS);
+        assert_eq!(p.behavior(), Behavior::WindUp, "방망이가 닿기 전엔 제자리다");
+        // 기다리는 동안 움직이면 안 된다 — 방망이가 허공을 치는 그림이 된다
+        let waiting = p.step(1_000 + WINDUP_MS / 2, BOUNDS);
+        assert_eq!(waiting.y, before.y);
+        assert_eq!(waiting.x, before.x);
+
+        let hit = p.step(1_000 + WINDUP_MS + 10, BOUNDS);
+        assert_eq!(hit.behavior, Behavior::Thrown, "닿으면 그때 날아간다");
+
+        let mut t = 1_000 + WINDUP_MS + 10;
+        let mut peak = before.y;
+        while p.behavior() == Behavior::Thrown && t < 12_000 {
+            t += 50;
+            let s = p.step(t, BOUNDS);
+            peak = peak.min(s.y);
+        }
+        assert!(peak < before.y - 30.0, "위로 솟아야 한다 (정점 {peak}, 시작 {})", before.y);
+        assert_ne!(p.snapshot().x, before.x, "옆으로도 날아가야 한다");
+    }
+
+    #[test]
+    fn 빠따는_한_번에_한_번씩_횟수가_는다() {
+        // 웹뷰가 방망이를 몇 번 휘두를지 이 값으로 안다. 연타해도 매번 보여야 한다
+        let mut p = pet();
+        assert_eq!(p.snapshot().whack_seq, 0);
+        for i in 1..=5u64 {
+            p.whack(1_000 + i * 100, BOUNDS);
+            assert_eq!(p.snapshot().whack_seq, i, "{i}번째 빠따가 안 세어졌다");
+        }
+    }
+
+    #[test]
+    fn 공중에서_다시_때리면_그_자리에서_또_날아간다() {
+        // 저글링 — 떨어지는 중에 때리면 새로 솟아야 한다
+        let mut p = pet();
+        p.whack(1_000, BOUNDS);
+        p.step(1_000 + WINDUP_MS + 10, BOUNDS);
+        let mut t = 1_000 + WINDUP_MS + 10;
+        // 정점을 지나 내려오기 시작할 때까지 진행
+        let mut prev = p.snapshot().y;
+        while t < 6_000 {
+            t += 50;
+            let y = p.step(t, BOUNDS).y;
+            if y > prev && p.behavior() == Behavior::Thrown {
+                break;
             }
-            p.step(1_000 + i * 2_000 + SASSY_MS + 10, BOUNDS);
+            prev = y;
         }
-        assert_eq!(seen.len(), 12);
-        for pair in seen.windows(2) {
-            assert_ne!(pair[0], pair[1], "같은 반응이 연달아 나왔다");
+        assert_eq!(p.behavior(), Behavior::Thrown, "아직 공중이어야 한다");
+        let mid_air = p.snapshot().y;
+
+        p.whack(t, BOUNDS);
+        p.step(t + WINDUP_MS + 10, BOUNDS);
+        let after = p.step(t + WINDUP_MS + 60, BOUNDS);
+        assert!(after.y < mid_air, "다시 위로 솟아야 한다");
+        assert!(after.y < BOUNDS.floor_y, "바닥으로 끌려가면 안 된다");
+    }
+
+    #[test]
+    fn 빠따는_졸고_있어도_깨워서_날린다() {
+        let mut p = pet();
+        let mut t = 100;
+        while p.behavior() != Behavior::Sleep && t < SLEEP_AFTER_MS + 60_000 {
+            p.step(t, BOUNDS);
+            t += 250;
         }
+        assert_eq!(p.behavior(), Behavior::Sleep);
+        p.whack(t, BOUNDS);
+        assert_eq!(p.behavior(), Behavior::WindUp);
+        assert_eq!(p.step(t + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Thrown);
+    }
+
+    #[test]
+    fn 빠따를_맞는다고_말하지는_않는다() {
+        // 말은 클릭이 아니라 시간에 맞춰 나온다 — 때릴 때마다 떠들면 시끄럽다
+        let mut p = pet();
+        p.whack(1_000, BOUNDS);
+        assert!(p.snapshot().speech.is_none(), "클릭으로 말이 나오면 안 된다");
+        p.whack(1_100, BOUNDS);
+        p.whack(1_200, BOUNDS);
+        assert!(p.snapshot().speech.is_none(), "연타해도 마찬가지다");
+    }
+
+    #[test]
+    fn 대사_추첨값은_배정밀도에서_안전한_범위다() {
+        // u64를 그대로 보내면 JS에서 하위 비트가 잘려 대사 절반이 영영 안 나온다
+        let mut p = pet();
+        for i in 0..200u64 {
+            p.say(1_000 + i);
+            let roll = p.snapshot().speech.unwrap().roll;
+            assert!(roll < (1u64 << 53), "배정밀도로 정확히 표현돼야 한다: {roll}");
+        }
+    }
+
+    #[test]
+    fn 같은_대사가_연달아_나와도_새_발화로_구분된다() {
+        // seq가 안 늘면 웹뷰가 말풍선을 다시 띄우지 못한다
+        let mut p = pet();
+        p.say(1_000);
+        let first = p.snapshot().speech.unwrap();
+        p.say(1_100);
+        let second = p.snapshot().speech.unwrap();
+        assert!(second.seq > first.seq, "발화 번호가 늘어야 한다");
+    }
+
+    #[test]
+    fn 말풍선은_시간이_지나면_사라진다() {
+        let mut p = pet();
+        p.say(1_000);
+        assert!(p.step(1_500, BOUNDS).speech.is_some(), "금방 사라지면 못 읽는다");
+        assert!(
+            p.step(1_000 + SPEECH_MS + 100, BOUNDS).speech.is_none(),
+            "계속 떠 있으면 안 된다"
+        );
+    }
+
+    #[test]
+    fn 가만_둬도_가끔_한마디_한다() {
+        let mut p = pet();
+        let seen = drive(&mut p, 100, 120_000, 100, BOUNDS);
+        let spoke: std::collections::HashSet<u64> =
+            seen.iter().filter_map(|s| s.speech.map(|v| v.seq)).collect();
+        assert!(spoke.len() >= 2, "2분 동안 한마디도 안 하면 심심하다 (실제 {})", spoke.len());
     }
 
     #[test]
@@ -989,42 +1163,6 @@ mod tests {
             "위로 던졌는데 첫 틱에 착지로 삼켜졌다"
         );
         assert!(first.y > BOUNDS.floor_y - 1.0, "위로 순간이동하면 안 된다");
-    }
-
-    #[test]
-    fn 공중에서_클릭해도_그_자리에_머문다() {
-        let mut p = pet();
-        // 헤엄에 들어갈 때까지 진행시킨다
-        let mut t = 100;
-        while p.behavior() != Behavior::Swim && t < 200_000 {
-            p.step(t, BOUNDS);
-            t += 100;
-        }
-        assert_eq!(p.behavior(), Behavior::Swim, "헤엄에 도달해야 한다");
-        // 확실히 공중에 있는 시점까지 더 진행
-        while p.behavior() == Behavior::Swim && p.snapshot().y > BOUNDS.floor_y - 80.0 {
-            t += 100;
-            p.step(t, BOUNDS);
-        }
-        let height = p.snapshot().y;
-        assert!(height < BOUNDS.floor_y - 50.0, "충분히 떠 있어야 한다");
-
-        p.poke(t);
-        assert!(matches!(p.behavior(), Behavior::Sassy { .. }));
-        // 반응하는 동안 고도가 유지돼야 한다 — 떨어지지도, 끌려가지도 않는다
-        let mut t2 = t;
-        for _ in 0..8 {
-            t2 += 50;
-            let after = p.step(t2, BOUNDS);
-            assert!(
-                (after.y - height).abs() < 1.0,
-                "반응 중에 고도가 바뀌었다 (전 {height}, 후 {})",
-                after.y
-            );
-        }
-        // 반응이 끝나면 그제서야 내려온다
-        p.step(t + SASSY_MS + 60, BOUNDS);
-        assert_eq!(p.behavior(), Behavior::Falling, "반응 뒤에는 내려앉는다");
     }
 
     #[test]

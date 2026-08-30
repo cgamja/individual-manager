@@ -18,6 +18,15 @@
   --pg-halo-opacity: 0.42;
 }
 
+/* 창은 펭귄보다 크다 — 위쪽은 말풍선, 좌우는 방망이 자리다.
+ * 이 값들은 Rust의 PET_SIZE / PET_PAD_X / PET_PAD_TOP과 반드시 같아야 한다.
+ * 어긋나면 펭귄이 화면 경계에서 엉뚱한 자리에 선다 — 테스트로 대조한다. */
+:root {
+  --pg-size: 140px;
+  --pg-pad-x: 44px;
+  --pg-pad-top: 64px;
+}
+
 html,
 body,
 #pet-root {
@@ -26,6 +35,7 @@ body,
   width: 100%;
   height: 100%;
   background: transparent;
+  position: relative;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
@@ -34,8 +44,11 @@ body,
 /* 무대 — 진행 방향(좌우 반전)만 담당한다. 동작 애니메이션과 transform이
  * 겹치지 않도록 층을 나눠 둔다. */
 .pg-stage {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  left: var(--pg-pad-x);
+  top: var(--pg-pad-top);
+  width: var(--pg-size);
+  height: var(--pg-size);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -646,4 +659,104 @@ body,
   .penguin {
     animation: none !important;
   }
+}
+
+/* ── 킹받는 한마디 ────────────────────────────────────────────────
+ * 창 위쪽 여백에 뜬다. 클릭을 가로채면 펭귄을 때리려는 손을 막으므로
+ * pointer-events를 끈다. */
+
+@keyframes pg-bubble-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 7px) scale(0.85);
+  }
+  65% {
+    opacity: 1;
+    transform: translate(-50%, -1px) scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.pg-bubble {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  /* 애니메이션이 transform을 잡고 있으므로 기본 위치도 keyframe 안에서 잡는다 —
+   * 여기서 translateX만 걸면 애니메이션이 이겨서 어긋난다 */
+  transform: translate(-50%, 0);
+  max-width: 190px;
+  padding: 6px 10px;
+  border-radius: 11px;
+  background: rgba(252, 252, 254, 0.97);
+  color: #1b1f24;
+  font: 500 12px/1.3 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  text-align: center;
+  white-space: pre-wrap;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  animation: pg-bubble-in 0.22s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+/* 꼬리 — 아래를 향한다 */
+.pg-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  background: inherit;
+  transform: rotate(45deg);
+  border-radius: 0 0 2px 0;
+}
+
+/* ── 야구방망이 — 한 번 휘두르고 사라진다 ───────────────────────── */
+
+@keyframes pg-bat-swing {
+  0% {
+    opacity: 0;
+    transform: rotate(-104deg);
+  }
+  14% {
+    opacity: 1;
+    transform: rotate(-88deg);
+  }
+  /* 여기가 타격 순간 — 코어의 WINDUP_MS와 얼추 맞춘다 */
+  38% {
+    opacity: 1;
+    transform: rotate(16deg);
+  }
+  60% {
+    opacity: 1;
+    transform: rotate(4deg);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-6deg);
+  }
+}
+
+.pg-bat {
+  position: absolute;
+  /* 펭귄 왼쪽 뒤에서 들어와 오른쪽으로 후려친다 */
+  left: 2px;
+  top: 74px;
+  width: 30px;
+  height: 60px;
+  /* 손잡이 끝을 축으로 돈다 */
+  transform-origin: 15px 56px;
+  pointer-events: none;
+  animation: pg-bat-swing 0.4s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+}
+
+/* 왼쪽으로 날릴 때는 반대편에서 들어온다.
+ * scale은 transform과 별개 속성이라 애니메이션의 rotate와 곱해진다 */
+.pg-bat--left {
+  left: auto;
+  right: 2px;
+  scale: -1 1;
 }

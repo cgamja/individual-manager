@@ -14,6 +14,20 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 // vitest는 프로젝트 루트에서 돈다. `?raw`는 vitest의 CSS 처리에 걸려 원본을
 // 주지 않으므로 파일을 직접 읽는다 (그래서 @types/node가 dev 의존성에 있다)
 const css = readFileSync(resolve("src/pet/pet.css"), "utf8");
+const petRs = readFileSync(resolve("src-tauri/src/pet_bridge.rs"), "utf8");
+const petApp = readFileSync(resolve("src/pet/PetApp.tsx"), "utf8");
+
+/** `--이름: 123px;` 에서 숫자만 꺼낸다. */
+function cssVar(name: string): number | null {
+  const m = css.match(new RegExp(`--${name}:\\s*([0-9.]+)px`));
+  return m ? Number(m[1]) : null;
+}
+
+/** `pub const 이름: f64 = 123.0;` 에서 숫자만 꺼낸다. */
+function rustConst(name: string): number | null {
+  const m = petRs.match(new RegExp(`pub const ${name}: f64 = ([0-9.]+)`));
+  return m ? Number(m[1]) : null;
+}
 
 const ALL_BEHAVIORS: Behavior[] = [
   { kind: "walk" },
@@ -70,5 +84,43 @@ describe("pet.css 커버리지", () => {
       const uses = countExact(css, name);
       expect(uses, `@keyframes ${name}가 정의만 되고 쓰이지 않는다`).toBeGreaterThan(1);
     }
+  });
+});
+
+describe("창 여백 상수 동기화", () => {
+  // 창은 펭귄보다 크다(말풍선·방망이 자리). Rust는 창을 그만큼 물려 놓고,
+  // CSS는 그만큼 안으로 들여 펭귄을 그린다. 둘이 어긋나면 펭귄이 화면
+  // 경계에서 엉뚱한 자리에 서는데, 눈으로만 잡힌다.
+  it.each([
+    ["pg-size", "PET_SIZE"],
+    ["pg-pad-x", "PET_PAD_X"],
+    ["pg-pad-top", "PET_PAD_TOP"],
+  ])("--%s 가 Rust의 %s 와 같다", (cssName, rustName) => {
+    const a = cssVar(cssName);
+    const b = rustConst(rustName);
+    expect(a, `CSS에서 --${cssName}를 못 찾았다`).not.toBeNull();
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(a).toBe(b);
+  });
+});
+
+describe("PetApp이 쓰는 클래스에 스타일이 있다", () => {
+  // 실제로 겪은 사고: 말풍선·방망이를 그려 놓고 CSS를 빠뜨렸다. 아무 테스트도
+  // 실패하지 않았고, 방망이가 거대한 정지 이미지로 화면에 남았다.
+  // 동작 클래스(pg--)는 위에서 따로 보고, 여기서는 UI 클래스(pg-)를 본다.
+  const used = new Set<string>();
+  for (const m of petApp.matchAll(/\bpg-[a-z0-9-]+/g)) {
+    const cls = m[0];
+    // 동작·상태 클래스는 코어가 만들어 위 테스트가 담당한다
+    if (cls.startsWith("pg--") || cls.startsWith("pg-v--")) continue;
+    used.add(cls);
+  }
+
+  it("검사할 클래스를 찾았다", () => {
+    expect(used.size).toBeGreaterThan(0);
+  });
+
+  it.each([...used].map((c) => [c] as const))("%s 에 규칙이 있다", (cls) => {
+    expect(css).toContain(`.${cls}`);
   });
 });

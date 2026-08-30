@@ -32,7 +32,7 @@ pub struct PetState(pub Mutex<Pet>);
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
 /// **CSS 클래스에 영향을 주는 값은 빠짐없이 들어가야 한다.** 하나라도 빠지면
 /// 그 값만 바뀌는 전이가 웹뷰에 영영 도달하지 않는다(조용한 실패).
-pub type Look = (Behavior, Facing, Vertical, bool);
+pub type Look = (Behavior, Facing, Vertical, bool, Option<u64>, u64);
 
 pub fn look_of(snapshot: &Snapshot) -> Look {
     (
@@ -40,6 +40,10 @@ pub fn look_of(snapshot: &Snapshot) -> Look {
         snapshot.facing,
         snapshot.vertical,
         snapshot.air,
+        // 말풍선과 빠따는 동작을 바꾸지 않고도 화면을 바꾼다 — 빠뜨리면
+        // 말이 안 뜨거나 방망이가 한 번만 보인다
+        snapshot.speech.map(|s| s.seq),
+        snapshot.whack_seq,
     )
 }
 
@@ -67,9 +71,27 @@ pub fn pet_enabled(app: &AppHandle) -> bool {
 /// 이벤트가 전달된다 — 빠뜨리면 조용히 아무것도 오지 않는다 (KTD8).
 pub const PET_LABEL: &str = "pet";
 
-/// 펭귄 창의 한 변 (논리 px). 스프라이트 바운딩 박스에 맞춘 크기다 —
-/// 창을 좁게 유지하는 것이 클릭 통과를 대신하는 전략이다 (KTD3).
+/// 펭귄 자체가 차지하는 한 변 (논리 px). 이동 경계는 이 값으로 계산한다.
 pub const PET_SIZE: f64 = 140.0;
+/// 펭귄 좌우로 비워 두는 여백 — 방망이가 휘둘러질 자리.
+pub const PET_PAD_X: f64 = 44.0;
+/// 펭귄 위로 비워 두는 여백 — 말풍선이 뜰 자리.
+pub const PET_PAD_TOP: f64 = 64.0;
+
+/// 창은 펭귄보다 크다. 창을 펭귄 크기에 딱 맞추면 말풍선과 방망이가 잘린다.
+///
+/// **여백도 클릭을 먹는다.** 투명하다고 통과되지 않는다 — macOS에서는 투명한
+/// 창 영역도 그 창이 히트 테스트를 가져가고, CSS `pointer-events`로는 다른 앱에
+/// 넘길 수 없다(KTD3에서 클릭 통과를 안 쓰기로 했다). 그래서 여백은 말풍선과
+/// 방망이에 꼭 필요한 만큼만 둔다.
+pub const PET_WINDOW_W: f64 = PET_SIZE + PET_PAD_X * 2.0;
+pub const PET_WINDOW_H: f64 = PET_SIZE + PET_PAD_TOP;
+
+/// 펭귄 좌표 → 창 좌표. 펭귄이 창 안에서 (PAD_X, PAD_TOP)에 놓이므로
+/// 창은 그만큼 왼쪽·위로 물러나 있어야 한다.
+pub fn window_origin(pet_x: f64, pet_y: f64) -> (f64, f64) {
+    (pet_x - PET_PAD_X, pet_y - PET_PAD_TOP)
+}
 
 pub fn pet_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(PET_LABEL)
@@ -83,7 +105,7 @@ pub fn create_pet_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
     WebviewWindowBuilder::new(app, PET_LABEL, WebviewUrl::App("pet.html".into()))
         .title("Penguin Pet")
-        .inner_size(PET_SIZE, PET_SIZE)
+        .inner_size(PET_WINDOW_W, PET_WINDOW_H)
         .position(120.0, 120.0)
         // 투명 창 — app.macOSPrivateApi(이미 true) + pet.css의 배경 투명이 함께 필요하다
         .transparent(true)
@@ -133,12 +155,19 @@ pub fn bounds_from_work_area(
     let top = f64::from(origin.1) / scale;
     let width = f64::from(size.0) / scale;
     let height = f64::from(size.1) / scale;
+    // 경계는 **창 전체**가 화면 안에 들어오도록 잡는다. 펭귄 크기만 빼면
+    // 창의 여백(말풍선·방망이)이 화면 밖으로 나가, 정작 벽에 붙었을 때
+    // 방망이가 안 보이고 위쪽에서는 말풍선이 메뉴바 뒤로 숨는다.
+    let min_x = left + PET_PAD_X;
+    let max_x = left + width - pet_size - PET_PAD_X;
+    let min_y = top + PET_PAD_TOP;
+    let max_y = top + height - pet_size;
     Bounds {
-        left,
-        // 영역이 펭귄보다 좁은 극단적 경우에도 right < left가 되지 않게 한다
-        right: (left + width - pet_size).max(left),
-        top,
-        floor_y: (top + height - pet_size).max(top),
+        left: min_x,
+        // 영역이 창보다 좁은 극단적 경우에도 right < left가 되지 않게 한다
+        right: max_x.max(min_x),
+        top: min_y.min(max_y),
+        floor_y: max_y.max(min_y),
     }
 }
 
@@ -211,7 +240,8 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
 /// 다르다 — 자는 펭귄은 움직이지 않지만 "잔다"는 사실은 알려야 한다.
 fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, notify: bool) {
     if move_window {
-        let _ = window.set_position(LogicalPosition::new(snapshot.x, snapshot.y));
+        let (wx, wy) = window_origin(snapshot.x, snapshot.y);
+        let _ = window.set_position(LogicalPosition::new(wx, wy));
     }
     if notify {
         let _ = window.emit(EVENT_PET_STATE, snapshot);
@@ -228,14 +258,33 @@ fn flush(app: &AppHandle) -> Option<Snapshot> {
     Some(snapshot)
 }
 
-/// 펭귄 클릭 — 그 자리에서 싸가지 있게 반응하고, **펭귄 옆에서** 팝오버를 연다 (R5).
+/// 빠따 — 왼쪽 클릭 한 번에 펭귄이 한 번 날아간다 (R14).
+#[tauri::command]
+pub fn pet_whack(state: State<'_, PetState>, app: AppHandle) {
+    let bounds = bounds_or_flat(&app);
+    state.0.lock().unwrap().whack(now_ms(), bounds);
+    flush(&app);
+}
+
+/// 오른쪽 클릭 — **펭귄 옆에서** 창을 연다(타이머·설정). 왼쪽 클릭은 빠따가 가져갔다.
 /// 메뉴바 밑에서 열면 눌렀는데 화면 반대편에서 뜨는 셈이라 연결이 끊긴다.
 #[tauri::command]
-pub fn pet_poke(state: State<'_, PetState>, app: AppHandle) {
-    state.0.lock().unwrap().poke(now_ms());
-    let snapshot = flush(&app);
-    let at = snapshot.and_then(|s| popover_anchor(&app, s.x, s.y));
+pub fn pet_open_popover(state: State<'_, PetState>, app: AppHandle) {
+    let snapshot = state.0.lock().unwrap().snapshot();
+    let at = popover_anchor(&app, snapshot.x, snapshot.y);
     crate::toggle_popover_at(&app, at);
+}
+
+/// 현재 이동 영역. 모니터를 못 읽으면 납작한 경계를 쓴다 (보수적으로 동작한다).
+fn bounds_or_flat(app: &AppHandle) -> Bounds {
+    pet_window(app)
+        .and_then(|w| current_bounds(&w))
+        .unwrap_or(Bounds {
+            left: 0.0,
+            right: 0.0,
+            top: 0.0,
+            floor_y: 0.0,
+        })
 }
 
 /// 펭귄 위치에서 팝오버를 놓을 자리를 구한다. 모니터를 못 읽으면 `None`을
@@ -429,7 +478,7 @@ mod tests {
 
     #[test]
     fn 겉모습이_그대로면_다시_알리지_않는다() {
-        let look = (Behavior::Walk, Facing::Right, Vertical::Level, false);
+        let look = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0);
         assert!(!should_notify(Some(look), look));
         assert!(should_notify(None, look), "처음에는 알려야 한다");
     }
@@ -438,15 +487,15 @@ mod tests {
     fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
         // 헤엄 중 오름→내림은 동작도 좌우 방향도 그대로다. 이걸 놓치면
         // 몸 기울기가 영영 갱신되지 않는다
-        let up = (Behavior::Swim, Facing::Right, Vertical::Up, true);
-        let down = (Behavior::Swim, Facing::Right, Vertical::Down, true);
+        let up = (Behavior::Swim, Facing::Right, Vertical::Up, true, None, 0);
+        let down = (Behavior::Swim, Facing::Right, Vertical::Down, true, None, 0);
         assert!(should_notify(Some(up), down));
     }
 
     #[test]
     fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
-        let right = (Behavior::Walk, Facing::Right, Vertical::Level, false);
-        let left = (Behavior::Walk, Facing::Left, Vertical::Level, false);
+        let right = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0);
+        let left = (Behavior::Walk, Facing::Left, Vertical::Level, false, None, 0);
         assert!(should_notify(Some(right), left));
     }
 
@@ -454,8 +503,8 @@ mod tests {
     fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
         // 공중에서 클릭하면 동작·방향은 그대로인 채 air만 달라지는 순간이 있다.
         // 놓치면 그림자가 공중에 떠 있는 채로 남는다
-        let ground = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, false);
-        let air = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, true);
+        let ground = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, false, None, 0);
+        let air = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, true, None, 0);
         assert!(should_notify(Some(ground), air));
     }
 
@@ -466,39 +515,63 @@ mod tests {
             Facing::Right,
             Vertical::Level,
             false,
+            None,
+            0,
         );
         let b = (
             Behavior::Idle { idle: IdleKind::Shake },
             Facing::Right,
             Vertical::Level,
             false,
+            None,
+            0,
         );
         assert!(should_notify(Some(a), b));
     }
 
     #[test]
-    fn 작업_영역을_논리_좌표_경계로_변환한다() {
-        // 배율 1.0, 메뉴바 25px를 뺀 1440x875 영역
+    fn 경계는_창_여백까지_화면_안에_들어오게_잡는다() {
+        // 배율 1.0, 메뉴바 25px를 뺀 1440x875 영역.
+        // 펭귄만이 아니라 말풍선·방망이 자리까지 화면 안이어야 한다
         let b = bounds_from_work_area((0, 25), (1440, 875), 1.0, 140.0);
-        assert_eq!(b.left, 0.0);
-        assert_eq!(b.right, 1440.0 - 140.0);
+        assert_eq!(b.left, PET_PAD_X, "왼쪽 여백만큼 안으로 들어와야 한다");
+        assert_eq!(b.right, 1440.0 - 140.0 - PET_PAD_X);
+        assert_eq!(b.top, 25.0 + PET_PAD_TOP, "말풍선이 메뉴바 뒤로 숨으면 안 된다");
         assert_eq!(b.floor_y, 25.0 + 875.0 - 140.0);
+    }
+
+    #[test]
+    fn 어느_경계에_서도_창_전체가_화면_안이다() {
+        let area = (0.0, 25.0, 1440.0, 875.0);
+        let b = bounds_from_work_area((0, 25), (1440, 875), 1.0, PET_SIZE);
+        for (px, py) in [
+            (b.left, b.top),
+            (b.right, b.top),
+            (b.left, b.floor_y),
+            (b.right, b.floor_y),
+        ] {
+            let (wx, wy) = window_origin(px, py);
+            assert!(wx >= area.0 - 0.001, "창이 왼쪽으로 벗어남: {wx}");
+            assert!(wx + PET_WINDOW_W <= area.0 + area.2 + 0.001, "오른쪽으로 벗어남");
+            assert!(wy >= area.1 - 0.001, "창이 위로 벗어남: {wy}");
+            assert!(wy + PET_WINDOW_H <= area.1 + area.3 + 0.001, "아래로 벗어남");
+        }
     }
 
     #[test]
     fn 레티나_배율에서도_논리_좌표로_환산한다() {
         // 물리 2880x1750 = 논리 1440x875 (배율 2.0)
         let b = bounds_from_work_area((0, 50), (2880, 1750), 2.0, 140.0);
-        assert_eq!(b.left, 0.0);
-        assert_eq!(b.right, 1440.0 - 140.0);
+        assert_eq!(b.left, PET_PAD_X);
+        assert_eq!(b.right, 1440.0 - 140.0 - PET_PAD_X);
         assert_eq!(b.floor_y, 25.0 + 875.0 - 140.0);
     }
 
     #[test]
     fn 보조_모니터처럼_원점이_음수여도_경계가_밀린다() {
         let b = bounds_from_work_area((-1920, 0), (1920, 1080), 1.0, 140.0);
-        assert_eq!(b.left, -1920.0);
-        assert_eq!(b.right, -1920.0 + 1920.0 - 140.0);
+        assert_eq!(b.left, -1920.0 + PET_PAD_X);
+        assert_eq!(b.right, -1920.0 + 1920.0 - 140.0 - PET_PAD_X);
     }
 
     #[test]

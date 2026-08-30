@@ -28,7 +28,16 @@ function mockPet(): Call[] {
     if (cmd === "plugin:event|unlisten") return undefined;
     calls.push({ cmd, args: a });
     if (cmd === "pet_get_state") {
-      return { x: 0, y: 0, facing: "right", behavior: { kind: "walk" } };
+      return {
+        x: 0,
+        y: 0,
+        facing: "right",
+        vertical: "level",
+        air: false,
+        speech: null,
+        whack_seq: 0,
+        behavior: { kind: "walk" },
+      };
     }
     return undefined;
   });
@@ -86,7 +95,7 @@ describe("펭귄 드래그", () => {
     expect(drag?.args).toMatchObject({ dx: 30, dy: -10 });
   });
 
-  it("클릭은_드래그로_해석되지_않는다", async () => {
+  it("클릭은_드래그가_아니라_빠따로_해석된다", async () => {
     const calls = mockPet();
     render(<PetApp />);
     await flush();
@@ -99,7 +108,7 @@ describe("펭귄 드래그", () => {
     pointer("pointerup", el, { screenX: 101, screenY: 100 });
     await flush();
 
-    expect(calls.some((c) => c.cmd === "pet_poke")).toBe(true);
+    expect(calls.some((c) => c.cmd === "pet_whack")).toBe(true);
     expect(calls.some((c) => c.cmd === "pet_drag_end")).toBe(false);
   });
 
@@ -116,7 +125,7 @@ describe("펭귄 드래그", () => {
     await flush();
 
     expect(calls.some((c) => c.cmd === "pet_drag_end")).toBe(true);
-    expect(calls.some((c) => c.cmd === "pet_poke")).toBe(false);
+    expect(calls.some((c) => c.cmd === "pet_whack")).toBe(false);
   });
 
   it("빠르게_튕겨_놓아도_이동량이_유실되지_않는다", async () => {
@@ -140,7 +149,8 @@ describe("펭귄 드래그", () => {
     expect(byIndex).toBeLessThan(endIndex);
   });
 
-  it("우클릭은_드래그도_클릭도_시작하지_않는다", async () => {
+  it("우클릭은_빠따가_아니라_창_열기다", async () => {
+    // 왼쪽은 빠따가 가져갔으므로 타이머·설정은 오른쪽 클릭으로 연다
     const calls = mockPet();
     render(<PetApp />);
     await flush();
@@ -150,8 +160,25 @@ describe("펭귄 드래그", () => {
     pointer("pointerup", el, { screenX: 100, screenY: 100, button: 2 });
     await flush();
 
+    expect(calls.some((c) => c.cmd === "pet_open_popover")).toBe(true);
     expect(calls.some((c) => c.cmd === "pet_drag_start")).toBe(false);
-    expect(calls.some((c) => c.cmd === "pet_poke")).toBe(false);
+    expect(calls.some((c) => c.cmd === "pet_whack")).toBe(false);
+  });
+
+  it("연달아_클릭하면_매번_빠따가_나간다", async () => {
+    // 1클릭 1회 — 연타가 먹히지 않으면 저글링이 안 된다
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    const el = penguin();
+
+    for (let i = 0; i < 4; i++) {
+      pointer("pointerdown", el, { screenX: 100, screenY: 100 });
+      pointer("pointerup", el, { screenX: 100, screenY: 100 });
+      await flush();
+    }
+
+    expect(calls.filter((c) => c.cmd === "pet_whack")).toHaveLength(4);
   });
 
   it("드래그_중_두번째_포인터는_기준점을_덮어쓰지_않는다", async () => {

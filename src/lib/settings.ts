@@ -72,14 +72,12 @@ export async function saveTaunts(lines: readonly string[]): Promise<void> {
 
 /**
  * 런처 목록. 편집 UI는 후속 작업이고 지금은 저장된 값이 없는 게 정상이다 —
- * 그때는 기본 목록으로 수렴한다. 키를 지금 파 두면 다음 PR이 UI만 붙이면 된다.
+ * 그때는 기본 목록으로 수렴한다. 키를 지금 파 두면 다음 PR이 저장 쪽만 붙이면 된다.
+ *
+ * 저장 함수는 일부러 두지 않았다. "전부 지우면 기본값으로 되살릴 것인가"를 정해야
+ * 하는데(대사 목록은 되살리지 않는다), 그건 편집 UI를 만들 때 함께 정할 일이다.
  */
 export async function loadLauncher(): Promise<LauncherService[]> {
   const store = await load(STORE_FILE);
   return normalizeLauncher(await store.get<unknown>(LAUNCHER_KEY));
-}
-
-export async function saveLauncher(services: readonly LauncherService[]): Promise<void> {
-  const store = await load(STORE_FILE);
-  await store.set(LAUNCHER_KEY, normalizeLauncher(services));
 }

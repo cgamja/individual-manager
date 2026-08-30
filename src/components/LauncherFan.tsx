@@ -8,6 +8,8 @@ interface LauncherFanProps {
   onOpen: (url: string) => Promise<void>;
   /** 뽀모도로 카드의 2단 — URL 목록이 아니라 타이머가 펼쳐진다 (R4). */
   timerPanel: ReactNode;
+  /** 접을 게 없는데 Esc가 왔다 — 바깥이 다음 단계(설정 접기 / 팝오버 닫기)를 정한다 (R6). */
+  onEscape?: () => void;
 }
 
 /** 항목 하나가 열리지 않았을 때 그 자리에 대신 보여줄 문구. */
@@ -20,7 +22,7 @@ type ItemNote = { serviceId: string; label: string; text: string };
  * 만들고 JS 애니메이션 루프는 두지 않는다 — 숨겨진 웹뷰의 JS 타이머는 ~5분 뒤 멈추고,
  * 팝오버는 숨겨졌다 다시 보이기를 반복한다. 목록 구조라 Tab 순서와 스크린리더도 따라온다.
  */
-export function LauncherFan({ services, onOpen, timerPanel }: LauncherFanProps) {
+export function LauncherFan({ services, onOpen, timerPanel, onEscape }: LauncherFanProps) {
   /** 펼쳐진 카드 id 하나. 이게 2단 상태의 전부다 — 한 번에 하나만 열린다 (R2). */
   const [openId, setOpenId] = useState<string | null>(null);
   const [note, setNote] = useState<ItemNote | null>(null);
@@ -30,18 +32,20 @@ export function LauncherFan({ services, onOpen, timerPanel }: LauncherFanProps) 
     setOpenId((current) => (current === id ? null : id));
   }, []);
 
-  // Esc는 펼쳐진 걸 먼저 접는다. 접혀 있으면 흘려보내 팝오버가 닫히게 둔다 (R6)
+  // Esc는 펼쳐진 걸 먼저 접고, 접을 게 없으면 바깥에 넘긴다 (R6)
   useEffect(() => {
-    if (openId === null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      e.stopPropagation();
+      if (openId === null) {
+        onEscape?.();
+        return;
+      }
       setOpenId(null);
       setNote(null);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [openId]);
+  }, [openId, onEscape]);
 
   const handleItem = useCallback(
     async (service: LauncherService, label: string, url: string) => {

@@ -11,6 +11,9 @@ vi.mock("./lib/launcher", async (importOriginal) => ({
   openInBrowser: (url: string) => openInBrowser(url),
 }));
 
+const hide = vi.fn().mockResolvedValue(undefined);
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ hide }) }));
+
 const notifGranted = { value: true };
 
 vi.mock("./lib/notification", () => ({
@@ -51,6 +54,7 @@ const { default: App } = await import("./App");
 
 beforeEach(() => {
   openInBrowser.mockClear();
+  hide.mockClear();
   notifGranted.value = true;
 });
 afterEach(cleanup);
@@ -88,6 +92,36 @@ describe("팝오버 최상위", () => {
     expect(openInBrowser).toHaveBeenCalledWith(
       "https://calendar.google.com/calendar/r/week",
     );
+  });
+});
+
+describe("Esc — 한 번에 한 단계씩 물러난다 (R6)", () => {
+  it("펼쳐진_카드가_있으면_그것만_접고_팝오버는_그대로_있는다", async () => {
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: "NOTION" }));
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.getByRole("button", { name: "NOTION" }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    expect(hide).not.toHaveBeenCalled();
+  });
+
+  it("설정이_열려_있으면_그것을_접는다", async () => {
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByLabelText("새 대사")).toBeNull();
+    expect(hide).not.toHaveBeenCalled();
+  });
+
+  it("전부_접혀_있으면_팝오버를_닫는다", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "NOTION" });
+    await userEvent.keyboard("{Escape}");
+
+    expect(hide).toHaveBeenCalledTimes(1);
   });
 });
 

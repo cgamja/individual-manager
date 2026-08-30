@@ -68,12 +68,23 @@ describe("2단 — 토글", () => {
     expect(screen.queryByRole("button", { name: /TODO 보드/ })).toBeNull();
   });
 
-  it("Esc는_펼쳐진_하위_항목을_접는다", async () => {
-    renderFan();
+  it("Esc는_펼쳐진_하위_항목을_먼저_접는다", async () => {
+    const onEscape = vi.fn();
+    renderFan({ onEscape });
     await userEvent.click(card("GOOGLE CALENDAR"));
     await userEvent.keyboard("{Escape}");
 
     expect(card("GOOGLE CALENDAR").getAttribute("aria-expanded")).toBe("false");
+    // 접을 게 있었으므로 바깥으로 넘기지 않는다 — 한 번에 한 단계만 물러난다
+    expect(onEscape).not.toHaveBeenCalled();
+  });
+
+  it("접을_게_없으면_Esc를_바깥에_넘긴다", async () => {
+    const onEscape = vi.fn();
+    renderFan({ onEscape });
+    await userEvent.keyboard("{Escape}");
+
+    expect(onEscape).toHaveBeenCalledTimes(1);
   });
 
   it("POMODORO_카드는_URL_항목_대신_타이머를_펼친다", async () => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LauncherFan } from "./components/LauncherFan";
 import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
@@ -142,6 +143,20 @@ function App() {
     }
   }, []);
 
+  /**
+   * 런처가 다 접힌 뒤에 온 Esc — 설정이 열려 있으면 그걸 접고, 아니면 팝오버를 닫는다 (R6).
+   *
+   * `app.hide()`가 아니라 창만 숨긴다. macOS 26에서 `app.hide()`는 트레이 아이콘까지
+   * 지운다 (docs/solutions/ui-bugs/macos-tahoe-app-hide-removes-tray-icon.md).
+   */
+  const handleEscape = useCallback(() => {
+    if (settingsOpen) {
+      setSettingsOpen(false);
+      return;
+    }
+    getCurrentWindow().hide().catch(() => {});
+  }, [settingsOpen]);
+
   /** 대사 편집 — 화면을 먼저 바꾸고 저장한다. 실패하면 되돌린다. */
   const handleTauntsChange = useCallback(
     async (next: string[]) => {
@@ -164,6 +179,7 @@ function App() {
       <LauncherFan
         services={launcher}
         onOpen={openInBrowser}
+        onEscape={handleEscape}
         timerPanel={
           <TimerCard
             snapshot={snapshot}

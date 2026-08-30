@@ -1,4 +1,5 @@
 import { load } from "@tauri-apps/plugin-store";
+import { normalizeLauncher, type LauncherService } from "./launcher";
 import { DEFAULT_TAUNTS, normalizeTaunts } from "./pet";
 import type { TimerConfig } from "./timer";
 
@@ -12,6 +13,7 @@ const TIMER_KEY = "timer";
 /** Rust의 `pet_bridge::PET_KEY`와 같은 키 — 시작 시점 판단을 Rust가 직접 읽는다. */
 const PET_KEY = "pet";
 const TAUNTS_KEY = "taunts";
+const LAUNCHER_KEY = "launcher";
 
 export interface PetSettings {
   enabled: boolean;
@@ -66,4 +68,18 @@ export async function loadTaunts(): Promise<string[]> {
 export async function saveTaunts(lines: readonly string[]): Promise<void> {
   const store = await load(STORE_FILE);
   await store.set(TAUNTS_KEY, normalizeTaunts(lines));
+}
+
+/**
+ * 런처 목록. 편집 UI는 후속 작업이고 지금은 저장된 값이 없는 게 정상이다 —
+ * 그때는 기본 목록으로 수렴한다. 키를 지금 파 두면 다음 PR이 UI만 붙이면 된다.
+ */
+export async function loadLauncher(): Promise<LauncherService[]> {
+  const store = await load(STORE_FILE);
+  return normalizeLauncher(await store.get<unknown>(LAUNCHER_KEY));
+}
+
+export async function saveLauncher(services: readonly LauncherService[]): Promise<void> {
+  const store = await load(STORE_FILE);
+  await store.set(LAUNCHER_KEY, normalizeLauncher(services));
 }

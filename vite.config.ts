@@ -8,6 +8,16 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // 팝오버(index)와 바탕화면 펭귄(pet)은 별도 엔트리다 — 상태·CSS를 섞지 않는다 (KTD8)
+  build: {
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        pet: "pet.html",
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

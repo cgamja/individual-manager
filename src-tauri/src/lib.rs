@@ -1,5 +1,7 @@
 pub mod notion;
 pub mod notion_bridge;
+pub mod pet;
+pub mod pet_bridge;
 pub mod pomodoro;
 pub mod timer_bridge;
 
@@ -25,7 +27,13 @@ fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
 }
 
 fn show_popover(app: &AppHandle, window: &WebviewWindow) {
-    let _ = window.as_ref().window().move_window(Position::TrayCenter);
+    // TrayCenter는 positioner가 트레이 이벤트에서 캐시해 둔 좌표를 쓴다. 트레이를
+    // 한 번도 건드리지 않은 채 펭귄 클릭으로 들어오면 캐시가 비어 실패하므로,
+    // 그때는 메뉴바 근처(TopRight)로 떨어뜨린다 — 조용히 화면 좌상단에 뜨지 않게.
+    let handle = window.as_ref().window();
+    if handle.move_window(Position::TrayCenter).is_err() {
+        let _ = handle.move_window(Position::TopRight);
+    }
     // Accessory 정책에서는 app.show() → set_focus() 순서여야 키보드 포커스가 잡힌다 (KTD4)
     let _ = app.show();
     let _ = window.show();
@@ -39,7 +47,7 @@ fn hide_popover(_app: &AppHandle, window: &WebviewWindow) {
     let _ = window.hide();
 }
 
-fn toggle_popover(app: &AppHandle) {
+pub(crate) fn toggle_popover(app: &AppHandle) {
     let Some(window) = main_window(app) else {
         return;
     };
@@ -107,6 +115,21 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // 바탕화면 펭귄 — 실패해도 앱 본체는 계속 뜬다 (장식 기능이 셸을 막지 않는다).
+            // 실제 이동 영역은 첫 틱에서 모니터를 읽어 정정하므로 여기서는 잠정값이다.
+            let start = timer_bridge::now_ms();
+            app.manage(pet_bridge::PetState(Mutex::new(pet::Pet::new(
+                start,
+                start,
+                pet::Bounds { left: 0.0, right: 800.0, floor_y: 400.0 },
+            ))));
+            if pet_bridge::pet_enabled(app.handle()) {
+                if let Err(err) = pet_bridge::create_pet_window(app.handle()) {
+                    eprintln!("펭귄 창 생성 실패: {err}");
+                }
+            }
+            pet_bridge::spawn_pet_tick_thread(app.handle().clone());
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -141,6 +164,12 @@ pub fn run() {
             notion_bridge::notion_todo_toggle,
             notion_bridge::notion_todo_edit,
             notion_bridge::notion_todo_set_performance,
+            pet_bridge::pet_poke,
+            pet_bridge::pet_drag_start,
+            pet_bridge::pet_drag_by,
+            pet_bridge::pet_drag_end,
+            pet_bridge::pet_get_state,
+            pet_bridge::pet_set_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

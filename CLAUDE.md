@@ -75,6 +75,9 @@ docs/solutions/       재발 방지용 학습 기록 — 셸을 건드리기 전
   `positioner::on_tray_event`를 항상 먼저 호출한다.
 - **dev 모드에서 macOS 알림은 오지 않는 것이 정상**이다. 알림 검증은 `npm run tauri build`로
   만든 `.app`에서만 한다.
+- **`#[tauri::command]`를 만들고 `lib.rs`의 `generate_handler!`에 등록하지 않으면
+  컴파일·테스트·경고가 전부 통과하고 런타임에서만 조용히 reject된다.** 새 창의
+  capabilities 라벨 누락도 같은 성격이다. → `docs/solutions/best-practices/tauri-command-registration-silent-failure.md`
 - 전체 목록: `docs/solutions/best-practices/tauri-v2-macos-menubar-app-pitfalls.md`
 
 **Tauri 플러그인을 추가할 때는 네 곳을 함께 고친다** — `src-tauri/Cargo.toml`, `package.json`,

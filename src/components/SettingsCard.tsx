@@ -6,6 +6,9 @@ interface SettingsCardProps {
   /** Idle에서만 편집 가능 — 그 외 상태에서는 비활성화한다. */
   disabled: boolean;
   onChange: (config: TimerConfig) => void;
+  /** 바탕화면 펭귄 표시 여부 (R8). 타이머 상태와 무관하게 항상 바꿀 수 있다. */
+  petEnabled: boolean;
+  onPetEnabledChange: (enabled: boolean) => void;
 }
 
 /** 분 단위 입력 검증: 1~999 사이의 정수만 허용한다 (999분 상한 — 개인용 타이머에 충분하다는 가정). */
@@ -18,7 +21,13 @@ function parseMinutes(raw: string): number | null {
 }
 
 /** 타이머 시간 설정 카드. */
-export function SettingsCard({ config, disabled, onChange }: SettingsCardProps) {
+export function SettingsCard({
+  config,
+  disabled,
+  onChange,
+  petEnabled,
+  onPetEnabledChange,
+}: SettingsCardProps) {
   const [focusRaw, setFocusRaw] = useState(String(config.focus_minutes));
   const [breakRaw, setBreakRaw] = useState(String(config.break_minutes));
 
@@ -67,6 +76,15 @@ export function SettingsCard({ config, disabled, onChange }: SettingsCardProps) 
         />
       </div>
       {disabled && <p className="settings-hint">타이머가 유휴 상태일 때 변경할 수 있어요</p>}
+      <div className="settings-row">
+        <label htmlFor="pet-enabled">바탕화면 펭귄</label>
+        <input
+          id="pet-enabled"
+          type="checkbox"
+          checked={petEnabled}
+          onChange={(e) => onPetEnabledChange(e.target.checked)}
+        />
+      </div>
     </section>
   );
 }

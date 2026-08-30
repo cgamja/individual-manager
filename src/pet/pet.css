@@ -23,8 +23,8 @@
  * 어긋나면 펭귄이 화면 경계에서 엉뚱한 자리에 선다 — 테스트로 대조한다. */
 :root {
   --pg-size: 140px;
-  --pg-pad-x: 44px;
-  --pg-pad-top: 64px;
+  --pg-pad-x: 52px;
+  --pg-pad-top: 80px;
 }
 
 html,
@@ -687,12 +687,12 @@ body,
   /* 애니메이션이 transform을 잡고 있으므로 기본 위치도 keyframe 안에서 잡는다 —
    * 여기서 translateX만 걸면 애니메이션이 이겨서 어긋난다 */
   transform: translate(-50%, 0);
-  max-width: 190px;
-  padding: 6px 10px;
-  border-radius: 11px;
+  max-width: 212px;
+  padding: 9px 13px;
+  border-radius: 14px;
   background: rgba(252, 252, 254, 0.97);
   color: #1b1f24;
-  font: 500 12px/1.3 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  font: 600 14.5px/1.35 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
   text-align: center;
   white-space: pre-wrap;
   box-shadow: 0 2px 7px rgba(0, 0, 0, 0.3);
@@ -705,10 +705,10 @@ body,
   content: "";
   position: absolute;
   left: 50%;
-  bottom: -4px;
-  width: 9px;
-  height: 9px;
-  margin-left: -4.5px;
+  bottom: -5px;
+  width: 11px;
+  height: 11px;
+  margin-left: -5.5px;
   background: inherit;
   transform: rotate(45deg);
   border-radius: 0 0 2px 0;
@@ -718,124 +718,125 @@ body,
 
 @keyframes pg-bat-swing {
   0% {
-    opacity: 0;
-    transform: rotate(-104deg);
+    transform: rotate(-128deg);
   }
-  14% {
-    opacity: 1;
-    transform: rotate(-88deg);
+  40% {
+    transform: rotate(42deg);
   }
-  /* 여기가 타격 순간 — 코어의 WINDUP_MS와 얼추 맞춘다 */
-  38% {
-    opacity: 1;
-    transform: rotate(16deg);
-  }
-  60% {
-    opacity: 1;
-    transform: rotate(4deg);
+  62% {
+    transform: rotate(24deg);
   }
   100% {
     opacity: 0;
-    transform: rotate(-6deg);
+    transform: rotate(30deg);
   }
 }
 
+/* 방망이는 펭귄이 **쥐고 있다**. 무대 안에 두어 좌우 반전과 함께 뒤집힌다.
+ * 손잡이 끝이 가까운 쪽 날개 근처에 오도록 축을 잡았다. */
 .pg-bat {
   position: absolute;
-  /* 펭귄 왼쪽 뒤에서 들어와 오른쪽으로 후려친다 */
-  left: 2px;
-  top: 74px;
+  left: 74px;
+  top: 20px;
   width: 30px;
   height: 60px;
-  /* 손잡이 끝을 축으로 돈다 */
   transform-origin: 15px 56px;
   pointer-events: none;
-  animation: pg-bat-swing 0.4s cubic-bezier(0.3, 0, 0.2, 1) forwards;
 }
 
-/* 왼쪽으로 날릴 때는 반대편에서 들어온다.
- * scale은 transform과 별개 속성이라 애니메이션의 rotate와 곱해진다 */
-.pg-bat--left {
-  left: auto;
-  right: 2px;
-  scale: -1 1;
+/* 치켜드는 중 — 뒤로 넘긴 자세로 부드럽게 들어간다 */
+.pg-bat--windup {
+  transform: rotate(-128deg);
+  transition: transform 0.15s ease-out;
 }
 
-/* ── 빠따 맞기 — 제자리에서 맞는다 (날아가는 건 던지기 전용) ────── */
+/* 휘두르기 — 뒤에서 앞으로 후려치고 따라 나간다 */
+.pg-bat--swing {
+  animation: pg-bat-swing 0.42s cubic-bezier(0.3, 0, 0.15, 1) forwards;
+}
 
-/* 방망이가 날아오는 동안 — 눈치채고 움츠린다 */
+/* ── 빠따 — 펭귄이 방망이를 휘두른다 (날아가는 건 던지기 전용) ──── */
+
+/* 치켜드는 동안 몸을 뒤로 젖힌다 */
 @keyframes pg-brace {
   0% {
-    transform: scaleY(1) scaleX(1);
+    transform: rotate(0deg);
   }
   100% {
-    transform: scaleY(0.94) scaleX(1.05);
+    transform: rotate(-11deg);
   }
 }
+/* 치켜들 때 몸을 뒤로 젖힌다 */
 .pg--wind-up .pg-body,
 .pg--wind-up .pg-head {
-  animation: pg-brace 0.12s ease-out forwards;
+  animation: pg-brace 0.15s ease-out forwards;
+}
+/* 방망이를 쥔 날개는 뒤로 넘어간다 */
+.pg--wind-up .pg-wing-near {
+  transform: rotate(-96deg);
+  transition: transform 0.15s ease-out;
 }
 
-/* 맞는 순간 — 납작해졌다가 부르르 떨고 돌아온다 */
-@keyframes pg-bonk-body {
+/* 휘두르기 — 몸을 앞으로 돌리며 후려친다 */
+@keyframes pg-swing-body {
   0% {
-    transform: scaleY(0.72) scaleX(1.16) translateY(6px);
+    transform: rotate(-11deg);
   }
-  30% {
-    transform: scaleY(1.06) scaleX(0.96) translateY(-2px);
+  40% {
+    transform: rotate(16deg);
   }
-  55% {
-    transform: scaleY(0.96) scaleX(1.03) translateY(1px);
-  }
-  100% {
-    transform: scaleY(1) scaleX(1) translateY(0);
-  }
-}
-@keyframes pg-bonk-head {
-  0% {
-    transform: rotate(-26deg) translateY(5px);
-  }
-  25% {
-    transform: rotate(16deg) translateY(-1px);
-  }
-  50% {
-    transform: rotate(-9deg);
-  }
-  75% {
-    transform: rotate(5deg);
+  70% {
+    transform: rotate(6deg);
   }
   100% {
     transform: rotate(0deg);
   }
 }
-/* 날개는 충격에 벌어진다 */
-@keyframes pg-bonk-wing {
+@keyframes pg-swing-head {
   0% {
-    transform: rotate(-58deg);
+    transform: rotate(-14deg);
+  }
+  40% {
+    transform: rotate(19deg);
   }
   100% {
     transform: rotate(0deg);
   }
 }
-@keyframes pg-bonk-wing-far {
+/* 방망이를 쥔 날개가 방망이를 따라 돈다 */
+@keyframes pg-swing-wing {
   0% {
-    transform: rotate(58deg);
+    transform: rotate(-96deg);
+  }
+  40% {
+    transform: rotate(46deg);
+  }
+  100% {
+    transform: rotate(28deg);
+  }
+}
+/* 반대쪽 날개는 균형을 잡는다 */
+@keyframes pg-swing-wing-far {
+  0% {
+    transform: rotate(34deg);
+  }
+  40% {
+    transform: rotate(-24deg);
   }
   100% {
     transform: rotate(0deg);
   }
 }
 
-.pg--bonked .pg-body {
-  animation: pg-bonk-body 0.46s cubic-bezier(0.25, 1.4, 0.4, 1);
+.pg--swing .pg-body {
+  animation: pg-swing-body 0.42s cubic-bezier(0.25, 1.4, 0.4, 1);
 }
-.pg--bonked .pg-head {
-  animation: pg-bonk-head 0.46s cubic-bezier(0.25, 1.4, 0.4, 1);
+.pg--swing .pg-head {
+  animation: pg-swing-head 0.42s cubic-bezier(0.25, 1.4, 0.4, 1);
 }
-.pg--bonked .pg-wing-near {
-  animation: pg-bonk-wing 0.46s ease-out;
+.pg--swing .pg-wing-near {
+  animation: pg-swing-wing 0.42s cubic-bezier(0.3, 0, 0.15, 1) forwards;
 }
-.pg--bonked .pg-wing-far {
-  animation: pg-bonk-wing-far 0.46s ease-out;
+.pg--swing .pg-wing-far {
+  animation: pg-swing-wing-far 0.42s ease-out;
 }

@@ -74,9 +74,9 @@ pub const PET_LABEL: &str = "pet";
 /// 펭귄 자체가 차지하는 한 변 (논리 px). 이동 경계는 이 값으로 계산한다.
 pub const PET_SIZE: f64 = 140.0;
 /// 펭귄 좌우로 비워 두는 여백 — 방망이가 휘둘러질 자리.
-pub const PET_PAD_X: f64 = 44.0;
+pub const PET_PAD_X: f64 = 52.0;
 /// 펭귄 위로 비워 두는 여백 — 말풍선이 뜰 자리.
-pub const PET_PAD_TOP: f64 = 64.0;
+pub const PET_PAD_TOP: f64 = 80.0;
 
 /// 창은 펭귄보다 크다. 창을 펭귄 크기에 딱 맞추면 말풍선과 방망이가 잘린다.
 ///

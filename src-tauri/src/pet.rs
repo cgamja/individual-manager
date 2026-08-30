@@ -31,11 +31,10 @@ const SASSY_MS: u64 = 900;
 const SPEECH_MS: u64 = 3_200;
 /// 한마디와 다음 한마디 사이 간격. 클릭과 무관하게 알아서 떠든다.
 const TAUNT_GAP_MS: (u64, u64) = (7_000, 18_000);
-/// 맞고 움찔하는 시간. 이 동안 제자리에 있는다.
-const BONK_MS: u64 = 460;
-/// 방망이가 닿기까지의 시간. 이 동안 펭귄은 제자리에서 움찔하며 기다린다 —
-/// 클릭하자마자 날아가면 방망이가 허공을 치는 그림이 된다.
-const WINDUP_MS: u64 = 120;
+/// 방망이를 휘두르는 시간.
+const SWING_MS: u64 = 420;
+/// 방망이를 치켜드는 시간. 바로 휘두르면 동작이 읽히지 않는다.
+const WINDUP_MS: u64 = 150;
 /// 착지 후 약이 올라 한마디 할 확률(%).
 const SASSY_AFTER_LAND_PERCENT: u64 = 70;
 const LAND_MS: u64 = 300;
@@ -152,10 +151,10 @@ pub enum Behavior {
     Sleep,
     /// 클릭에 대한 반응 — 놀라지 않고 싸가지 없게 군다 (R5)
     Sassy { sassy: SassyKind },
-    /// 방망이가 날아오는 중 — 아직 맞지 않았다 (R14)
+    /// 방망이를 치켜드는 중 (R14)
     WindUp,
-    /// 방망이에 맞고 움찔하는 중. **날아가지 않는다** — 나는 건 드래그로 던졌을 때뿐이다
-    Bonked,
+    /// 방망이를 휘두르는 중. **제자리에서** 휘두른다 — 나는 건 드래그로 던졌을 때뿐이다
+    Swing,
     /// 사용자가 집어 든 상태 — 자율 이동을 하지 않는다 (R6)
     Dragged,
     Falling,
@@ -367,17 +366,17 @@ impl Pet {
             }
             Behavior::WindUp => {
                 if now_ms >= self.behavior_until_ms {
-                    // 방망이가 닿았다 — 그 자리에서 움찔한다
-                    self.enter(Behavior::Bonked, now_ms + BONK_MS);
+                    // 다 치켜들었다 — 이제 휘두른다
+                    self.enter(Behavior::Swing, now_ms + SWING_MS);
                 }
             }
-            Behavior::Bonked => {
+            Behavior::Swing => {
                 if now_ms >= self.behavior_until_ms {
                     if self.air {
-                        // 공중에서 맞았다면 이제 마저 떨어진다
+                        // 공중에서 휘둘렀다면 이제 마저 떨어진다
                         self.enter(Behavior::Falling, now_ms);
                     } else {
-                        // 맞고 나면 약이 올라 한 소리 한다
+                        // 한 번 휘두르고 나면 의기양양하게 약을 올린다
                         self.enter_sassy(now_ms);
                     }
                 }
@@ -462,9 +461,9 @@ impl Pet {
     ///
     /// 공중에서 찔리면 놀라 떨어진다. `Startled`는 지상 동작이라 그대로 넣으면
     /// 같은 step의 clamp가 펭귄을 바닥으로 순간이동시킨다.
-    /// 빠따 — 클릭 한 번에 한 번 맞는다. **맞아도 날아가지 않는다.**
-    /// 날려 보내는 건 드래그로 던졌을 때(`drag_end`)뿐이다.
-    /// 연타하면 계속 맞는다.
+    /// 빠따 — 클릭 한 번에 펭귄이 방망이를 한 번 휘두른다. **맞는 쪽이 아니라
+    /// 휘두르는 쪽이다.** 제자리에서 휘두르므로 날아가지 않는다 — 날려 보내는 건
+    /// 드래그로 던졌을 때(`drag_end`)뿐이다. 연타하면 계속 휘두른다.
     pub fn whack(&mut self, now_ms: u64, _bounds: Bounds) {
         self.last_stimulus_ms = now_ms;
         self.whack_seq += 1;
@@ -554,7 +553,7 @@ impl Pet {
         // 반응·드래그는 고도를 그대로 물려받고, 나머지는 동작이 곧 고도를 정한다.
         // 착지(Land)는 바닥에 닿은 시점이라 확실히 지상이다.
         match behavior {
-            Behavior::Sassy { .. } | Behavior::Dragged | Behavior::WindUp | Behavior::Bonked => {}
+            Behavior::Sassy { .. } | Behavior::Dragged | Behavior::WindUp | Behavior::Swing => {}
             Behavior::Land => self.air = false,
             other => self.air = other.is_airborne(),
         }
@@ -843,7 +842,7 @@ mod tests {
     }
 
     #[test]
-    fn 빠따를_맞아도_날아가지_않는다() {
+    fn 휘둘러도_날아가지_않는다() {
         // 나는 건 드래그로 던졌을 때뿐이다 — 클릭으로 날아가면 안 된다
         let mut p = pet();
         p.step(1_000, BOUNDS);
@@ -862,15 +861,15 @@ mod tests {
     }
 
     #[test]
-    fn 맞으면_움찔했다가_약을_올린다() {
+    fn 휘두르고_나면_약을_올린다() {
         let mut p = pet();
         p.step(1_000, BOUNDS);
         p.whack(1_000, BOUNDS);
-        assert_eq!(p.step(1_000 + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Bonked);
-        let after = p.step(1_000 + WINDUP_MS + BONK_MS + 20, BOUNDS);
+        assert_eq!(p.step(1_000 + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Swing);
+        let after = p.step(1_000 + WINDUP_MS + SWING_MS + 20, BOUNDS);
         assert!(
             matches!(after.behavior, Behavior::Sassy { .. }),
-            "맞고 나면 약이 올라야 한다 (실제: {:?})",
+            "휘두르고 나면 약이 올라야 한다 (실제: {:?})",
             after.behavior
         );
     }
@@ -887,7 +886,7 @@ mod tests {
     }
 
     #[test]
-    fn 던져서_나는_중에_때리면_그_자리에서_맞고_마저_떨어진다() {
+    fn 던져서_나는_중에_휘둘러도_그_자리에서_마저_떨어진다() {
         // 때리는 것으로는 새 속도가 붙지 않는다 — 나는 건 던지기 전용이다
         let mut p = pet();
         p.drag_start(1_000);
@@ -909,16 +908,16 @@ mod tests {
         let hit_y = p.snapshot().y;
         t += WINDUP_MS + 10;
         let bonked = p.step(t, BOUNDS);
-        assert_eq!(bonked.behavior, Behavior::Bonked);
-        assert_eq!(bonked.y, hit_y, "맞는다고 솟아오르거나 떨어지면 안 된다");
+        assert_eq!(bonked.behavior, Behavior::Swing);
+        assert_eq!(bonked.y, hit_y, "휘두른다고 솟아오르거나 떨어지면 안 된다");
 
         // 움찔이 끝나면 마저 떨어진다
-        let after = p.step(t + BONK_MS + 20, BOUNDS);
+        let after = p.step(t + SWING_MS + 20, BOUNDS);
         assert_eq!(after.behavior, Behavior::Falling, "공중이었으니 마저 떨어진다");
     }
 
     #[test]
-    fn 빠따는_졸고_있어도_깨워서_날린다() {
+    fn 빠따는_졸고_있어도_깨운다() {
         let mut p = pet();
         let mut t = 100;
         while p.behavior() != Behavior::Sleep && t < SLEEP_AFTER_MS + 60_000 {
@@ -928,11 +927,11 @@ mod tests {
         assert_eq!(p.behavior(), Behavior::Sleep);
         p.whack(t, BOUNDS);
         assert_eq!(p.behavior(), Behavior::WindUp);
-        assert_eq!(p.step(t + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Bonked);
+        assert_eq!(p.step(t + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Swing);
     }
 
     #[test]
-    fn 빠따를_맞는다고_말하지는_않는다() {
+    fn 휘두른다고_말하지는_않는다() {
         // 말은 클릭이 아니라 시간에 맞춰 나온다 — 때릴 때마다 떠들면 시끄럽다
         let mut p = pet();
         p.whack(1_000, BOUNDS);

@@ -215,6 +215,9 @@ export function PetApp() {
     .join(" ");
 
   const speech = snapshot?.speech ?? null;
+  // 방망이는 치켜드는 중(wind_up)과 휘두르는 중(swing)에만 보인다
+  const kind = snapshot?.behavior.kind;
+  const swingPhase = kind === "wind_up" ? "windup" : kind === "swing" ? "swing" : null;
 
   return (
     <>
@@ -224,12 +227,11 @@ export function PetApp() {
           {tauntFor(speech.roll)}
         </div>
       )}
-      {/* 방망이 — 맞은 횟수가 늘 때마다 한 번 휘둘러진다.
-          key가 바뀌면 remount되어 연타해도 매번 새로 재생된다 */}
-      {snapshot && snapshot.whack_seq > 0 && (
-        <Bat key={snapshot.whack_seq} facing={snapshot.facing} />
-      )}
       <div className={stageClass}>
+        {/* 방망이는 펭귄이 쥐고 있다 — 무대 안에 두어 좌우 반전을 함께 받는다.
+            치켜들 때부터 휘두를 때까지만 보이고, 끝나면 사라진다.
+            key가 바뀌면 remount되어 연타해도 매번 새로 재생된다 */}
+        {swingPhase && <Bat key={snapshot?.whack_seq ?? 0} phase={swingPhase} />}
         <Penguin
         key={restartKey}
         className={petClass}
@@ -248,11 +250,11 @@ export function PetApp() {
   );
 }
 
-/** 야구방망이 한 번 휘두르기. 펭귄이 날아가는 쪽 반대편에서 들어온다. */
-function Bat({ facing }: { facing: "left" | "right" }) {
+/** 펭귄이 쥐고 휘두르는 야구방망이. */
+function Bat({ phase }: { phase: "windup" | "swing" }) {
   return (
     <svg
-      className={`pg-bat ${facing === "left" ? "pg-bat--left" : ""}`}
+      className={`pg-bat pg-bat--${phase}`}
       viewBox="0 0 30 60"
       aria-hidden="true"
       xmlns="http://www.w3.org/2000/svg"

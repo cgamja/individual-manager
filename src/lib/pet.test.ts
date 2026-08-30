@@ -34,7 +34,7 @@ describe("behaviorClass", () => {
       { kind: "thrown" },
       { kind: "sleep" },
       { kind: "wind_up" },
-      { kind: "bonked" },
+      { kind: "swing" },
       { kind: "sassy", sassy: "turn_away" },
       { kind: "sassy", sassy: "head_flick" },
       { kind: "sassy", sassy: "wing_flick" },
@@ -62,7 +62,7 @@ describe("behaviorClass", () => {
     // 유휴만 검사하면 wind_up 같은 최상위 동작의 밑줄을 놓친다
     const all: Behavior[] = [
       { kind: "wind_up" },
-      { kind: "bonked" },
+      { kind: "swing" },
       { kind: "swim" },
       { kind: "idle", idle: "look_around" },
       { kind: "idle", idle: "shift_feet" },

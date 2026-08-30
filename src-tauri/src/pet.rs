@@ -317,7 +317,10 @@ impl Pet {
                 if self.vx.abs() > 1.0 {
                     self.facing = if self.vx > 0.0 { Facing::Right } else { Facing::Left };
                 }
-                if self.y >= bounds.floor_y {
+                // 벽·천장과 마찬가지로 방향 가드가 필요하다. 드래그는 경계 밖으로도
+                // 따라가므로(Dock 위 등) 바닥보다 아래에서 놓을 수 있는데, 가드가 없으면
+                // 위로 던져도 첫 틱에 "착지"로 삼켜지며 위로 순간이동한다
+                if self.y >= bounds.floor_y && self.vy >= 0.0 {
                     self.y = bounds.floor_y;
                     self.vx = 0.0;
                     self.vy = 0.0;
@@ -337,9 +340,18 @@ impl Pet {
     }
 
     /// 클릭 — 졸고 있어도 깨워서 놀라게 한다 (R5).
+    ///
+    /// 공중에서 찔리면 놀라 떨어진다. `Startled`는 지상 동작이라 그대로 넣으면
+    /// 같은 step의 clamp가 펭귄을 바닥으로 순간이동시킨다.
     pub fn poke(&mut self, now_ms: u64) {
         self.last_stimulus_ms = now_ms;
-        self.enter(Behavior::Startled, now_ms + STARTLED_MS);
+        if self.behavior.is_airborne() {
+            self.vx = 0.0;
+            self.vy = 0.0;
+            self.enter(Behavior::Falling, now_ms);
+        } else {
+            self.enter(Behavior::Startled, now_ms + STARTLED_MS);
+        }
     }
 
     /// 드래그 시작 — 자율 이동을 멈춘다 (R6).
@@ -838,6 +850,52 @@ mod tests {
             p.step(t, BOUNDS);
         }
         assert!((p.snapshot().x - x).abs() < 1.0, "좌우로 날아가면 안 된다");
+    }
+
+    #[test]
+    fn 바닥보다_아래에서_위로_던져도_삼켜지지_않는다() {
+        // 드래그는 경계 밖으로도 따라가므로(Dock 위 등) 바닥보다 아래에서 놓을 수 있다
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, 90.0); // 바닥보다 90px 아래로 끌어내림
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 700.0, -400.0); // 오른쪽 위로 세게
+        assert_eq!(p.behavior(), Behavior::Thrown);
+
+        let first = p.step(1_150, BOUNDS);
+        assert_eq!(
+            first.behavior,
+            Behavior::Thrown,
+            "위로 던졌는데 첫 틱에 착지로 삼켜졌다"
+        );
+        assert!(first.y > BOUNDS.floor_y - 1.0, "위로 순간이동하면 안 된다");
+    }
+
+    #[test]
+    fn 공중에서_클릭하면_바닥으로_순간이동하지_않는다() {
+        let mut p = pet();
+        // 헤엄에 들어갈 때까지 진행시킨다
+        let mut t = 100;
+        while p.behavior() != Behavior::Swim && t < 200_000 {
+            p.step(t, BOUNDS);
+            t += 100;
+        }
+        assert_eq!(p.behavior(), Behavior::Swim, "헤엄에 도달해야 한다");
+        // 확실히 공중에 있는 시점까지 더 진행
+        while p.behavior() == Behavior::Swim && p.snapshot().y > BOUNDS.floor_y - 80.0 {
+            t += 100;
+            p.step(t, BOUNDS);
+        }
+        let height = p.snapshot().y;
+        assert!(height < BOUNDS.floor_y - 50.0, "충분히 떠 있어야 한다");
+
+        p.poke(t);
+        let after = p.step(t + 50, BOUNDS);
+        assert!(
+            after.y < BOUNDS.floor_y - 20.0,
+            "클릭했다고 바닥으로 순간이동하면 안 된다 (y={})",
+            after.y
+        );
     }
 
     #[test]

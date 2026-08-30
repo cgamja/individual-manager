@@ -71,9 +71,12 @@ export const throwVelocity = (
 ): { vx: number; vy: number } => {
   if (samples.length < 2) return { vx: 0, vy: 0 };
   const last = samples[samples.length - 1];
-  // 창 안에서 가장 오래된 샘플을 기준점으로 삼는다
-  let first = samples[0];
-  for (const s of samples) {
+  const prior = samples.slice(0, -1);
+  // 창 안에서 가장 오래된 샘플을 기준점으로 삼는다. 창 안에 마지막 샘플밖에
+  // 없으면 직전 샘플로 물러난다 — 기준점을 마지막 샘플로 잡으면 dt가 0이 되어
+  // 정상적인 던지기가 통째로 0이 된다(포인터 보고가 드문 경우).
+  let first = prior[prior.length - 1];
+  for (const s of prior) {
     if (last.t - s.t <= windowMs) {
       first = s;
       break;

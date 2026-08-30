@@ -85,6 +85,16 @@ describe("throwVelocity", () => {
     expect(throwVelocity([{ x: 1, y: 1, t: 1 }])).toEqual({ vx: 0, vy: 0 });
   });
 
+  it("창_안에_마지막_샘플뿐이어도_직전_샘플로_속도를_낸다", () => {
+    // 포인터 보고가 드물면 최근 120ms 안에 마지막 샘플만 남는다.
+    // 기준점을 마지막 샘플로 잡으면 dt가 0이 되어 던지기가 통째로 죽는다
+    const v = throwVelocity([
+      { x: 0, y: 0, t: 0 },
+      { x: 200, y: 0, t: 200 },
+    ]);
+    expect(v.vx).toBeCloseTo(1000, 5);
+  });
+
   it("같은_시각_샘플만_있으면_영으로_수렴한다", () => {
     // 0으로 나누면 Infinity가 나와 펭귄이 화면 밖으로 날아간다
     const v = throwVelocity([
@@ -106,14 +116,28 @@ describe("throwVelocity", () => {
     expect(throwVelocity(samples).vx).toBeCloseTo(1000, 5);
   });
 
-  it("손이_멈춘_채_떼면_약하게_잡힌다", () => {
-    // 마지막 구간이 정지 — 세게 던진 것으로 오인하면 안 된다
+  it("세게_뿌린_뒤_멈춘_채_떼면_던져지지_않는다", () => {
+    // 생산자(PetApp)는 움직임이 없는 pointermove에는 샘플을 남기지 않고,
+    // 놓는 시점에만 한 번 더 남긴다. 정지 구간이 "같은 좌표의 연속 샘플"로
+    // 나타난다고 가정하면 실제로 만들 수 없는 입력을 검사하게 된다.
     const samples = [
       { x: 0, y: 0, t: 0 },
-      { x: 200, y: 0, t: 200 },
-      { x: 200, y: 0, t: 300 },
-      { x: 200, y: 0, t: 400 },
+      { x: 200, y: 0, t: 200 }, // 마지막 움직임
+      { x: 200, y: 0, t: 2200 }, // 2초 멈춰 있다 놓음
     ];
     expect(throwVelocity(samples).vx).toBe(0);
+  });
+
+  it("놓는_시점_샘플이_없으면_옛_속도가_그대로_잡힌다", () => {
+    // 위 테스트가 무엇을 지키는지 반대편에서 고정한다 — 놓는 샘플을 빠뜨리면
+    // 2초를 멈춰 있었어도 그때의 속도로 던져진다
+    const withRelease = [
+      { x: 0, y: 0, t: 0 },
+      { x: 200, y: 0, t: 200 },
+      { x: 200, y: 0, t: 2200 },
+    ];
+    const withoutRelease = withRelease.slice(0, 2);
+    expect(throwVelocity(withRelease).vx).toBe(0);
+    expect(throwVelocity(withoutRelease).vx).toBeCloseTo(1000, 5);
   });
 });

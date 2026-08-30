@@ -10,10 +10,11 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
  * 그 동작 동안 아무 반응 없이 서 있을 뿐이라 눈으로만 잡힌다. 커맨드 등록
  * 누락과 같은 부류의 조용한 실패라 소스를 직접 대조한다.
  */
-// vitest는 프로젝트 루트에서 돈다. import.meta.url은 jsdom 환경에서 file 스킴이 아니다
+/** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
+// vitest는 프로젝트 루트에서 돈다. `?raw`는 vitest의 CSS 처리에 걸려 원본을
+// 주지 않으므로 파일을 직접 읽는다 (그래서 @types/node가 dev 의존성에 있다)
 const css = readFileSync(resolve("src/pet/pet.css"), "utf8");
 
-/** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
 const ALL_BEHAVIORS: Behavior[] = [
   { kind: "walk" },
   { kind: "turn" },

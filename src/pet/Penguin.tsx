@@ -29,15 +29,45 @@ export function Penguin({ className = "penguin", ...rest }: PenguinProps) {
       xmlns="http://www.w3.org/2000/svg"
       {...rest}
     >
+      {/*
+       * 후광 — 같은 도형을 한 벌 더 뒤에 깐다 (어두운 배경에서 검은 몸통이 묻히는 문제).
+       *
+       * 클래스가 같으므로 CSS 애니메이션이 그대로 걸려 본체와 똑같이 움직인다 —
+       * 정적 실루엣 하나로는 날개짓·고개돌림을 따라가지 못한다. 전부 한 색이라
+       * 안쪽 겹침은 서로 묻히고 **바깥 실루엣만** 테두리로 남는다. 부위마다
+       * stroke를 걸면 날개와 몸통 사이에도 선이 생겨 보기 힘들어진다.
+       *
+       * `filter: drop-shadow()`가 모양은 가장 예쁘지만, 애니메이션되는 서브트리
+       * 전체를 매 프레임 오프스크린으로 다시 그려 CPU가 크게 뛴다.
+       */}
+      <g className="pg-halo" aria-hidden="true">
+        <Shapes />
+      </g>
+      <Shapes />
+    </svg>
+  );
+}
+
+/** 펭귄을 이루는 도형들. 본체와 후광이 같은 것을 그린다. */
+function Shapes() {
+  return (
+    <>
       {/* 바닥 그림자 — 착지·점프에서 크기가 변해 높이를 읽히게 한다 */}
-      <ellipse id="shadow" className="pg-shadow" cx="50" cy="123" rx="23" ry="4.5" fill={INK} opacity="0.18" />
+      <ellipse
+        className="pg-shadow"
+        cx="50"
+        cy="123"
+        rx="23"
+        ry="4.5"
+        fill={INK}
+        opacity="0.18"
+      />
 
       {/* 꼬리 — 진행 방향 반대쪽으로 뻗는다 */}
-      <path id="tail" className="pg-tail" d="M33 98 L16 111 L35 106 Z" fill={INK} />
+      <path className="pg-tail" d="M33 98 L16 111 L35 106 Z" fill={INK} />
 
       {/* 먼 쪽 날개 — 몸통 뒤에 깔려 약간 어둡다 */}
       <path
-        id="wing-far"
         className="pg-wing-far"
         d="M36 52 C27 59 24 76 29 88 C31 92 35 91 36 87 C38 75 39 61 39 54 Z"
         fill={INK}
@@ -45,17 +75,17 @@ export function Penguin({ className = "penguin", ...rest }: PenguinProps) {
       />
 
       {/* 다리와 발 — 걷기에서 번갈아 움직인다 */}
-      <g id="foot-far" className="pg-foot pg-foot--far">
+      <g className="pg-foot pg-foot--far">
         <rect x="44" y="104" width="4" height="9" rx="2" fill={FOOT} opacity="0.85" />
         <path d="M46 112 L38 120 L52 120 Z" fill={FOOT} opacity="0.85" />
       </g>
-      <g id="foot-near" className="pg-foot pg-foot--near">
+      <g className="pg-foot pg-foot--near">
         <rect x="54" y="104" width="4" height="9" rx="2" fill={FOOT} />
         <path d="M56 112 L48 120 L63 120 Z" fill={FOOT} />
       </g>
 
       {/* 몸통 — 등은 검정, 배는 흰색 */}
-      <g id="body" className="pg-body">
+      <g className="pg-body">
         <path
           d="M50 40 C64 40 71 58 71 80 C71 101 62 113 50 113 C38 113 29 101 29 80 C29 58 36 40 50 40 Z"
           fill={INK}
@@ -64,7 +94,7 @@ export function Penguin({ className = "penguin", ...rest }: PenguinProps) {
       </g>
 
       {/* 머리 — 두리번·응시에서 회전한다. transform-origin은 목(50,44)이다 */}
-      <g id="head" className="pg-head">
+      <g className="pg-head">
         <circle cx="50" cy="30" r="16" fill={INK} />
         {/* 부리 — 오른쪽을 향한다 */}
         <path d="M64 29 L77 32.5 L64 36.5 Z" fill={BEAK} />
@@ -72,17 +102,16 @@ export function Penguin({ className = "penguin", ...rest }: PenguinProps) {
         <ellipse cx="57" cy="27" rx="5.2" ry="6.2" fill={SNOW} />
         {/* 눈동자는 시선 추적용 그룹 안에 둔다 — 깜빡임과 회전축이 겹치지 않게 */}
         <g className="pg-gaze">
-          <circle id="eye" className="pg-eye" cx="57.5" cy="27.5" r="2.5" fill={INK} />
+          <circle className="pg-eye" cx="57.5" cy="27.5" r="2.5" fill={INK} />
         </g>
       </g>
 
       {/* 가까운 쪽 날개 — 몸통 앞이라 기지개·놀람에서 가장 잘 보인다 */}
       <path
-        id="wing-near"
         className="pg-wing-near"
         d="M66 50 C76 57 80 75 74 89 C72 93 68 91 67 87 C64 74 63 60 64 52 Z"
         fill={INK}
       />
-    </svg>
+    </>
   );
 }

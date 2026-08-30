@@ -9,6 +9,15 @@
  * `backdrop-filter`는 macOS 투명 창에서 깨지므로 쓰지 않는다.
  */
 
+/* 후광 — 어두운 터미널·다크 모드에서 검은 몸통이 배경에 묻히는 문제.
+ * 펭귄 색은 그대로 두고 바깥 실루엣만 세운다.
+ * 너무 밝으면 밝은 배경에서 사라지고, 너무 어두우면 어두운 배경에서 사라진다. */
+:root {
+  --pg-halo-color: #cfd6e0;
+  --pg-halo-spread: 2.6;
+  --pg-halo-opacity: 0.42;
+}
+
 html,
 body,
 #pet-root {
@@ -45,6 +54,27 @@ body,
 
 .pg--dragged {
   cursor: grabbing;
+}
+
+/* 뒤에 깔린 도형 한 벌을 통째로 한 색으로 칠하고 조금 부풀린다.
+ * 부풀리기는 stroke로 한다 — 도형을 키우면 부위마다 축이 어긋난다. */
+.pg-halo {
+  opacity: var(--pg-halo-opacity);
+}
+
+.pg-halo :is(path, circle, ellipse, rect) {
+  fill: var(--pg-halo-color);
+  stroke: var(--pg-halo-color);
+  stroke-width: var(--pg-halo-spread);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  /* 본체가 저마다 다른 opacity를 갖지만 후광은 하나로 보여야 한다 */
+  opacity: 1;
+}
+
+/* 바닥 그림자는 배경에 녹아야 하므로 후광 대상이 아니다 */
+.pg-halo .pg-shadow {
+  display: none;
 }
 
 /* SVG 부위의 회전축. 퍼센트는 요소의 바운딩 박스 기준이라 부위마다 어긋나므로

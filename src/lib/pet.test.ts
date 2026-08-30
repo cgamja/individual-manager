@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DRAG_THRESHOLD_PX,
-  TAUNTS,
+  DEFAULT_TAUNTS,
   tauntFor,
   behaviorClass,
   isOneShot,
@@ -183,24 +183,24 @@ describe("isOneShot", () => {
 
 describe("킹받는 대사", () => {
   it("대사가_비어_있지_않다", () => {
-    expect(TAUNTS.length).toBeGreaterThan(5);
-    for (const line of TAUNTS) expect(line.trim().length).toBeGreaterThan(0);
+    expect(DEFAULT_TAUNTS.length).toBeGreaterThan(5);
+    for (const line of DEFAULT_TAUNTS) expect(line.trim().length).toBeGreaterThan(0);
   });
 
   it("같은_대사가_두_번_들어있지_않다", () => {
-    expect(new Set(TAUNTS).size).toBe(TAUNTS.length);
+    expect(new Set(DEFAULT_TAUNTS).size).toBe(DEFAULT_TAUNTS.length);
   });
 
   it("추첨값을_대사로_바꾼다", () => {
-    expect(tauntFor(0)).toBe(TAUNTS[0]);
-    expect(tauntFor(TAUNTS.length)).toBe(TAUNTS[0]);
-    expect(tauntFor(TAUNTS.length + 3)).toBe(TAUNTS[3]);
+    expect(tauntFor(0, DEFAULT_TAUNTS)).toBe(DEFAULT_TAUNTS[0]);
+    expect(tauntFor(DEFAULT_TAUNTS.length, DEFAULT_TAUNTS)).toBe(DEFAULT_TAUNTS[0]);
+    expect(tauntFor(DEFAULT_TAUNTS.length + 3, DEFAULT_TAUNTS)).toBe(DEFAULT_TAUNTS[3]);
   });
 
   it("아주_큰_값이나_음수에도_대사를_돌려준다", () => {
     // 코어는 u64를 준다 — JS로 오면서 큰 수가 되거나 부호가 꼬여도 터지면 안 된다
     for (const roll of [Number.MAX_SAFE_INTEGER, -7, 0, 1e15]) {
-      expect(TAUNTS).toContain(tauntFor(roll));
+      expect(DEFAULT_TAUNTS).toContain(tauntFor(roll, DEFAULT_TAUNTS));
     }
   });
 });

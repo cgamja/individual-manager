@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { Penguin } from "./Penguin";
+import { loadTaunts } from "../lib/settings";
 import {
   DRAG_THRESHOLD_PX,
   behaviorClass,
@@ -14,6 +15,7 @@ import {
   openPetPopover,
   startPetDrag,
   tauntFor,
+  DEFAULT_TAUNTS,
   whackPet,
   type PetSnapshot,
 } from "../lib/pet";
@@ -63,6 +65,8 @@ export function PetApp() {
   const [restartKey, setRestartKey] = useState(0);
   /** 눈동자가 커서를 향해 밀리는 양 (SVG 좌표, R7). */
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
+  /** 사용자가 팝오버에서 고칠 수 있으므로 저장소가 원천이다. */
+  const [taunts, setTaunts] = useState<readonly string[]>(DEFAULT_TAUNTS);
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
@@ -71,8 +75,13 @@ export function PetApp() {
       // 첫 틱을 기다리지 않고 현재 상태부터 그린다
       const initial = await getPetState().catch(() => null);
       if (!cancelled && initial) setSnapshot(initial);
+      const saved = await loadTaunts().catch(() => null);
+      if (!cancelled && saved) setTaunts(saved);
       unlisten = await onPetState((next) => {
         setSnapshot(next);
+        // 새 대사가 나올 때마다 목록을 다시 읽는다. 팝오버는 다른 웹뷰라
+        // 여기서 직접 알 방법이 없고, 몇 초에 한 번이라 비용도 미미하다
+        if (next.speech) loadTaunts().then(setTaunts).catch(() => {});
         if (isOneShot(behaviorClass(next.behavior))) {
           setRestartKey((k) => k + 1);
         }
@@ -221,7 +230,7 @@ export function PetApp() {
       {/* 말풍선 — 창 위쪽 여백에 뜬다. key로 발화마다 다시 나타나게 한다 */}
       {speech && (
         <div className="pg-bubble" key={speech.seq} role="status">
-          {tauntFor(speech.roll)}
+          {tauntFor(speech.roll, taunts)}
         </div>
       )}
       <div className={stageClass}>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { SettingsCard } from "./components/SettingsCard";
+import { TauntCard } from "./components/TauntCard";
 import { TimerCard } from "./components/TimerCard";
 import { ensureNotificationPermission } from "./lib/notification";
 import { setPetEnabled } from "./lib/pet";
@@ -9,8 +10,10 @@ import {
   DEFAULT_SETTINGS,
   loadPetSettings,
   loadSettings,
+  loadTaunts,
   savePetSettings,
   saveSettings,
+  saveTaunts,
 } from "./lib/settings";
 import {
   getTimerState,
@@ -37,6 +40,7 @@ function App() {
   const [notifGranted, setNotifGranted] = useState(true);
   const [saveFailed, setSaveFailed] = useState(false);
   const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
+  const [taunts, setTaunts] = useState<readonly string[]>([]);
 
   useEffect(() => {
     let unlistenTick: UnlistenFn | undefined;
@@ -45,6 +49,8 @@ function App() {
     (async () => {
       const savedPet = await loadPetSettings().catch(() => DEFAULT_PET_SETTINGS);
       if (!cancelled) setPetEnabledState(savedPet.enabled);
+      const savedTaunts = await loadTaunts().catch(() => []);
+      if (!cancelled) setTaunts(savedTaunts);
       // 저장된 설정을 Rust 코어에 반영한 뒤 상태를 동기화한다
       const saved = await loadSettings().catch(() => DEFAULT_SETTINGS);
       const applied = await setTimerConfig(saved).catch(() => DEFAULT_SETTINGS);
@@ -127,6 +133,23 @@ function App() {
     }
   }, []);
 
+  /** 대사 편집 — 화면을 먼저 바꾸고 저장한다. 실패하면 되돌린다. */
+  const handleTauntsChange = useCallback(
+    async (next: string[]) => {
+      const before = taunts;
+      setTaunts(next);
+      try {
+        await saveTaunts(next);
+        setSaveFailed(false);
+      } catch (err) {
+        console.error("대사 저장 실패:", err);
+        setTaunts(before);
+        setSaveFailed(true);
+      }
+    },
+    [taunts],
+  );
+
   return (
     <main className="popover">
       <TimerCard
@@ -143,6 +166,7 @@ function App() {
         petEnabled={petEnabled}
         onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
       />
+      <TauntCard lines={taunts} onChange={(next) => void handleTauntsChange(next)} />
       {!notifGranted && (
         <p className="notif-hint" role="status">
           알림 권한이 꺼져 있어요 — 세션 종료는 이 카드에서 확인돼요

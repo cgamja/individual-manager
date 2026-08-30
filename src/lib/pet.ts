@@ -56,7 +56,7 @@ export interface PetSnapshot {
  * 코어는 추첨값만 주고 문구는 여기서 고른다 — 문구를 고치자고 Rust를 다시
  * 빌드할 이유가 없다. 늘리려면 줄만 추가하면 된다.
  */
-export const TAUNTS: readonly string[] = [
+export const DEFAULT_TAUNTS: readonly string[] = [
   "그래서 뭐 어쩌라고",
   "일 안 해요?",
   "그거 마감 언제였더라~",
@@ -81,9 +81,22 @@ export const TAUNTS: readonly string[] = [
   "펭귄한테 화풀이하지 마세요",
 ];
 
-/** 추첨값으로 대사를 고른다. 목록이 비어도 터지지 않는다. */
-export const tauntFor = (roll: number): string =>
-  TAUNTS.length === 0 ? "" : TAUNTS[Math.abs(roll) % TAUNTS.length];
+/** 대사 한 줄의 최대 길이. 말풍선이 창을 넘지 않을 만큼만 받는다. */
+export const TAUNT_MAX_LEN = 40;
+
+/**
+ * 추첨값으로 대사를 고른다. 목록이 비어도 터지지 않는다.
+ * 목록을 인자로 받는 이유는 사용자가 설정에서 고칠 수 있기 때문이다.
+ */
+export const tauntFor = (roll: number, lines: readonly string[]): string =>
+  lines.length === 0 ? "" : lines[Math.abs(roll) % lines.length];
+
+/** 저장 전 정리 — 앞뒤 공백을 없애고, 빈 줄과 너무 긴 줄을 걸러낸다. */
+export const normalizeTaunts = (lines: readonly string[]): string[] =>
+  lines
+    .map((l) => l.trim().replace(/\s+/g, " "))
+    .filter((l) => l.length > 0)
+    .map((l) => (l.length > TAUNT_MAX_LEN ? l.slice(0, TAUNT_MAX_LEN) : l));
 
 export const EVENT_PET_STATE = "pet://state";
 

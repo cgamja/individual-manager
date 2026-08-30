@@ -118,6 +118,7 @@ pub fn bounds_from_work_area(
         left,
         // 영역이 펭귄보다 좁은 극단적 경우에도 right < left가 되지 않게 한다
         right: (left + width - pet_size).max(left),
+        top,
         floor_y: (top + height - pet_size).max(top),
     }
 }
@@ -229,10 +230,11 @@ pub fn pet_drag_by(dx: f64, dy: f64, state: State<'_, PetState>, app: AppHandle)
     flush(&app);
 }
 
-/// 드래그 놓기 — 떨어뜨린다 (R6).
+/// 드래그 놓기 (R6, R12). 웹뷰가 잰 놓는 순간의 속도(논리 px/초)를 그대로 넘긴다 —
+/// 세게 던졌으면 포물선을 그리고, 살짝 놓았으면 제자리에서 떨어진다.
 #[tauri::command]
-pub fn pet_drag_end(state: State<'_, PetState>, app: AppHandle) {
-    state.0.lock().unwrap().drag_end(now_ms());
+pub fn pet_drag_end(vx: f64, vy: f64, state: State<'_, PetState>, app: AppHandle) {
+    state.0.lock().unwrap().drag_end(now_ms(), vx, vy);
     flush(&app);
 }
 

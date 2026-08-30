@@ -119,7 +119,7 @@ pub fn run() {
             app.manage(pet_bridge::PetState(Mutex::new(pet::Pet::new(
                 start,
                 start,
-                pet::Bounds { left: 0.0, right: 800.0, floor_y: 400.0 },
+                pet::Bounds { left: 0.0, right: 800.0, top: 0.0, floor_y: 400.0 },
             ))));
             if pet_bridge::pet_enabled(app.handle()) {
                 if let Err(err) = pet_bridge::create_pet_window(app.handle()) {

@@ -3,22 +3,28 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type Facing = "left" | "right";
 
+/** 오르는 중인지 내려가는 중인지 — 몸 기울기를 고르는 데 쓴다. */
+export type Vertical = "up" | "down" | "level";
+
 export type IdleKind = "look_around" | "stretch" | "shake" | "shift_feet";
 
 export type Behavior =
   | { kind: "walk" }
   | { kind: "turn" }
   | { kind: "idle"; idle: IdleKind }
+  | { kind: "swim" }
   | { kind: "sleep" }
   | { kind: "startled" }
   | { kind: "dragged" }
   | { kind: "falling" }
+  | { kind: "thrown" }
   | { kind: "land" };
 
 export interface PetSnapshot {
   x: number;
   y: number;
   facing: Facing;
+  vertical: Vertical;
   behavior: Behavior;
 }
 
@@ -47,7 +53,36 @@ export const startPetDrag = (): Promise<void> => invoke("pet_drag_start");
 export const dragPetBy = (dx: number, dy: number): Promise<void> =>
   invoke("pet_drag_by", { dx, dy });
 
-export const endPetDrag = (): Promise<void> => invoke("pet_drag_end");
+/** 놓는 순간의 속도(논리 px/초)를 함께 넘긴다 — 세게 던지면 포물선을 그린다. */
+export const endPetDrag = (vx: number, vy: number): Promise<void> =>
+  invoke("pet_drag_end", { vx, vy });
+
+/** 세로 방향 → CSS 클래스. 지상 동작에서는 항상 level이라 기울지 않는다. */
+export const verticalClass = (vertical: Vertical): string => `pg-v--${vertical}`;
+
+/**
+ * 최근 포인터 궤적에서 놓는 순간의 속도를 잰다 (논리 px/초).
+ * 마지막 한 구간만 보면 손이 멈춘 채 뗀 경우 0이 되고, 전체를 보면 초반의
+ * 느린 구간이 섞여 약해진다 — 그래서 최근 `windowMs` 구간만 본다.
+ */
+export const throwVelocity = (
+  samples: readonly { x: number; y: number; t: number }[],
+  windowMs = 120,
+): { vx: number; vy: number } => {
+  if (samples.length < 2) return { vx: 0, vy: 0 };
+  const last = samples[samples.length - 1];
+  // 창 안에서 가장 오래된 샘플을 기준점으로 삼는다
+  let first = samples[0];
+  for (const s of samples) {
+    if (last.t - s.t <= windowMs) {
+      first = s;
+      break;
+    }
+  }
+  const dt = (last.t - first.t) / 1000;
+  if (dt <= 0) return { vx: 0, vy: 0 };
+  return { vx: (last.x - first.x) / dt, vy: (last.y - first.y) / dt };
+};
 
 /** 펭귄을 켜고 끈다 (R8). 끄면 창이 닫힌다. */
 export const setPetEnabled = (enabled: boolean): Promise<void> =>

@@ -760,3 +760,82 @@ body,
   right: 2px;
   scale: -1 1;
 }
+
+/* ── 빠따 맞기 — 제자리에서 맞는다 (날아가는 건 던지기 전용) ────── */
+
+/* 방망이가 날아오는 동안 — 눈치채고 움츠린다 */
+@keyframes pg-brace {
+  0% {
+    transform: scaleY(1) scaleX(1);
+  }
+  100% {
+    transform: scaleY(0.94) scaleX(1.05);
+  }
+}
+.pg--wind-up .pg-body,
+.pg--wind-up .pg-head {
+  animation: pg-brace 0.12s ease-out forwards;
+}
+
+/* 맞는 순간 — 납작해졌다가 부르르 떨고 돌아온다 */
+@keyframes pg-bonk-body {
+  0% {
+    transform: scaleY(0.72) scaleX(1.16) translateY(6px);
+  }
+  30% {
+    transform: scaleY(1.06) scaleX(0.96) translateY(-2px);
+  }
+  55% {
+    transform: scaleY(0.96) scaleX(1.03) translateY(1px);
+  }
+  100% {
+    transform: scaleY(1) scaleX(1) translateY(0);
+  }
+}
+@keyframes pg-bonk-head {
+  0% {
+    transform: rotate(-26deg) translateY(5px);
+  }
+  25% {
+    transform: rotate(16deg) translateY(-1px);
+  }
+  50% {
+    transform: rotate(-9deg);
+  }
+  75% {
+    transform: rotate(5deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+/* 날개는 충격에 벌어진다 */
+@keyframes pg-bonk-wing {
+  0% {
+    transform: rotate(-58deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+@keyframes pg-bonk-wing-far {
+  0% {
+    transform: rotate(58deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.pg--bonked .pg-body {
+  animation: pg-bonk-body 0.46s cubic-bezier(0.25, 1.4, 0.4, 1);
+}
+.pg--bonked .pg-head {
+  animation: pg-bonk-head 0.46s cubic-bezier(0.25, 1.4, 0.4, 1);
+}
+.pg--bonked .pg-wing-near {
+  animation: pg-bonk-wing 0.46s ease-out;
+}
+.pg--bonked .pg-wing-far {
+  animation: pg-bonk-wing-far 0.46s ease-out;
+}

@@ -42,6 +42,8 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "idle", idle: "stretch" },
   { kind: "idle", idle: "shake" },
   { kind: "idle", idle: "shift_feet" },
+  { kind: "wind_up" },
+  { kind: "bonked" },
   { kind: "sassy", sassy: "turn_away" },
   { kind: "sassy", sassy: "head_flick" },
   { kind: "sassy", sassy: "wing_flick" },

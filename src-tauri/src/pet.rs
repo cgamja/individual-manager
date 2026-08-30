@@ -31,9 +31,8 @@ const SASSY_MS: u64 = 900;
 const SPEECH_MS: u64 = 3_200;
 /// 한마디와 다음 한마디 사이 간격. 클릭과 무관하게 알아서 떠든다.
 const TAUNT_GAP_MS: (u64, u64) = (7_000, 18_000);
-/// 빠따로 날려 보내는 속도 (논리 px/초).
-const BAT_VX: (u64, u64) = (540, 1_050);
-const BAT_VY: (u64, u64) = (620, 1_000);
+/// 맞고 움찔하는 시간. 이 동안 제자리에 있는다.
+const BONK_MS: u64 = 460;
 /// 방망이가 닿기까지의 시간. 이 동안 펭귄은 제자리에서 움찔하며 기다린다 —
 /// 클릭하자마자 날아가면 방망이가 허공을 치는 그림이 된다.
 const WINDUP_MS: u64 = 120;
@@ -155,6 +154,8 @@ pub enum Behavior {
     Sassy { sassy: SassyKind },
     /// 방망이가 날아오는 중 — 아직 맞지 않았다 (R14)
     WindUp,
+    /// 방망이에 맞고 움찔하는 중. **날아가지 않는다** — 나는 건 드래그로 던졌을 때뿐이다
+    Bonked,
     /// 사용자가 집어 든 상태 — 자율 이동을 하지 않는다 (R6)
     Dragged,
     Falling,
@@ -223,8 +224,6 @@ pub struct Pet {
     speech_until_ms: u64,
     speech_seq: u64,
     whack_seq: u64,
-    /// 맞는 순간 실릴 속도. WindUp이 끝나면 여기에 실려 날아간다.
-    pending_launch: (f64, f64),
     /// 다음 한마디 시각. 말은 클릭이 아니라 시간에 맞춰 나온다.
     next_taunt_ms: u64,
     /// 좌우 속도 (논리 px/초) — 던져졌을 때만 0이 아니다.
@@ -268,7 +267,6 @@ impl Pet {
             speech_until_ms: 0,
             speech_seq: 0,
             whack_seq: 0,
-            pending_launch: (0.0, 0.0),
             next_taunt_ms: start_ms + TAUNT_GAP_MS.0,
             vx: 0.0,
             vy: 0.0,
@@ -369,11 +367,19 @@ impl Pet {
             }
             Behavior::WindUp => {
                 if now_ms >= self.behavior_until_ms {
-                    // 방망이가 닿았다 — 이제 날아간다
-                    let (vx, vy) = self.pending_launch;
-                    self.vx = vx;
-                    self.vy = vy;
-                    self.enter(Behavior::Thrown, now_ms);
+                    // 방망이가 닿았다 — 그 자리에서 움찔한다
+                    self.enter(Behavior::Bonked, now_ms + BONK_MS);
+                }
+            }
+            Behavior::Bonked => {
+                if now_ms >= self.behavior_until_ms {
+                    if self.air {
+                        // 공중에서 맞았다면 이제 마저 떨어진다
+                        self.enter(Behavior::Falling, now_ms);
+                    } else {
+                        // 맞고 나면 약이 올라 한 소리 한다
+                        self.enter_sassy(now_ms);
+                    }
                 }
             }
             Behavior::Sassy { .. } => {
@@ -456,32 +462,15 @@ impl Pet {
     ///
     /// 공중에서 찔리면 놀라 떨어진다. `Startled`는 지상 동작이라 그대로 넣으면
     /// 같은 step의 clamp가 펭귄을 바닥으로 순간이동시킨다.
-    /// 빠따 — 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로).
-    /// 공중에서 다시 때리면 그 자리에서 또 날아가므로 계속 저글링할 수 있다.
-    pub fn whack(&mut self, now_ms: u64, bounds: Bounds) {
+    /// 빠따 — 클릭 한 번에 한 번 맞는다. **맞아도 날아가지 않는다.**
+    /// 날려 보내는 건 드래그로 던졌을 때(`drag_end`)뿐이다.
+    /// 연타하면 계속 맞는다.
+    pub fn whack(&mut self, now_ms: u64, _bounds: Bounds) {
         self.last_stimulus_ms = now_ms;
         self.whack_seq += 1;
-        // 보고 있는 쪽으로 날아간다 — 방망이가 뒤에서 오는 그림이 된다.
-        // 벽에 붙어 있으면 화면 안쪽으로 보낸다
-        let toward_right = if bounds.right <= bounds.left {
-            // 경계를 못 읽었다 — 벽 판정이 무의미하니 보고 있는 쪽으로 보낸다
-            self.facing == Facing::Right
-        } else if self.x <= bounds.left + 1.0 {
-            true
-        } else if self.x >= bounds.right - 1.0 {
-            false
-        } else {
-            self.facing == Facing::Right
-        };
-        let vx = self.range(BAT_VX) as f64;
-        self.pending_launch = (
-            if toward_right { vx } else { -vx },
-            -(self.range(BAT_VY) as f64),
-        );
-        // 아직 맞지 않았다 — 지금 속도는 0으로 두고 그 자리에서 기다린다
+        // 제자리에서 맞는다 — 속도를 주지 않는다
         self.vx = 0.0;
         self.vy = 0.0;
-        self.facing = if toward_right { Facing::Right } else { Facing::Left };
         self.enter(Behavior::WindUp, now_ms + WINDUP_MS);
     }
 
@@ -565,7 +554,7 @@ impl Pet {
         // 반응·드래그는 고도를 그대로 물려받고, 나머지는 동작이 곧 고도를 정한다.
         // 착지(Land)는 바닥에 닿은 시점이라 확실히 지상이다.
         match behavior {
-            Behavior::Sassy { .. } | Behavior::Dragged => {}
+            Behavior::Sassy { .. } | Behavior::Dragged | Behavior::WindUp | Behavior::Bonked => {}
             Behavior::Land => self.air = false,
             other => self.air = other.is_airborne(),
         }
@@ -854,29 +843,36 @@ mod tests {
     }
 
     #[test]
-    fn 빠따를_맞으면_날아간다() {
+    fn 빠따를_맞아도_날아가지_않는다() {
+        // 나는 건 드래그로 던졌을 때뿐이다 — 클릭으로 날아가면 안 된다
         let mut p = pet();
         p.step(1_000, BOUNDS);
         let before = p.snapshot();
         p.whack(1_000, BOUNDS);
         assert_eq!(p.behavior(), Behavior::WindUp, "방망이가 닿기 전엔 제자리다");
-        // 기다리는 동안 움직이면 안 된다 — 방망이가 허공을 치는 그림이 된다
-        let waiting = p.step(1_000 + WINDUP_MS / 2, BOUNDS);
-        assert_eq!(waiting.y, before.y);
-        assert_eq!(waiting.x, before.x);
 
-        let hit = p.step(1_000 + WINDUP_MS + 10, BOUNDS);
-        assert_eq!(hit.behavior, Behavior::Thrown, "닿으면 그때 날아간다");
-
-        let mut t = 1_000 + WINDUP_MS + 10;
-        let mut peak = before.y;
-        while p.behavior() == Behavior::Thrown && t < 12_000 {
+        let mut t = 1_000;
+        for _ in 0..30 {
             t += 50;
             let s = p.step(t, BOUNDS);
-            peak = peak.min(s.y);
+            assert_eq!(s.x, before.x, "옆으로 밀리면 안 된다");
+            assert_eq!(s.y, before.y, "떠오르면 안 된다");
+            assert_ne!(s.behavior, Behavior::Thrown, "던져진 상태가 되면 안 된다");
         }
-        assert!(peak < before.y - 30.0, "위로 솟아야 한다 (정점 {peak}, 시작 {})", before.y);
-        assert_ne!(p.snapshot().x, before.x, "옆으로도 날아가야 한다");
+    }
+
+    #[test]
+    fn 맞으면_움찔했다가_약을_올린다() {
+        let mut p = pet();
+        p.step(1_000, BOUNDS);
+        p.whack(1_000, BOUNDS);
+        assert_eq!(p.step(1_000 + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Bonked);
+        let after = p.step(1_000 + WINDUP_MS + BONK_MS + 20, BOUNDS);
+        assert!(
+            matches!(after.behavior, Behavior::Sassy { .. }),
+            "맞고 나면 약이 올라야 한다 (실제: {:?})",
+            after.behavior
+        );
     }
 
     #[test]
@@ -891,30 +887,34 @@ mod tests {
     }
 
     #[test]
-    fn 공중에서_다시_때리면_그_자리에서_또_날아간다() {
-        // 저글링 — 떨어지는 중에 때리면 새로 솟아야 한다
+    fn 던져서_나는_중에_때리면_그_자리에서_맞고_마저_떨어진다() {
+        // 때리는 것으로는 새 속도가 붙지 않는다 — 나는 건 던지기 전용이다
         let mut p = pet();
-        p.whack(1_000, BOUNDS);
-        p.step(1_000 + WINDUP_MS + 10, BOUNDS);
-        let mut t = 1_000 + WINDUP_MS + 10;
-        // 정점을 지나 내려오기 시작할 때까지 진행
-        let mut prev = p.snapshot().y;
-        while t < 6_000 {
+        p.drag_start(1_000);
+        p.drag_by(0.0, -300.0);
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 600.0, -400.0);
+        assert_eq!(p.behavior(), Behavior::Thrown);
+
+        // 아직 공중일 때 때린다
+        let mut t = 1_100;
+        for _ in 0..4 {
             t += 50;
-            let y = p.step(t, BOUNDS).y;
-            if y > prev && p.behavior() == Behavior::Thrown {
-                break;
-            }
-            prev = y;
+            p.step(t, BOUNDS);
         }
-        assert_eq!(p.behavior(), Behavior::Thrown, "아직 공중이어야 한다");
-        let mid_air = p.snapshot().y;
+        assert_eq!(p.behavior(), Behavior::Thrown, "아직 나는 중이어야 한다");
+        assert!(p.snapshot().air, "공중 상태여야 한다");
 
         p.whack(t, BOUNDS);
-        p.step(t + WINDUP_MS + 10, BOUNDS);
-        let after = p.step(t + WINDUP_MS + 60, BOUNDS);
-        assert!(after.y < mid_air, "다시 위로 솟아야 한다");
-        assert!(after.y < BOUNDS.floor_y, "바닥으로 끌려가면 안 된다");
+        let hit_y = p.snapshot().y;
+        t += WINDUP_MS + 10;
+        let bonked = p.step(t, BOUNDS);
+        assert_eq!(bonked.behavior, Behavior::Bonked);
+        assert_eq!(bonked.y, hit_y, "맞는다고 솟아오르거나 떨어지면 안 된다");
+
+        // 움찔이 끝나면 마저 떨어진다
+        let after = p.step(t + BONK_MS + 20, BOUNDS);
+        assert_eq!(after.behavior, Behavior::Falling, "공중이었으니 마저 떨어진다");
     }
 
     #[test]
@@ -928,7 +928,7 @@ mod tests {
         assert_eq!(p.behavior(), Behavior::Sleep);
         p.whack(t, BOUNDS);
         assert_eq!(p.behavior(), Behavior::WindUp);
-        assert_eq!(p.step(t + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Thrown);
+        assert_eq!(p.step(t + WINDUP_MS + 10, BOUNDS).behavior, Behavior::Bonked);
     }
 
     #[test]

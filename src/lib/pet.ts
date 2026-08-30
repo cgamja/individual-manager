@@ -23,6 +23,8 @@ export type Behavior =
   | { kind: "swim" }
   | { kind: "sleep" }
   | { kind: "sassy"; sassy: SassyKind }
+  | { kind: "wind_up" }
+  | { kind: "bonked" }
   | { kind: "dragged" }
   | { kind: "falling" }
   | { kind: "thrown" }
@@ -93,10 +95,13 @@ export const DRAG_THRESHOLD_PX = 4;
  * 동작 → CSS 클래스. 유휴는 종류까지 내려가야 두리번과 기지개가 구분된다.
  * CSS는 이 클래스 하나만 보고 부위 애니메이션을 고른다 (KTD2).
  */
+/** Rust의 snake_case를 CSS 선택자에 쓰는 kebab-case로. 한 곳에서만 바꾼다. */
+const kebab = (s: string): string => s.replace(/_/g, "-");
+
 export const behaviorClass = (behavior: Behavior): string => {
-  if (behavior.kind === "idle") return `pg--idle-${behavior.idle.replace(/_/g, "-")}`;
-  if (behavior.kind === "sassy") return `pg--sassy-${behavior.sassy.replace(/_/g, "-")}`;
-  return `pg--${behavior.kind}`;
+  if (behavior.kind === "idle") return `pg--idle-${kebab(behavior.idle)}`;
+  if (behavior.kind === "sassy") return `pg--sassy-${kebab(behavior.sassy)}`;
+  return `pg--${kebab(behavior.kind)}`;
 };
 
 /** 한 번만 재생하고 멈추는 동작인가. 같은 클래스가 다시 와도 되감아야 한다. */

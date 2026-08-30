@@ -1,5 +1,6 @@
 pub mod notion;
 pub mod notion_bridge;
+pub mod pet_bridge;
 pub mod pomodoro;
 pub mod timer_bridge;
 
@@ -106,6 +107,11 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // 바탕화면 펭귄 — 실패해도 앱 본체는 계속 뜬다 (장식 기능이 셸을 막지 않는다)
+            if let Err(err) = pet_bridge::create_pet_window(app.handle()) {
+                eprintln!("펭귄 창 생성 실패: {err}");
+            }
 
             Ok(())
         })

@@ -1,0 +1,35 @@
+/* 바탕화면 펭귄 창의 스타일.
+ *
+ * 창은 투명이다. `macOSPrivateApi: true`만으로는 부족하고 html/body 배경을
+ * 명시적으로 투명하게 둬야 흰 사각형이 보이지 않는다 (KTD6).
+ *
+ * 애니메이션은 transform과 opacity만 쓴다 — GPU 합성 대상이라 상주 앱에서도 싸다.
+ * `backdrop-filter`는 macOS 투명 창에서 깨지므로 쓰지 않는다.
+ */
+
+html,
+body,
+#pet-root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  /* 펭귄을 드래그해도 텍스트 선택 커서가 뜨지 않게 한다 */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+#pet-root {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.penguin {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}

@@ -1,5 +1,6 @@
 pub mod notion;
 pub mod notion_bridge;
+pub mod pet;
 pub mod pet_bridge;
 pub mod pomodoro;
 pub mod timer_bridge;

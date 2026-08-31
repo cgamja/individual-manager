@@ -87,6 +87,11 @@ docs/solutions/       재발 방지용 학습 기록 — 셸을 건드리기 전
   `positioner::on_tray_event`를 항상 먼저 호출한다.
 - **`current_monitor()`는 이벤트 루프를 왕복하는 블로킹 호출이다.** 20Hz 틱에서 매번
   부르지 않는다 — 현재는 주기적으로 캐시한다. 다중 화면(F2)에서도 같은 제약이 있다.
+- **창별 이벤트는 `emit_to`만으로 안 된다.** 전역 `listen()`은 대상을 `Any`로 등록하고,
+  Tauri는 `Any` 리스너를 **emit 대상과 무관하게 전부** 호출한다. 받는 쪽도
+  `getCurrentWebviewWindow().listen()`으로 창에 묶어야 한다. 창이 하나일 때는 드러나지
+  않다가 여러 창으로 늘리는 순간 터진다. →
+  `docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`
 - **`#[tauri::command]`를 만들고 `lib.rs`의 `generate_handler!`에 등록하지 않으면
   컴파일·테스트·경고가 전부 통과하고 런타임에서만 조용히 reject된다.** 새 창의
   capabilities 라벨 누락도 같은 성격이다. → `docs/solutions/best-practices/tauri-command-registration-silent-failure.md`

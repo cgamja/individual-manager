@@ -1399,3 +1399,130 @@ body,
   transform-origin: 50px 123px;
   animation: pg-slide-shadow 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
 }
+
+/* ── 빽빽거리기 — 연타로 맞으면 정면으로 화낸다 ──────────────────
+ *
+ * 싸가지 다섯이 전부 "무시하는" 결이라, 이 하나가 대비를 만든다.
+ * **소리는 내지 않는다** (PRD §5.5) — 그림만으로 화가 읽혀야 한다.
+ *
+ * `@keyframes` 이름은 전부 쓰는 클래스(`pg--squawk`)에서 딴다. 같은 이름을
+ * 두 번 정의하면 앞의 애니메이션이 통째로 죽는다 — 굴러떨어지기에서 겪었다.
+ */
+
+/* 몸을 부풀리며 부르르 떤다. 가로 1.14배는 잘림 한계(약 3.3배) 한참 안쪽이라
+ * 부푼 몸이 창 밖으로 나가지 않는다 (MOTIONS "잘림의 경계"). */
+@keyframes pg-squawk {
+  0% {
+    transform: scale(1, 1) translateX(0);
+  }
+  10% {
+    transform: scale(1.14, 1.06) translateX(-1.5px);
+  }
+  18% {
+    transform: scale(1.1, 1.08) translateX(1.5px);
+  }
+  26% {
+    transform: scale(1.14, 1.05) translateX(-1.5px);
+  }
+  34% {
+    transform: scale(1.1, 1.08) translateX(1.5px);
+  }
+  42% {
+    transform: scale(1.14, 1.05) translateX(-1.5px);
+  }
+  50% {
+    transform: scale(1.1, 1.08) translateX(1.5px);
+  }
+  58% {
+    transform: scale(1.13, 1.06) translateX(-1.2px);
+  }
+  70% {
+    transform: scale(1.08, 1.04) translateX(0.8px);
+  }
+  100% {
+    transform: scale(1, 1) translateX(0);
+  }
+}
+
+/* 날개를 빠르게 퍼덕인다. 몸 애니메이션과 달리 짧은 주기를 여러 번 돌린다 —
+ * 한 벌로 늘려 그리면 키프레임이 스무 줄 넘게 늘고 주기를 못 고친다. */
+@keyframes pg-squawk-wing {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-42deg);
+  }
+}
+@keyframes pg-squawk-wing-far {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(38deg);
+  }
+}
+
+/* 고개를 젖혔다 앞으로 내지른다 — 빽, 빽 하고 내뱉는 박자다 */
+@keyframes pg-squawk-head {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  30% {
+    transform: rotate(-20deg);
+  }
+  60% {
+    transform: rotate(6deg);
+  }
+}
+
+/* 부리를 크게 벌린다. 닫히지 않고 계속 벌어져 있으면 "빽빽대는" 것이 아니라
+ * "입 벌린 채 굳은" 그림이 되므로 박자에 맞춰 여닫는다 */
+@keyframes pg-squawk-beak {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(24deg);
+  }
+  70% {
+    transform: rotate(8deg);
+  }
+}
+
+/* 아래턱은 평소에 없다 — 벌릴 때만 나타난다.
+ *
+ * **`opacity: 0`으로 감추면 안 된다.** 후광 규칙
+ * (`.pg-halo :is(path, circle, ellipse, rect) { opacity: 1 }`)이 더 구체적이라
+ * 후광 한 벌이 평소에도 살아남아 **부리 밑에 회색 쐐기가 영원히 붙는다.**
+ * 낚시 도구(`.pg-rod` 등)가 `display: none`을 쓰는 이유가 정확히 이것이다.
+ * 방망이(`.pg-bat`)가 `opacity`로 되는 건 그쪽이 `<g>`라 후광 선택자에
+ * 걸리지 않아서다 — 도형 하나를 숨길 때는 따라 하면 안 된다. */
+.pg-beak-lower {
+  transform-origin: 64px 33px;
+  display: none;
+}
+
+/* 길이는 코어의 SQUAWK_MS와 같아야 한다 — `pet-css.test.ts`가 대조한다 */
+.pg--squawk .pg-all {
+  animation: pg-squawk 1.4s cubic-bezier(0.3, 0, 0.2, 1);
+}
+/* 주기 × 횟수가 SQUAWK_MS(1.4초)와 **정확히** 맞아야 한다. 짧으면 날개가
+ * 먼저 멈춘 채 몸만 가라앉고, 길면 퍼덕이다 잘린다 — `pet-css.test.ts`가 대조한다 */
+.pg--squawk .pg-wing-near {
+  animation: pg-squawk-wing 0.175s ease-in-out 8;
+}
+.pg--squawk .pg-wing-far {
+  animation: pg-squawk-wing-far 0.175s ease-in-out 8;
+}
+.pg--squawk .pg-head {
+  animation: pg-squawk-head 0.35s ease-in-out 4;
+}
+.pg--squawk .pg-beak-lower {
+  display: inline;
+  animation: pg-squawk-beak 0.35s ease-in-out 4;
+}

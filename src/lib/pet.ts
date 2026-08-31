@@ -28,6 +28,7 @@ export type Behavior =
   | { kind: "sleep" }
   | { kind: "sassy"; sassy: SassyKind }
   | { kind: "swing" }
+  | { kind: "squawk" }
   | { kind: "dragged" }
   | { kind: "falling" }
   | { kind: "thrown" }
@@ -136,6 +137,10 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--tumble" ||
   // 눕기 → 미끄러짐 → 일어서기가 한 벌로 재생되고 끝난다
   cls === "pg--slide" ||
+  // 부풀렸다 가라앉는 한 판이다. 연타로 다시 터져도 클릭 한 번은 반드시
+  // `pg--dragged`를 거치므로(프론트가 모든 pointerdown에서 `drag_start`를
+  // 부른다) 같은 클래스가 연달아 오지 않는다 — 아래 전제가 유지된다
+  cls === "pg--squawk" ||
   cls.startsWith("pg--sassy-") ||
   // 드리우기만 빼고 낚시 국면은 전부 한 번짜리다 — 드리우기는 입질이 올
   // 때까지 찌가 계속 까딱거려야 하므로 되감으면 끊긴다
@@ -192,6 +197,14 @@ export const fishPet = (): Promise<void> => invoke("pet_fish");
  * 낚시와 달리 **바닥에서만** 된다 — 공중에서 배를 깔면 그냥 헤엄이다.
  */
 export const slidePet = (): Promise<void> => invoke("pet_slide");
+
+/**
+ * 우클릭해서 연 그 펭귄을 빽빽거리게 한다.
+ *
+ * 저절로는 **연타로 맞았을 때만** 나온다. 낚시와 달리 공중에서도 되고,
+ * 미끄러지기와 달리 바닥을 요구하지 않는다 — 고도를 물려받는 반응이다.
+ */
+export const squawkPet = (): Promise<void> => invoke("pet_squawk");
 
 /** 빠따 — 왼쪽 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로). */
 export const whackPet = (): Promise<void> => invoke("pet_whack");

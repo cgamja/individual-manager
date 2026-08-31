@@ -67,6 +67,19 @@ const TAUNT_GAP_MS: (u64, u64) = (7_000, 18_000);
 /// 방망이를 휘두르는 시간.
 const SWING_MS: u64 = 360;
 
+/// 빽빽거리는 시간. 싸가지보다 **확실히 길어야** 한 박자 큰 반응으로 읽힌다 —
+/// 뒤집히면 정면으로 화내는 쪽이 무시하는 쪽보다 짧아지는 꼴이라 컴파일 타임에 막는다.
+const SQUAWK_MS: u64 = 1_400;
+const _: () = assert!(SQUAWK_MS > SASSY_MS);
+/// 이만큼 연달아 맞으면 빽빽거린다.
+///
+/// 취향 상수라 여기서만 고친다. 낮추면 한두 번 툭 치는 것으로 터져 "연타에 대한
+/// 반응"이 아니게 되고, 높이면 평생 못 본다.
+const SQUAWK_WHACK_COUNT: u64 = 4;
+/// 연타로 인정하는 클릭 사이 최대 간격. 스윙 하나가 360ms라 자연스러운 연타
+/// 간격은 200~400ms다 — 이 값은 넉넉한 쪽으로 잡았다.
+const SQUAWK_GAP_MS: u64 = 800;
+
 /// 착지 후 약이 올라 한마디 할 확률(%).
 const SASSY_AFTER_LAND_PERCENT: u64 = 70;
 const LAND_MS: u64 = 300;
@@ -286,6 +299,10 @@ pub enum Behavior {
     Sleep,
     /// 클릭에 대한 반응 — 놀라지 않고 싸가지 없게 군다 (R5)
     Sassy { sassy: SassyKind },
+    /// 빽빽거리기 — 짧은 시간에 여러 번 맞으면 몸을 부풀리고 날개를 퍼덕이며
+    /// 정면으로 화낸다. 싸가지 다섯이 전부 "무시하는" 결이라, 대비를 주는 것이
+    /// 이 동작의 존재 이유다. **소리는 내지 않는다** (PRD §5.5).
+    Squawk,
     /// 방망이를 휘두르는 중. **제자리에서** 휘두른다 — 나는 건 드래그로 던졌을 때뿐이다
     Swing,
     /// 사용자가 집어 든 상태 — 자율 이동을 하지 않는다 (R6)
@@ -511,6 +528,25 @@ pub struct Pet {
     speech_until_ms: u64,
     speech_seq: u64,
     whack_seq: u64,
+    /// 간격이 짧은 클릭이 지금까지 몇 번 이어졌는가. 문턱을 넘으면 빽빽거린다.
+    ///
+    /// 링버퍼에 최근 시각을 담아 "창 안에 N번"을 재는 방법도 있지만, 필드 둘이면
+    /// 같은 체감을 내고 마릿수가 늘어도 메모리가 늘지 않는다.
+    whack_run: u64,
+    /// 마지막 빠따 시각. **`last_stimulus_ms`를 쓸 수 없다** — 그쪽은 드래그로도
+    /// 갱신되므로 집었다 놓은 것이 연타로 세어진다.
+    ///
+    /// `Option`인 것이 중요하다. 0으로 초기화하면 에폭 초반 타임스탬프를 쓰는
+    /// 테스트에서 `300 - 0 <= SQUAWK_GAP_MS`가 참이 되어 **첫 클릭이 이미 두
+    /// 번째 연타로 세어진다.** 실제 앱에서는 안 드러나고 테스트에서만 터진다.
+    last_whack_ms: Option<u64>,
+    /// 지금 빽빽거리는 판이 끝나는 시각. 0이면 빽빽거리는 중이 아니다.
+    ///
+    /// **`behavior`로는 판정할 수 없다.** 프론트는 클릭인지 드래그인지 알기 전에
+    /// 모든 pointerdown에서 `drag_start`를 부르므로(그쪽 주석 참고), `whack`이
+    /// 도착할 때 동작은 이미 `Dragged`다. 시각을 따로 들고 있어야 "빽빽거리는
+    /// 중에 또 맞았다"를 알 수 있다.
+    squawk_until_ms: u64,
     /// 다음 한마디 시각. 말은 클릭이 아니라 시간에 맞춰 나온다.
     next_taunt_ms: u64,
     /// 좌우 속도 (논리 px/초) — 던져졌을 때만 0이 아니다.
@@ -695,6 +731,9 @@ impl Pet {
             speech_until_ms: 0,
             speech_seq: 0,
             whack_seq: 0,
+            whack_run: 0,
+            last_whack_ms: None,
+            squawk_until_ms: 0,
             next_taunt_ms: start_ms + TAUNT_GAP_MS.0,
             vx: 0.0,
             vy: 0.0,
@@ -840,6 +879,18 @@ impl Pet {
                     }
                 }
             }
+            // 반응이라 나가는 길이 `Sassy`와 같다 — 바로 옆에 둔다.
+            // **`get_up`(70% 약올리기)을 쓰지 않는다**: 화를 다 낸 직후에 곧바로
+            // 킹받게 굴면 방금 낸 화가 연기였던 것처럼 보인다.
+            Behavior::Squawk => {
+                if now_ms >= self.behavior_until_ms {
+                    if self.air {
+                        self.enter(Behavior::Falling, now_ms);
+                    } else {
+                        self.enter_idle(now_ms);
+                    }
+                }
+            }
             Behavior::Land | Behavior::Splat | Behavior::Sprawl => {
                 if now_ms >= self.behavior_until_ms {
                     self.get_up(now_ms);
@@ -967,15 +1018,78 @@ impl Pet {
     /// 같은 step의 clamp가 펭귄을 바닥으로 순간이동시킨다.
     /// 빠따 — 클릭 한 번에 펭귄이 방망이를 한 번 휘두른다. **맞는 쪽이 아니라
     /// 휘두르는 쪽이다.** 제자리에서 휘두르므로 날아가지 않는다 — 날려 보내는 건
-    /// 드래그로 던졌을 때(`drag_end`)뿐이다. 연타하면 계속 휘두른다.
+    /// 드래그로 던졌을 때(`drag_end`)뿐이다.
+    ///
+    /// **짧은 간격으로 `SQUAWK_WHACK_COUNT`번 이어지면 빽빽거린다.** 문턱을 넘은
+    /// 그 클릭에서 스윙을 건너뛰고 곧바로 터뜨린다 — 스윙 뒤로 미루면 연타
+    /// 중에는 매 클릭이 스윙을 다시 걸기 때문에 **연타를 멈춘 뒤에야** 터져서
+    /// 자기 손짓과 연결이 안 된다.
     pub fn whack(&mut self, now_ms: u64, _world: &World) {
         self.last_stimulus_ms = now_ms;
         self.whack_seq += 1;
         // 제자리에서 맞는다 — 속도를 주지 않는다
         self.vx = 0.0;
         self.vy = 0.0;
+
+        // 이미 빽빽거리는 중이면 **스윙으로 끊지 않는다.** 매 클릭이 360ms
+        // 스윙으로 화를 자르면 화가 보일 시간이 없다.
+        //
+        // **`behavior`를 보면 안 된다.** 프론트가 모든 pointerdown에서
+        // `drag_start`를 부르므로 여기 도달할 때 동작은 이미 `Dragged`이고,
+        // 그 검사는 실제 앱에서 한 번도 참이 되지 않는다.
+        if now_ms < self.squawk_until_ms {
+            self.last_whack_ms = Some(now_ms);
+            // **판을 새로 연다.** 원래 종료 시각으로 되돌리면 안 된다 — 클릭
+            // 한 번은 `drag_start` → `Dragged` 스냅샷을 웹뷰에 흘리므로 클래스가
+            // `pg--squawk` → `pg--dragged` → `pg--squawk`로 오가고, 웹뷰는 그때
+            // 1.4초짜리 애니메이션을 **처음부터 다시 재생한다.** 코어가 남은
+            // 시간만 주면 부풀다 말고 끊겨, 연타할수록 영원히 부풀기만 하는
+            // 펭귄이 된다 — 흡수가 막으려던 바로 그 그림이다.
+            //
+            // 새로 여는 쪽이 결도 맞는다: **때리는 동안 계속 화낸다.** 손을
+            // 떼면 1.4초 뒤에 끝나므로 늘어나는 것은 사용자가 정한다.
+            self.enter_squawk(now_ms);
+            return;
+        }
+
+        self.whack_run = match self.last_whack_ms {
+            Some(last) if now_ms.saturating_sub(last) <= SQUAWK_GAP_MS => self.whack_run + 1,
+            _ => 1,
+        };
+        self.last_whack_ms = Some(now_ms);
+        if self.whack_run >= SQUAWK_WHACK_COUNT {
+            self.enter_squawk(now_ms);
+            return;
+        }
         // 치켜드는 단계를 두지 않는다 — 클릭하면 바로 휘두른다
         self.enter(Behavior::Swing, now_ms + SWING_MS);
+    }
+
+    /// 사용자가 시켜서 빽빽거린다 (설정 창의 "빽빽거리기").
+    ///
+    /// **공중을 허용한다.** 싸가지처럼 고도를 물려받는 반응이라 헤엄치다
+    /// 빽빽대도 성립하고, 바닥으로 끌어내리면 헤엄치다 순간이동한다.
+    /// 미끄러지기가 공중을 거절하는 것과 갈리는 지점이다 — 그쪽은 바닥과 닿아야
+    /// 성립하는 이동이다.
+    ///
+    /// **이미 빽빽거리는 중이면 거절한다.** 재진입하면 코어는 길이를 늘리는데
+    /// 웹뷰는 클래스가 그대로라 애니메이션을 되감지 않는다 (`start_slide`와 같다).
+    pub fn start_squawk(&mut self, now_ms: u64) -> bool {
+        if matches!(self.behavior, Behavior::Dragged | Behavior::Squawk) {
+            return false;
+        }
+        self.last_stimulus_ms = now_ms;
+        self.enter_squawk(now_ms);
+        true
+    }
+
+    /// 빽빽거리기 한 판을 시작한다. 연타와 "시켜보기"가 이 한 곳을 공유한다 —
+    /// 예산과 카운터 초기화를 두 벌로 만들면 한쪽만 고쳐지고 조용히 갈라진다.
+    fn enter_squawk(&mut self, now_ms: u64) {
+        // 되돌리지 않으면 문턱을 넘은 뒤의 모든 클릭이 다시 문턱을 넘는다
+        self.whack_run = 0;
+        self.squawk_until_ms = now_ms + SQUAWK_MS;
+        self.enter(Behavior::Squawk, self.squawk_until_ms);
     }
 
     /// 사용자가 시켜서 낚시를 시작한다 (설정 창의 "얼음낚시").
@@ -1195,6 +1309,13 @@ impl Pet {
     }
 
     fn enter(&mut self, behavior: Behavior, until_ms: u64) {
+        // 빽빽거리기 예산은 다른 동작으로 나가는 순간 무효다. 안 그러면 판이
+        // 끝나기 전에 던져진 펭귄이 다음 클릭에 날아가다 말고 되돌아온다.
+        // **`Dragged`만 예외다** — 프론트가 모든 pointerdown에서 부르므로
+        // 클릭 한 번에도 지나가고, 여기서 지우면 흡수가 다시 죽는다.
+        if !matches!(behavior, Behavior::Squawk | Behavior::Dragged) {
+            self.squawk_until_ms = 0;
+        }
         // 반응·드래그는 고도를 그대로 물려받고, 나머지는 동작이 곧 고도를 정한다.
         // 착지(Land)는 바닥에 닿은 시점이라 확실히 지상이다.
         match behavior {
@@ -1203,6 +1324,7 @@ impl Pet {
             Behavior::Sassy { .. }
             | Behavior::Dragged
             | Behavior::Swing
+            | Behavior::Squawk
             | Behavior::IceFishing { .. } => {}
             Behavior::Land | Behavior::Splat | Behavior::Sprawl | Behavior::Tumble => {
                 self.air = false
@@ -2364,6 +2486,205 @@ mod tests {
         p.whack(1_100, &world());
         p.whack(1_200, &world());
         assert!(p.snapshot().speech.is_none(), "연타해도 마찬가지다");
+    }
+
+    // ── 빽빽거리기 ─────────────────────────────────────────────────
+
+    /// **실제 클릭 한 번**을 흉내 낸다. 프론트는 클릭인지 드래그인지 알기 전에
+    /// 모든 pointerdown에서 `drag_start`를 부르므로, `whack`만 부르면 실제로는
+    /// 지나지 않는 경로를 테스트하게 된다.
+    fn 클릭(p: &mut Pet, now_ms: u64) {
+        p.drag_start(now_ms);
+        p.whack(now_ms, &world());
+    }
+
+    /// 연타로 빽빽거리게 만든 펭귄과 터진 시각.
+    fn 빽빽거리는_펭귄() -> (Pet, u64) {
+        let mut p = pet();
+        p.step(1_000, &world());
+        let mut t = 1_000;
+        for _ in 0..SQUAWK_WHACK_COUNT {
+            t += 150;
+            클릭(&mut p, t);
+        }
+        assert_eq!(p.behavior(), Behavior::Squawk, "연타로 터져야 한다");
+        (p, t)
+    }
+
+    #[test]
+    fn 짧은_간격으로_네_번_맞으면_빽빽거린다() {
+        let mut p = pet();
+        p.step(1_000, &world());
+        let mut t = 1_000;
+        for i in 1..=SQUAWK_WHACK_COUNT {
+            t += 150;
+            클릭(&mut p, t);
+            if i < SQUAWK_WHACK_COUNT {
+                assert_eq!(p.behavior(), Behavior::Swing, "{i}번째까지는 휘두른다");
+            }
+        }
+        assert_eq!(p.behavior(), Behavior::Squawk, "문턱을 넘은 클릭에서 터진다");
+    }
+
+    #[test]
+    fn 띄엄띄엄_때리면_빽빽거리지_않는다() {
+        // 한두 번 툭 치는 것으로 터지면 "연타에 대한 반응"이 아니게 된다
+        let mut p = pet();
+        let mut t = 1_000;
+        for _ in 0..6 {
+            t += SQUAWK_GAP_MS + 500;
+            클릭(&mut p, t);
+            assert_eq!(p.behavior(), Behavior::Swing, "간격이 벌어지면 그냥 휘두른다");
+        }
+    }
+
+    #[test]
+    fn 첫_클릭이_연타로_세어지지_않는다() {
+        // `last_whack_ms`를 0으로 초기화하면 에폭 초반 타임스탬프에서
+        // `300 - 0 <= GAP`이 참이 되어 첫 클릭이 이미 두 번째로 세어진다
+        let mut p = pet();
+        클릭(&mut p, 300);
+        클릭(&mut p, 400);
+        클릭(&mut p, 500);
+        assert_eq!(p.behavior(), Behavior::Swing, "아직 세 번이다");
+    }
+
+    #[test]
+    fn 빽빽거리는_중에_맞아도_끊기지_않는다() {
+        // 매 클릭이 360ms 스윙으로 화를 자르면 화가 보일 시간이 없다.
+        // 대신 판이 새로 열리므로 **때리는 동안 계속 화낸다.**
+        let (mut p, t) = 빽빽거리는_펭귄();
+        클릭(&mut p, t + 200);
+        assert_eq!(p.behavior(), Behavior::Squawk, "스윙으로 끊기면 안 된다");
+        클릭(&mut p, t + 400);
+        assert_eq!(p.behavior(), Behavior::Squawk);
+        // 마지막 클릭에서 판이 새로 열렸으므로 거기서부터 한 판을 더 채운다 —
+        // 웹뷰가 애니메이션을 되감는 것과 길이를 맞추기 위해서다
+        let mid = p.step(t + 400 + SQUAWK_MS - 50, &world());
+        assert_eq!(mid.behavior, Behavior::Squawk, "새 판이 아직 안 끝났다");
+        let after = p.step(t + 400 + SQUAWK_MS + 20, &world());
+        assert_ne!(after.behavior, Behavior::Squawk, "손을 떼면 제 시간에 끝난다");
+    }
+
+    #[test]
+    fn 빽빽거리는_중에_맞은_것은_다음_연타로_세지_않는다() {
+        // 세면 끝나자마자 한 번 더 터진다
+        let (mut p, t) = 빽빽거리는_펭귄();
+        for i in 1..=3 {
+            클릭(&mut p, t + i * 100);
+        }
+        // 마지막 클릭에서 열린 판이 끝날 때까지 진행시킨다
+        let end = t + 300 + SQUAWK_MS + 20;
+        p.step(end, &world());
+        클릭(&mut p, end + 40);
+        assert_eq!(p.behavior(), Behavior::Swing, "카운터가 초기화돼야 한다");
+    }
+
+    #[test]
+    fn 빽빽거리는_동안_제자리에_있다() {
+        let (mut p, t) = 빽빽거리는_펭귄();
+        let before = p.snapshot();
+        let mut now = t;
+        for _ in 0..10 {
+            now += 50;
+            let s = p.step(now, &world());
+            assert_eq!(s.x, before.x, "옆으로 움직이면 안 된다");
+            assert_eq!(s.y, before.y, "떠오르거나 가라앉으면 안 된다");
+        }
+    }
+
+    #[test]
+    fn 빽빽거리기가_끝나면_유휴로_간다() {
+        // 약을 올리며 나가지 않는다 — 화를 다 낸 뒤에 곧바로 킹받게 굴면
+        // 방금 낸 화가 연기였던 것처럼 보인다
+        let (mut p, t) = 빽빽거리는_펭귄();
+        let after = p.step(t + SQUAWK_MS + 20, &world());
+        assert!(
+            matches!(after.behavior, Behavior::Idle { .. }),
+            "유휴로 나가야 한다 (실제: {:?})",
+            after.behavior
+        );
+    }
+
+    #[test]
+    fn 공중에서_빽빽거리면_끝나고_떨어진다() {
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -300.0);
+        p.step(1_050, &world());
+        p.drag_end(1_100, 0.0, 0.0, &world());
+        assert!(p.snapshot().air, "공중이어야 한다");
+
+        let mut t = 1_100;
+        for _ in 0..SQUAWK_WHACK_COUNT {
+            t += 150;
+            p.whack(t, &world());
+        }
+        assert_eq!(p.behavior(), Behavior::Squawk, "공중에서도 터진다");
+        assert!(p.snapshot().air, "고도를 물려받아야 한다");
+
+        let after = p.step(t + SQUAWK_MS + 20, &world());
+        assert_eq!(after.behavior, Behavior::Falling, "공중이었으니 마저 떨어진다");
+    }
+
+    #[test]
+    fn 빽빽거리다_던져지면_되돌아오지_않는다() {
+        // 흡수를 시각으로 판정하므로, 예산이 남은 채 다른 동작으로 나갔다가
+        // 클릭이 오면 날아가던 펭귄이 갑자기 빽빽거리며 멈출 수 있다
+        let (mut p, t) = 빽빽거리는_펭귄();
+        p.drag_start(t + 100);
+        p.drag_by(120.0, -80.0);
+        p.drag_end(t + 200, 900.0, -600.0, &world());
+        assert_eq!(p.behavior(), Behavior::Thrown, "던져진 상태여야 한다");
+
+        클릭(&mut p, t + 300);
+        assert_ne!(p.behavior(), Behavior::Squawk, "예산은 나가는 순간 무효다");
+    }
+
+    #[test]
+    fn 빽빽거리는_중에_들어_올릴_수_있다() {
+        let (mut p, t) = 빽빽거리는_펭귄();
+        p.drag_start(t + 100);
+        assert_eq!(p.behavior(), Behavior::Dragged);
+    }
+
+    #[test]
+    fn 빽빽거리기는_제자리_동작이다() {
+        assert!(!Behavior::Squawk.is_airborne(), "스스로 뜨지 않는다");
+        assert!(!Behavior::Squawk.is_landing(), "바닥에 닿아서 생긴 게 아니다");
+        // 1.4초짜리 동작이 500ms 느린 틱을 받으면 시작·종료가 눈에 띄게 밀린다
+        assert!(Behavior::Squawk.moves_window(), "틱을 빠르게 유지해야 한다");
+    }
+
+    #[test]
+    fn 시키면_바로_빽빽거린다() {
+        let mut p = pet();
+        p.step(1_000, &world());
+        assert!(p.start_squawk(1_000));
+        assert_eq!(p.behavior(), Behavior::Squawk);
+    }
+
+    #[test]
+    fn 공중에서도_시키면_빽빽거린다() {
+        // 싸가지처럼 고도를 물려받는 반응이라 헤엄치다 빽빽대도 성립한다
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -300.0);
+        p.step(1_050, &world());
+        p.drag_end(1_100, 0.0, 0.0, &world());
+        assert!(p.start_squawk(1_150));
+        assert_eq!(p.behavior(), Behavior::Squawk);
+        assert!(p.snapshot().air, "바닥으로 끌어내리면 순간이동한다");
+    }
+
+    #[test]
+    fn 들려_있거나_이미_빽빽거리면_시켜도_안_한다() {
+        let mut p = pet();
+        p.drag_start(1_000);
+        assert!(!p.start_squawk(1_050), "손에 쥔 채로는 안 된다");
+
+        let (mut q, t) = 빽빽거리는_펭귄();
+        assert!(!q.start_squawk(t + 100), "재진입하면 웹뷰가 되감지 못한다");
     }
 
     #[test]

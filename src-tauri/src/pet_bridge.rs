@@ -16,7 +16,15 @@ use tauri::{
 use tauri_plugin_store::StoreExt;
 
 use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, MAX_PETS};
-use crate::timer_bridge::now_ms;
+
+/// 지금(epoch ms). 코어(`pet.rs`)는 시간을 주입받는 순수 모듈이라 시계를 갖지 않는다 —
+/// 시계를 읽는 곳은 브릿지 하나뿐이어야 테스트가 시간을 마음대로 돌릴 수 있다.
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 /// 웹뷰가 구독하는 상태 이벤트.
 pub const EVENT_PET_STATE: &str = "pet://state";

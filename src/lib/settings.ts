@@ -1,14 +1,7 @@
 import { load } from "@tauri-apps/plugin-store";
 import { DEFAULT_TAUNTS, normalizeTaunts } from "./pet";
-import type { TimerConfig } from "./timer";
-
-export const DEFAULT_SETTINGS: TimerConfig = {
-  focus_minutes: 25,
-  break_minutes: 5,
-};
 
 const STORE_FILE = "settings.json";
-const TIMER_KEY = "timer";
 /** Rust의 `pet_bridge::PET_KEY`와 같은 키 — 시작 시점 판단을 Rust가 직접 읽는다. */
 const PET_KEY = "pet";
 const TAUNTS_KEY = "taunts";
@@ -19,19 +12,6 @@ export interface PetSettings {
 
 /** 사용자가 직접 요청한 기능이라 기본은 켜짐이다 (A2). */
 export const DEFAULT_PET_SETTINGS: PetSettings = { enabled: true };
-
-/** 저장된 타이머 설정을 로드한다. 없으면 기본값(25/5). */
-export async function loadSettings(): Promise<TimerConfig> {
-  const store = await load(STORE_FILE);
-  const value = await store.get<TimerConfig>(TIMER_KEY);
-  return value ?? DEFAULT_SETTINGS;
-}
-
-/** 타이머 설정을 저장한다 (store 플러그인 자동 저장). */
-export async function saveSettings(config: TimerConfig): Promise<void> {
-  const store = await load(STORE_FILE);
-  await store.set(TIMER_KEY, config);
-}
 
 /** 저장된 펭귄 설정을 로드한다. 없으면 켜짐. */
 export async function loadPetSettings(): Promise<PetSettings> {

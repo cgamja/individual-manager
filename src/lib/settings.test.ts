@@ -2,12 +2,9 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_TAUNTS } from "./pet";
 import {
-  DEFAULT_SETTINGS,
   loadPetSettings,
-  loadSettings,
   savePetSettings,
   loadTaunts,
-  saveSettings,
   saveTaunts,
 } from "./settings";
 
@@ -36,20 +33,6 @@ function mockStore(initial: Record<string, unknown> = {}) {
   });
   return data;
 }
-
-describe("설정 저장소", () => {
-  it("저장된_값이_없으면_기본값_25_5를_반환한다", async () => {
-    mockStore();
-    expect(await loadSettings()).toEqual(DEFAULT_SETTINGS);
-  });
-
-  // Covers AE4: 설정 저장 후 다시 로드하면 같은 값이 유지된다
-  it("저장_후_같은_값을_다시_로드한다", async () => {
-    mockStore();
-    await saveSettings({ focus_minutes: 50, break_minutes: 10 });
-    expect(await loadSettings()).toEqual({ focus_minutes: 50, break_minutes: 10 });
-  });
-});
 
 describe("펭귄 설정", () => {
   it("저장된_값이_없으면_켜짐이_기본이다", async () => {

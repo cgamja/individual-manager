@@ -1,4 +1,4 @@
-import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { PetApp } from "./PetApp";
@@ -17,6 +17,10 @@ interface Call {
 /** 펫 커맨드 IPC를 가로채 호출 순서를 기록한다. */
 function mockPet(): Call[] {
   const calls: Call[] = [];
+  // 상태 구독은 **자기 창에 묶인** 리스너다(`getCurrentWebviewWindow().listen`).
+  // 창 라벨을 심어 두지 않으면 `__TAURI_INTERNALS__.metadata`가 없어 그 자리에서
+  // 터진다 — 테스트는 통과한 것처럼 보이고 unhandled error로만 샌다.
+  mockWindows("pet-1");
   // 언마운트 시 unlisten이 이 내부 훅을 찾는다 — 없으면 정리 단계에서 rejection이 샌다
   (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
     unregisterListener: () => {},

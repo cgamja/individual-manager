@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 export type Facing = "left" | "right";
 
@@ -189,5 +190,14 @@ export const throwVelocity = (
 export const setPetEnabled = (enabled: boolean): Promise<void> =>
   invoke("pet_set_enabled", { enabled });
 
+/**
+ * 자기 창의 펭귄 상태만 구독한다.
+ *
+ * **`listen()`을 그냥 쓰면 안 된다.** 전역 `listen`은 대상을 `Any`로 등록하는데,
+ * Tauri는 `Any` 리스너를 **emit 대상과 무관하게 전부** 호출한다(`listener.rs`의
+ * `*target == EventTarget::Any || filter(...)`). 그래서 Rust가 `emit_to`로 한 창에만
+ * 보내도 모든 펭귄이 남의 스냅샷까지 받아, 다 같이 동시에 떠들고 남이 맞은 빠따를
+ * 자기가 휘두른다. 창에 묶인 리스너여야 그 창 대상 이벤트만 온다.
+ */
 export const onPetState = (cb: (snapshot: PetSnapshot) => void): Promise<UnlistenFn> =>
-  listen<PetSnapshot>(EVENT_PET_STATE, (event) => cb(event.payload));
+  getCurrentWebviewWindow().listen<PetSnapshot>(EVENT_PET_STATE, (event) => cb(event.payload));

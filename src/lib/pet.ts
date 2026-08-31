@@ -28,7 +28,8 @@ export type Behavior =
   | { kind: "dragged" }
   | { kind: "falling" }
   | { kind: "thrown" }
-  | { kind: "land" };
+  | { kind: "land" }
+  | { kind: "splat" };
 
 /** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
 export interface Speech {
@@ -119,7 +120,10 @@ export const behaviorClass = (behavior: Behavior): string => {
 
 /** 한 번만 재생하고 멈추는 동작인가. 같은 클래스가 다시 와도 되감아야 한다. */
 export const isOneShot = (cls: string): boolean =>
-  cls === "pg--turn" || cls === "pg--land" || cls.startsWith("pg--sassy-");
+  cls === "pg--turn" ||
+  cls === "pg--land" ||
+  cls === "pg--splat" ||
+  cls.startsWith("pg--sassy-");
 
 /** 자기 창의 펭귄 상태. 펫 창이 아닌 곳에서 부르면 `null`이다. */
 export const getPetState = (): Promise<PetSnapshot | null> => invoke("pet_get_state");

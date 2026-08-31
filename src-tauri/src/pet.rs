@@ -1083,6 +1083,168 @@ mod tests {
         assert_eq!(s.behavior, Behavior::Walk);
     }
 
+    /// 오른쪽 벽에 붙여 놓고 한 틱 진행시켜 벽 반응 하나를 본다.
+    fn 벽_반응(seed: u64) -> Behavior {
+        let mut p = Pet::new(seed, 0, &world());
+        p.x = BOUNDS.right - 3.0;
+        p.step(200, &world()).behavior
+    }
+
+    /// 벽에서 굴러떨어지는 시드 하나를 찾는다.
+    ///
+    /// 시드를 상수로 박아 두지 않는 이유는 **확률 갈래이기 때문**이다. 굴림은
+    /// 코어가 소유한 PRNG를 쓰므로, 앞에서 난수를 한 번 더 뽑는 변경만 들어가도
+    /// 박아 둔 시드가 반대 갈래로 넘어가 테스트가 통째로 무너진다.
+    fn 굴러떨어지는_시드() -> u64 {
+        (1u64..10_000)
+            .find(|s| 벽_반응(*s) == Behavior::Tumble)
+            .expect("굴러떨어지는 시드가 하나도 없다")
+    }
+
+    /// 오른쪽 벽에서 굴러떨어지기 시작한 펭귄. 여러 테스트가 같은 자세로 시작한다.
+    fn 굴러떨어지는_펭귄() -> Pet {
+        let mut p = Pet::new(굴러떨어지는_시드(), 0, &world());
+        p.x = BOUNDS.right - 3.0;
+        p.step(200, &world());
+        p
+    }
+
+    #[test]
+    fn 벽에_닿으면_굴러떨어지거나_돌아선다() {
+        let 반응: Vec<Behavior> = (1u64..200).map(벽_반응).collect();
+        assert!(
+            반응.iter().any(|b| *b == Behavior::Tumble),
+            "굴러떨어지는 경우가 하나도 없다"
+        );
+        assert!(
+            반응.iter().any(|b| *b == Behavior::Turn),
+            "돌아서는 경우가 하나도 없다 — 벽이 곧 넘어지는 곳이 됐다"
+        );
+        assert!(
+            반응
+                .iter()
+                .all(|b| matches!(b, Behavior::Tumble | Behavior::Turn)),
+            "벽 반응은 이 둘뿐이다"
+        );
+    }
+
+    #[test]
+    fn 굴러떨어지기는_벽_반대_방향으로_이동한다() {
+        let mut p = 굴러떨어지는_펭귄();
+        let s = p.snapshot();
+        assert_eq!(s.behavior, Behavior::Tumble);
+        assert_eq!(s.facing, Facing::Left, "벽에서 멀어지는 쪽을 본다");
+
+        let after = p.step(300, &world()).x;
+        assert!(after < s.x, "오른쪽 벽에서 굴렀으면 x가 작아진다");
+    }
+
+    #[test]
+    fn 굴러떨어지는_동안_속도가_줄어든다() {
+        let mut p = 굴러떨어지는_펭귄();
+        let mut 이동량 = Vec::new();
+        let mut prev = p.snapshot().x;
+        let mut t = 250;
+        while t < 200 + TUMBLE_MS {
+            let x = p.step(t, &world()).x;
+            이동량.push(prev - x);
+            prev = x;
+            t += 50;
+        }
+        assert!(
+            이동량.first().unwrap() > 이동량.last().unwrap(),
+            "뒤로 갈수록 덜 움직여야 구르다 멈추는 것으로 읽힌다: {이동량:?}"
+        );
+    }
+
+    #[test]
+    fn 굴러떨어지기가_끝나면_멈춘다() {
+        let mut p = 굴러떨어지는_펭귄();
+        drive(&mut p, 250, 200 + TUMBLE_MS, 50, &world());
+        let 끝난_뒤 = p.step(200 + TUMBLE_MS + 10, &world()).x;
+        let 더_뒤 = p.step(200 + TUMBLE_MS + 200, &world()).x;
+        assert_eq!(끝난_뒤, 더_뒤, "굴러떨어지기가 끝나면 더 움직이지 않는다");
+    }
+
+    #[test]
+    fn 굴러떨어지고_나면_방향이_뒤집혀_있다() {
+        let mut p = Pet::new(굴러떨어지는_시드(), 0, &world());
+        p.x = BOUNDS.right - 3.0;
+        assert_eq!(p.snapshot().facing, Facing::Right);
+
+        let s = p.step(200, &world());
+        assert_eq!(s.facing, Facing::Left, "Turn을 탔을 때와 최종 결과가 같다");
+    }
+
+    #[test]
+    fn 굴러떨어지기_뒤에는_약을_올리거나_유휴로_간다() {
+        // 착지(Land/Splat/Sprawl)와 출구를 공유한다 — 같은 규칙이 두 벌이 되지 않게
+        let mut 나온_동작 = Vec::new();
+        for seed in 1u64..300 {
+            let mut p = Pet::new(seed, 0, &world());
+            p.x = BOUNDS.right - 3.0;
+            if p.step(200, &world()).behavior != Behavior::Tumble {
+                continue;
+            }
+            나온_동작.push(p.step(200 + TUMBLE_MS + 10, &world()).behavior);
+        }
+        assert!(!나온_동작.is_empty(), "굴러떨어지는 시드가 하나도 없다");
+        assert!(
+            나온_동작
+                .iter()
+                .all(|b| matches!(b, Behavior::Sassy { .. } | Behavior::Idle { .. })),
+            "{나온_동작:?}"
+        );
+    }
+
+    #[test]
+    fn 굴러떨어지기는_지상_동작이다() {
+        assert!(!Behavior::Tumble.is_airborne());
+        assert!(
+            !Behavior::Tumble.is_landing(),
+            "바닥에 닿아서 생긴 게 아니다"
+        );
+        assert!(Behavior::Tumble.moves_window(), "제자리 애니메이션이 아니다");
+
+        let s = 굴러떨어지는_펭귄().snapshot();
+        assert!(!s.air);
+        assert_eq!(s.y, BOUNDS.floor_y, "바닥에 붙어 굴러간다");
+    }
+
+    #[test]
+    fn 굴러떨어지는_중에_클릭하면_방망이를_휘두른다() {
+        let mut p = 굴러떨어지는_펭귄();
+        p.whack(300, &world());
+        assert_eq!(p.behavior(), Behavior::Swing);
+    }
+
+    #[test]
+    fn 굴러떨어지는_중에_들어_올릴_수_있다() {
+        let mut p = 굴러떨어지는_펭귄();
+        p.drag_start(300);
+        assert_eq!(p.behavior(), Behavior::Dragged);
+    }
+
+    #[test]
+    fn 걸을_폭이_없는_화면에서는_굴러떨어지지_않는다() {
+        // 양쪽 경계가 겹치는 화면에서는 벽 판정이 매 step 참이 된다. 여기서
+        // 굴림을 돌리면 영원히 구르며 제자리를 맴돈다.
+        let narrow = World::single(Bounds {
+            left: 10.0,
+            right: 10.0,
+            top: 0.0,
+            floor_y: 50.0,
+        });
+        for seed in 1u64..200 {
+            let mut p = Pet::new(seed, 0, &narrow);
+            let seen: Vec<Behavior> = drive(&mut p, 100, 5_000, 100, &narrow)
+                .iter()
+                .map(|s| s.behavior)
+                .collect();
+            assert!(!seen.contains(&Behavior::Tumble), "시드 {seed}");
+        }
+    }
+
     #[test]
     fn 같은_시드는_같은_동작_시퀀스를_낳는다() {
         let mut a = Pet::new(2024, 0, &world());

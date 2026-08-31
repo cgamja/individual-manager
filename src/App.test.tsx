@@ -12,7 +12,7 @@ afterEach(() => {
 function mockSettings(summary = { count: 1, max: 8, focused: 3 }) {
   mockIPC((cmd) => {
     if (cmd === "pet_summary") return summary;
-    if (cmd === "pet_fish" || cmd === "pet_slide") return null;
+    if (cmd === "pet_fish" || cmd === "pet_slide" || cmd === "pet_squawk") return null;
     // 저장소 플러그인 — 대사·설정을 읽는다
     if (cmd.startsWith("plugin:store|")) return null;
     return undefined;
@@ -25,7 +25,7 @@ describe("설정 창", () => {
   it("카드가_전부_그려진다", async () => {
     mockSettings();
     render(<App />);
-    for (const name of ["펭귄 추가", "이 펭귄 삭제", "얼음낚시", "슬라이딩"]) {
+    for (const name of ["펭귄 추가", "이 펭귄 삭제", "얼음낚시", "슬라이딩", "빽빽거리기"]) {
       expect(await screen.findByRole("button", { name }), name).toBeInTheDocument();
     }
     expect(screen.getByLabelText("바탕화면 펭귄")).toBeInTheDocument();
@@ -49,6 +49,7 @@ describe("설정 창", () => {
     render(<App />);
     expect(await screen.findByRole("button", { name: "얼음낚시" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "슬라이딩" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "빽빽거리기" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "이 펭귄 삭제" })).toBeDisabled();
     // 추가는 대상이 필요 없다 — 같이 잠기면 안 된다
     expect(screen.getByRole("button", { name: "펭귄 추가" })).toBeEnabled();

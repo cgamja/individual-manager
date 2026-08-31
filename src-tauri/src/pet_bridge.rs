@@ -750,6 +750,26 @@ pub fn pet_slide(window: WebviewWindow, state: State<'_, PetState>, app: AppHand
     Ok(())
 }
 
+/// 설정 창의 "빽빽거리기". 대상 규칙은 [`pet_fish`]와 같다.
+///
+/// **공중을 거절하지 않는다** — 고도를 물려받는 반응이라 헤엄치다 빽빽대도
+/// 성립한다. 미끄러지기와 갈리는 지점이다.
+#[tauri::command]
+pub fn pet_squawk(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let id = target_pet(&window, &state).ok_or("화나게 할 펭귄을 우클릭해서 열어 주세요")?;
+    let started = state
+        .pets
+        .lock()
+        .unwrap()
+        .get_mut(id)
+        .is_some_and(|pet| pet.start_squawk(now_ms()));
+    if !started {
+        return Err("이미 빽빽거리는 중이거나 들고 계세요".into());
+    }
+    flush(&app, id);
+    Ok(())
+}
+
 /// 우클릭한 펭귄을 삭제한다. **마지막 한 마리는 거부한다** (PRD §5.5).
 #[tauri::command]
 pub fn pet_remove(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {

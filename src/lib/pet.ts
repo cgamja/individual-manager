@@ -197,6 +197,14 @@ export const fishPet = (): Promise<void> => invoke("pet_fish");
  */
 export const slidePet = (): Promise<void> => invoke("pet_slide");
 
+/**
+ * 우클릭해서 연 그 펭귄을 빽빽거리게 한다.
+ *
+ * 저절로는 **연타로 맞았을 때만** 나온다. 낚시와 달리 공중에서도 되고,
+ * 미끄러지기와 달리 바닥을 요구하지 않는다 — 고도를 물려받는 반응이다.
+ */
+export const squawkPet = (): Promise<void> => invoke("pet_squawk");
+
 /** 빠따 — 왼쪽 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로). */
 export const whackPet = (): Promise<void> => invoke("pet_whack");
 

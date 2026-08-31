@@ -10,6 +10,7 @@ import {
   removePet,
   setPetEnabled,
   slidePet,
+  squawkPet,
   type PetSummary,
 } from "./lib/pet";
 import {
@@ -40,6 +41,11 @@ const MOTIONS: readonly Motion[] = [
     name: "슬라이딩",
     note: "2.4초 동안 미끄러지고 일어서요. 바닥에 있을 때만 돼요 — 공중에서 배를 깔면 그냥 헤엄이에요.",
     run: slidePet,
+  },
+  {
+    name: "빽빽거리기",
+    note: "1.4초 동안 부풀리고 퍼덕이며 화내요. 더 때려도 안 끊겨요. 소리는 안 나요.",
+    run: squawkPet,
   },
 ];
 

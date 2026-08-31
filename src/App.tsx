@@ -27,6 +27,7 @@ import "./App.css";
 function App() {
   const [saveFailed, setSaveFailed] = useState(false);
   const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
+  const [soundEnabled, setSoundEnabledState] = useState(DEFAULT_PET_SETTINGS.sound);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
   /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
   const [petSummary, setPetSummary] = useState<PetSummary>({ count: 1, max: 8, focused: null });
@@ -36,7 +37,10 @@ function App() {
 
     (async () => {
       const savedPet = await loadPetSettings().catch(() => DEFAULT_PET_SETTINGS);
-      if (!cancelled) setPetEnabledState(savedPet.enabled);
+      if (!cancelled) {
+        setPetEnabledState(savedPet.enabled);
+        setSoundEnabledState(savedPet.sound);
+      }
       const savedTaunts = await loadTaunts().catch(() => []);
       if (!cancelled) setTaunts(savedTaunts);
       const summary = await getPetSummary().catch(() => null);
@@ -86,6 +90,18 @@ function App() {
       .catch(() => {});
   }, []);
 
+  /** 소리 on/off — 저장만 한다. 낼 소리는 F3에서 붙는다.
+   * 저장에 실패하면 표시를 되돌린다 — 켜졌다고 보이는데 안 켜진 상태를 만들지 않게. */
+  const handleSoundEnabledChange = useCallback(async (next: boolean) => {
+    setSoundEnabledState(next);
+    try {
+      await savePetSettings({ sound: next });
+    } catch (err) {
+      console.error("소리 설정 저장 실패:", err);
+      setSoundEnabledState(!next);
+    }
+  }, []);
+
   /** 펭귄 추가·삭제 — 결과를 낙관적으로 그리지 않고 **다시 읽는다.** 상한이나
    * 마지막 한 마리에 걸려 거부될 수 있고, 그때 화면만 늘어나면 거짓말이 된다. */
   const refreshPets = useCallback(async () => {
@@ -133,6 +149,8 @@ function App() {
       <SettingsCard
         petEnabled={petEnabled}
         onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
+        soundEnabled={soundEnabled}
+        onSoundEnabledChange={(next) => void handleSoundEnabledChange(next)}
       />
       {saveFailed && (
         <p className="notif-hint" role="status">

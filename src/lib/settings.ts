@@ -8,23 +8,40 @@ const TAUNTS_KEY = "taunts";
 
 export interface PetSettings {
   enabled: boolean;
+  /**
+   * 효과음을 낼지. **기본은 꺼짐이다** (PRD Q6).
+   *
+   * 상주 앱이 예고 없이 소리를 내면 회의 중에 사고가 난다. 켜는 것은 사용자의
+   * 선택이어야 한다.
+   */
+  sound: boolean;
 }
 
-/** 사용자가 직접 요청한 기능이라 기본은 켜짐이다 (A2). */
-export const DEFAULT_PET_SETTINGS: PetSettings = { enabled: true };
+/** 펭귄은 기본 켜짐(사용자가 직접 요청한 기능이라 opt-in으로 숨기지 않는다),
+ * 소리는 기본 꺼짐(예고 없이 소리를 내면 사고가 난다). */
+export const DEFAULT_PET_SETTINGS: PetSettings = { enabled: true, sound: false };
 
-/** 저장된 펭귄 설정을 로드한다. 없으면 켜짐. */
+/** 저장된 펭귄 설정을 로드한다. 깨진 값은 항목별로 기본값에 수렴시킨다 —
+ * 한 항목이 깨졌다고 나머지까지 되돌리면 펭귄이 조용히 사라진다. */
 export async function loadPetSettings(): Promise<PetSettings> {
   const store = await load(STORE_FILE);
-  const value = await store.get<PetSettings>(PET_KEY);
-  // 저장된 값이 깨져 있어도 켜짐으로 수렴시킨다 — 펭귄이 조용히 사라지지 않게
-  return typeof value?.enabled === "boolean" ? value : DEFAULT_PET_SETTINGS;
+  const value = await store.get<Partial<PetSettings>>(PET_KEY);
+  return {
+    enabled: typeof value?.enabled === "boolean" ? value.enabled : DEFAULT_PET_SETTINGS.enabled,
+    sound: typeof value?.sound === "boolean" ? value.sound : DEFAULT_PET_SETTINGS.sound,
+  };
 }
 
-/** 펭귄 설정을 저장한다. Rust는 다음 실행의 시작 시점에 이 값을 읽는다. */
-export async function savePetSettings(settings: PetSettings): Promise<void> {
+/**
+ * 펭귄 설정을 저장한다. Rust는 다음 실행의 시작 시점에 이 값을 읽는다.
+ *
+ * **읽고-고쳐-쓰기여야 한다.** 같은 `pet` 키 아래에 Rust가 쓰는 마릿수(`count`)가
+ * 함께 살아서, 객체를 통째로 덮어쓰면 켜고 끄는 것만으로 마릿수가 1로 돌아간다.
+ */
+export async function savePetSettings(settings: Partial<PetSettings>): Promise<void> {
   const store = await load(STORE_FILE);
-  await store.set(PET_KEY, settings);
+  const current = (await store.get<Record<string, unknown>>(PET_KEY)) ?? {};
+  await store.set(PET_KEY, { ...current, ...settings });
 }
 
 /**

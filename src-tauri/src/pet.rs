@@ -44,6 +44,20 @@ const ARRIVE_EPSILON: f64 = 6.0;
 const MAX_STEP_MS: u64 = 250;
 
 const TURN_MS: u64 = 250;
+/// 벽에 닿았을 때 **돌아서지 않고 그대로 박아 굴러 넘어질** 확률(%).
+///
+/// 벽 도달 자체가 흔하지 않아서(걷기가 2.5~6초 단발이고 속도는 `WALK_SPEED`)
+/// 이보다 낮으면 평생 못 보고, 높이면 벽이 곧 넘어지는 곳이 되어 `Turn`이 사라진다.
+/// 취향 상수라 여기서만 고친다.
+const TUMBLE_AT_WALL_PERCENT: u64 = 30;
+/// 굴러 넘어지는 데 걸리는 시간. 도는 것보다 확실히 길어야 갈래가 갈래로 읽힌다.
+const TUMBLE_MS: u64 = 1_100;
+/// 벽에 박은 반동으로 굴러가기 시작하는 속도 (논리 px/초). 걷기보다 빨라야
+/// "튕겨서 굴렀다"로 보인다. 남은 시간에 비례해 0까지 줄어드므로 실제 이동
+/// 거리는 이 값의 절반 × `TUMBLE_MS`, 대략 자기 몸 크기 남짓이다.
+const TUMBLE_SPEED: f64 = 200.0;
+/// 도는 것보다 짧으면 "박고 나자빠졌다"가 "잠깐 비틀했다"로 읽힌다.
+const _: () = assert!(TUMBLE_MS > TURN_MS);
 /// 싸가지 반응의 길이. 한 박자 확실히 보여야 킹받는다.
 const SASSY_MS: u64 = 900;
 /// 킹받는 한마디가 떠 있는 시간.
@@ -208,6 +222,9 @@ pub enum Behavior {
     Splat,
     /// 널브러짐 — 아주 세게 박아 바닥에 아예 뻗는다. 한참 있다 겨우 일어난다.
     Sprawl,
+    /// 굴러떨어지기 — 벽에 박고 반동으로 데굴 굴러 나자빠진다.
+    /// 착지 4단계와 달리 **바닥이 아니라 벽**에서 생긴다.
+    Tumble,
 }
 
 impl Behavior {
@@ -702,10 +719,10 @@ impl Pet {
                     }
                 } else if self.x <= bounds.left {
                     self.x = bounds.left;
-                    self.enter(Behavior::Turn, now_ms + TURN_MS);
+                    self.hit_wall(now_ms);
                 } else if self.x >= bounds.right {
                     self.x = bounds.right;
-                    self.enter(Behavior::Turn, now_ms + TURN_MS);
+                    self.hit_wall(now_ms);
                 } else if now_ms >= self.behavior_until_ms {
                     self.pick_next(now_ms, bounds);
                 }
@@ -740,12 +757,18 @@ impl Pet {
             }
             Behavior::Land | Behavior::Splat | Behavior::Sprawl => {
                 if now_ms >= self.behavior_until_ms {
-                    // 맞고 떨어졌으면 일어나서 약을 올린다
-                    if self.range((0, 99)) < SASSY_AFTER_LAND_PERCENT {
-                        self.enter_sassy(now_ms);
-                    } else {
-                        self.enter_idle(now_ms);
-                    }
+                    self.get_up(now_ms);
+                }
+            }
+            Behavior::Tumble => {
+                // 남은 시간에 비례해 감속한다. 마찰 상수를 두면 정지 판정이 따로
+                // 필요해지고 그게 틀리면 영원히 미끄러지는데, 이 방식은 동작이
+                // 끝나는 순간 속도가 정확히 0이라 그 상태를 표현할 수 없다.
+                let remaining =
+                    self.behavior_until_ms.saturating_sub(now_ms) as f64 / TUMBLE_MS as f64;
+                self.x += self.facing.sign() * TUMBLE_SPEED * remaining * dt;
+                if now_ms >= self.behavior_until_ms {
+                    self.get_up(now_ms);
                 }
             }
             Behavior::Swim => {
@@ -844,6 +867,34 @@ impl Pet {
         self.speech_until_ms = now_ms + SPEECH_MS;
     }
 
+    /// 벽에 닿았을 때 — 얌전히 돌아서거나, 그대로 박고 굴러 넘어진다.
+    ///
+    /// 좌우 경계가 이 함수를 **공유한다.** "벽에 닿았다"를 판정하는 코드가 두 곳이
+    /// 되면 한쪽만 고쳐지고 조용히 갈라진다.
+    fn hit_wall(&mut self, now_ms: u64) {
+        if self.range((0, 99)) < TUMBLE_AT_WALL_PERCENT {
+            // 반동으로 벽 반대쪽으로 굴러간다. 방향을 **여기서** 뒤집는 이유는
+            // 진행 방향과 `facing`이 어긋나면 웹뷰가 회전을 반대로 그리기
+            // 때문이다. `Turn`은 끝날 때 뒤집지만 최종 결과는 같다.
+            self.facing = self.facing.flipped();
+            self.enter(Behavior::Tumble, now_ms + TUMBLE_MS);
+        } else {
+            self.enter(Behavior::Turn, now_ms + TURN_MS);
+        }
+    }
+
+    /// 넘어졌다 일어난 뒤 — 대체로 약을 올리고, 아니면 그냥 유휴로 간다.
+    ///
+    /// 착지(`Land`/`Splat`/`Sprawl`)와 굴러떨어지기가 이 출구를 **공유한다.**
+    /// 세게 박고 일어난 뒤의 심리가 같으므로 갈래를 두 벌로 만들지 않는다.
+    fn get_up(&mut self, now_ms: u64) {
+        if self.range((0, 99)) < SASSY_AFTER_LAND_PERCENT {
+            self.enter_sassy(now_ms);
+        } else {
+            self.enter_idle(now_ms);
+        }
+    }
+
     /// 싸가지 반응 하나를 고른다 — 직전과 같은 종류는 피한다.
     fn enter_sassy(&mut self, now_ms: u64) {
         let mut sassy = SASSY_KINDS[self.range((0, 4)) as usize];
@@ -915,7 +966,9 @@ impl Pet {
         // 착지(Land)는 바닥에 닿은 시점이라 확실히 지상이다.
         match behavior {
             Behavior::Sassy { .. } | Behavior::Dragged | Behavior::Swing => {}
-            Behavior::Land | Behavior::Splat | Behavior::Sprawl => self.air = false,
+            Behavior::Land | Behavior::Splat | Behavior::Sprawl | Behavior::Tumble => {
+                self.air = false
+            }
             other => self.air = other.is_airborne(),
         }
         self.behavior = behavior;
@@ -1081,6 +1134,168 @@ mod tests {
         let s = p.step(200 + TURN_MS + 10, &world());
         assert_eq!(s.facing, Facing::Left, "전환이 끝나면 방향이 뒤집힌다");
         assert_eq!(s.behavior, Behavior::Walk);
+    }
+
+    /// 오른쪽 벽에 붙여 놓고 한 틱 진행시켜 벽 반응 하나를 본다.
+    fn 벽_반응(seed: u64) -> Behavior {
+        let mut p = Pet::new(seed, 0, &world());
+        p.x = BOUNDS.right - 3.0;
+        p.step(200, &world()).behavior
+    }
+
+    /// 벽에서 굴러떨어지는 시드 하나를 찾는다.
+    ///
+    /// 시드를 상수로 박아 두지 않는 이유는 **확률 갈래이기 때문**이다. 굴림은
+    /// 코어가 소유한 PRNG를 쓰므로, 앞에서 난수를 한 번 더 뽑는 변경만 들어가도
+    /// 박아 둔 시드가 반대 갈래로 넘어가 테스트가 통째로 무너진다.
+    fn 굴러떨어지는_시드() -> u64 {
+        (1u64..10_000)
+            .find(|s| 벽_반응(*s) == Behavior::Tumble)
+            .expect("굴러떨어지는 시드가 하나도 없다")
+    }
+
+    /// 오른쪽 벽에서 굴러떨어지기 시작한 펭귄. 여러 테스트가 같은 자세로 시작한다.
+    fn 굴러떨어지는_펭귄() -> Pet {
+        let mut p = Pet::new(굴러떨어지는_시드(), 0, &world());
+        p.x = BOUNDS.right - 3.0;
+        p.step(200, &world());
+        p
+    }
+
+    #[test]
+    fn 벽에_닿으면_굴러떨어지거나_돌아선다() {
+        let 반응: Vec<Behavior> = (1u64..200).map(벽_반응).collect();
+        assert!(
+            반응.contains(&Behavior::Tumble),
+            "굴러떨어지는 경우가 하나도 없다"
+        );
+        assert!(
+            반응.contains(&Behavior::Turn),
+            "돌아서는 경우가 하나도 없다 — 벽이 곧 넘어지는 곳이 됐다"
+        );
+        assert!(
+            반응
+                .iter()
+                .all(|b| matches!(b, Behavior::Tumble | Behavior::Turn)),
+            "벽 반응은 이 둘뿐이다"
+        );
+    }
+
+    #[test]
+    fn 굴러떨어지기는_벽_반대_방향으로_이동한다() {
+        let mut p = 굴러떨어지는_펭귄();
+        let s = p.snapshot();
+        assert_eq!(s.behavior, Behavior::Tumble);
+        assert_eq!(s.facing, Facing::Left, "벽에서 멀어지는 쪽을 본다");
+
+        let after = p.step(300, &world()).x;
+        assert!(after < s.x, "오른쪽 벽에서 굴렀으면 x가 작아진다");
+    }
+
+    #[test]
+    fn 굴러떨어지는_동안_속도가_줄어든다() {
+        let mut p = 굴러떨어지는_펭귄();
+        let mut 이동량 = Vec::new();
+        let mut prev = p.snapshot().x;
+        let mut t = 250;
+        while t < 200 + TUMBLE_MS {
+            let x = p.step(t, &world()).x;
+            이동량.push(prev - x);
+            prev = x;
+            t += 50;
+        }
+        assert!(
+            이동량.first().unwrap() > 이동량.last().unwrap(),
+            "뒤로 갈수록 덜 움직여야 구르다 멈추는 것으로 읽힌다: {이동량:?}"
+        );
+    }
+
+    #[test]
+    fn 굴러떨어지기가_끝나면_멈춘다() {
+        let mut p = 굴러떨어지는_펭귄();
+        drive(&mut p, 250, 200 + TUMBLE_MS, 50, &world());
+        let 끝난_뒤 = p.step(200 + TUMBLE_MS + 10, &world()).x;
+        let 더_뒤 = p.step(200 + TUMBLE_MS + 200, &world()).x;
+        assert_eq!(끝난_뒤, 더_뒤, "굴러떨어지기가 끝나면 더 움직이지 않는다");
+    }
+
+    #[test]
+    fn 굴러떨어지고_나면_방향이_뒤집혀_있다() {
+        let mut p = Pet::new(굴러떨어지는_시드(), 0, &world());
+        p.x = BOUNDS.right - 3.0;
+        assert_eq!(p.snapshot().facing, Facing::Right);
+
+        let s = p.step(200, &world());
+        assert_eq!(s.facing, Facing::Left, "Turn을 탔을 때와 최종 결과가 같다");
+    }
+
+    #[test]
+    fn 굴러떨어지기_뒤에는_약을_올리거나_유휴로_간다() {
+        // 착지(Land/Splat/Sprawl)와 출구를 공유한다 — 같은 규칙이 두 벌이 되지 않게
+        let mut 나온_동작 = Vec::new();
+        for seed in 1u64..300 {
+            let mut p = Pet::new(seed, 0, &world());
+            p.x = BOUNDS.right - 3.0;
+            if p.step(200, &world()).behavior != Behavior::Tumble {
+                continue;
+            }
+            나온_동작.push(p.step(200 + TUMBLE_MS + 10, &world()).behavior);
+        }
+        assert!(!나온_동작.is_empty(), "굴러떨어지는 시드가 하나도 없다");
+        assert!(
+            나온_동작
+                .iter()
+                .all(|b| matches!(b, Behavior::Sassy { .. } | Behavior::Idle { .. })),
+            "{나온_동작:?}"
+        );
+    }
+
+    #[test]
+    fn 굴러떨어지기는_지상_동작이다() {
+        assert!(!Behavior::Tumble.is_airborne());
+        assert!(
+            !Behavior::Tumble.is_landing(),
+            "바닥에 닿아서 생긴 게 아니다"
+        );
+        assert!(Behavior::Tumble.moves_window(), "제자리 애니메이션이 아니다");
+
+        let s = 굴러떨어지는_펭귄().snapshot();
+        assert!(!s.air);
+        assert_eq!(s.y, BOUNDS.floor_y, "바닥에 붙어 굴러간다");
+    }
+
+    #[test]
+    fn 굴러떨어지는_중에_클릭하면_방망이를_휘두른다() {
+        let mut p = 굴러떨어지는_펭귄();
+        p.whack(300, &world());
+        assert_eq!(p.behavior(), Behavior::Swing);
+    }
+
+    #[test]
+    fn 굴러떨어지는_중에_들어_올릴_수_있다() {
+        let mut p = 굴러떨어지는_펭귄();
+        p.drag_start(300);
+        assert_eq!(p.behavior(), Behavior::Dragged);
+    }
+
+    #[test]
+    fn 걸을_폭이_없는_화면에서는_굴러떨어지지_않는다() {
+        // 양쪽 경계가 겹치는 화면에서는 벽 판정이 매 step 참이 된다. 여기서
+        // 굴림을 돌리면 영원히 구르며 제자리를 맴돈다.
+        let narrow = World::single(Bounds {
+            left: 10.0,
+            right: 10.0,
+            top: 0.0,
+            floor_y: 50.0,
+        });
+        for seed in 1u64..200 {
+            let mut p = Pet::new(seed, 0, &narrow);
+            let seen: Vec<Behavior> = drive(&mut p, 100, 5_000, 100, &narrow)
+                .iter()
+                .map(|s| s.behavior)
+                .collect();
+            assert!(!seen.contains(&Behavior::Tumble), "시드 {seed}");
+        }
     }
 
     #[test]
@@ -1949,32 +2164,36 @@ mod tests {
 
     #[test]
     fn 화면이_하나면_동작_수열이_그대로다() {
-        // 좌표계를 World로 갈아탄 것이 동작을 **바꾸지 않았다**는 증거다.
+        // 좌표계가 화면 목록(`World`)으로 바뀌어도 화면이 하나면 판정이 달라지지
+        // 않는다는 증거다.
         //
         // "경계 안에 있는가"만 보면 안 된다 — 판정 사각형이 좁아지거나 밀려도,
         // 심지어 기준점 계산이 망가져도 통과한다. 화면이 하나뿐이면 어떤 기준점이든
         // 결국 같은 화면으로 떨어지기 때문이다. 그래서 **수열을 통째로 못박는다.**
+        //
+        // 값은 벽 굴림(`hit_wall`)이 들어오면서 한 번 다시 떴다. 벽에 닿을 때마다
+        // 난수를 하나 더 뽑으므로 그 뒤가 통째로 밀린다 — 의도한 변경이라
+        // 재기준화했다. 이 배열이 **또** 흔들리면 그건 의도하지 않은 변경이다.
         let w = world();
         let mut p = Pet::new(42, 0, &w);
         let seq = drive(&mut p, 0, 60_000, 50, &w);
         assert_eq!(seq.len(), 1_201);
 
-        // (인덱스, 동작, x, y) — 리팩터 직전 구현이 낸 값이다. 하나라도 달라지면
-        // 좌표계 교체가 동작을 건드린 것이다.
+        // (인덱스, 동작, x, y)
         let golden = [
             (0_usize, "Turn", 0.0, 800.0),
-            (97, "Idle { idle: Shake }", 142.8, 800.0),
-            (194, "Walk", 279.3, 800.0),
-            (291, "Walk", 417.9, 800.0),
-            (388, "Swim", 464.5, 568.3),
-            (485, "Splat", 394.8, 800.0),
-            (582, "Walk", 304.5, 800.0),
-            (679, "Swim", 400.1, 566.3),
-            (776, "Idle { idle: Shake }", 473.1, 800.0),
-            (873, "Walk", 615.9, 800.0),
-            (970, "Walk", 744.0, 800.0),
-            (1067, "Walk", 884.7, 800.0),
-            (1164, "Walk", 981.3, 800.0),
+            (97, "Swim", 220.8, 716.0),
+            (194, "Swim", 568.8, 414.0),
+            (291, "Idle { idle: ShiftFeet }", 619.1, 800.0),
+            (388, "Walk", 774.5, 800.0),
+            (485, "Swim", 546.5, 462.6),
+            (582, "Sassy { sassy: ButtWiggle }", 395.1, 800.0),
+            (679, "Swim", 316.1, 546.0),
+            (776, "Falling", 190.6, 205.3),
+            (873, "Idle { idle: ShiftFeet }", 190.6, 800.0),
+            (970, "Swim", 336.1, 403.1),
+            (1067, "Sprawl", 439.1, 800.0),
+            (1164, "Walk", 476.9, 800.0),
         ];
         for (i, behavior, x, y) in golden {
             let s = seq[i];
@@ -1983,10 +2202,13 @@ mod tests {
             assert_eq!(format!("{:.1}", s.y), format!("{y:.1}"), "{i}번째 y");
         }
 
-        // 사각형이 좁아지거나 밀리면 여기서 걸린다 — 펭귄은 실제로 양 끝과 바닥에 닿는다
-        assert!(seq.iter().any(|s| s.x == BOUNDS.left), "왼쪽 끝에 닿는다");
-        assert!(seq.iter().any(|s| s.x == BOUNDS.right), "오른쪽 끝에 닿는다");
-        assert!(seq.iter().any(|s| s.y == BOUNDS.floor_y), "바닥에 닿는다");
+        // 사각형이 좁아지거나 밀리면 여기서 걸린다 — 펭귄은 실제로 양 끝과 바닥에
+        // 닿는다. 이 시드는 60초 안에 오른쪽 끝까지 가지 않으므로 이 확인만 길게 돈다.
+        let mut 오래 = Pet::new(42, 0, &w);
+        let 긴_수열 = drive(&mut 오래, 0, 300_000, 50, &w);
+        assert!(긴_수열.iter().any(|s| s.x == BOUNDS.left), "왼쪽 끝에 닿는다");
+        assert!(긴_수열.iter().any(|s| s.x == BOUNDS.right), "오른쪽 끝에 닿는다");
+        assert!(긴_수열.iter().any(|s| s.y == BOUNDS.floor_y), "바닥에 닿는다");
     }
 
     #[test]
@@ -2052,3 +2274,4 @@ mod tests {
         assert_eq!(s.y, 900.0, "오른쪽 화면의 바닥에서 시작한다");
     }
 }
+

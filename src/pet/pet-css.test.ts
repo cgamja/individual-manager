@@ -47,6 +47,7 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "land" },
   { kind: "splat" },
   { kind: "sprawl" },
+  { kind: "tumble" },
   { kind: "idle", idle: "look_around" },
   { kind: "idle", idle: "stretch" },
   { kind: "idle", idle: "shake" },
@@ -110,6 +111,33 @@ describe("창 여백 상수 동기화", () => {
     const b = rustConst(rustName);
     expect(a, `CSS에서 --${cssName}를 못 찾았다`).not.toBeNull();
     expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(a).toBe(b);
+  });
+});
+
+/** `const 이름: u64 = 1_100;` 에서 숫자만 꺼낸다 (밑줄 구분자를 지운다). */
+function rustMs(name: string): number | null {
+  const m = petRs.match(new RegExp(`const ${name}: u64 = ([0-9_]+)`));
+  return m ? Number(m[1].replace(/_/g, "")) : null;
+}
+
+/** `.pg--이름 .pg-all { animation: ... 1.1s ... }` 의 길이를 ms로 꺼낸다. */
+function cssDurationMs(cls: string): number | null {
+  const m = css.match(
+    new RegExp(`\\.${cls}\\s+\\.pg-all\\s*\\{[^}]*animation:[^;]*?\\s([0-9.]+)s`),
+  );
+  return m ? Math.round(Number(m[1]) * 1000) : null;
+}
+
+describe("동작 길이 동기화", () => {
+  // 코어가 정한 길이와 CSS 길이가 어긋나도 **아무것도 실패하지 않는다.**
+  // 짧으면 다 눕기 전에 애니메이션이 끝나 자세가 튀고, 길면 이미 일어나
+  // 걷는 펭귄이 아직 넘어져 있다. 둘 다 눈으로만 잡힌다.
+  it("굴러떨어지기가 Rust의 TUMBLE_MS와 같다", () => {
+    const a = cssDurationMs("pg--tumble");
+    const b = rustMs("TUMBLE_MS");
+    expect(a, "CSS에서 .pg--tumble .pg-all의 길이를 못 찾았다").not.toBeNull();
+    expect(b, "Rust에서 TUMBLE_MS를 못 찾았다").not.toBeNull();
     expect(a).toBe(b);
   });
 });

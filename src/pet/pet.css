@@ -702,6 +702,82 @@ body,
   animation: pg-sprawl-shadow 1.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* 굴러떨어지기 — 벽에 브레이크를 못 잡고 그대로 박아 뒤로 나자빠진다.
+ *
+ * 착지 3종과 달리 **바닥이 아니라 벽**에서 생긴다. 그래서 눌리는 게 아니라
+ * 기울어지는 것이 주된 그림이고, 실제 이동(창이 벽 반대쪽으로 밀려나는 것)은
+ * 코어가 담당한다 — 여기서는 자세만 만든다.
+ *
+ * **기울기 상한을 계산해 두고 그 한참 안쪽을 쓴다.** 축은 `.pg-all`의 발밑
+ * (50px 120px)이고, 몸에서 가장 먼 점은 머리 꼭대기(원 cy=27 r=16에 후광 stroke를
+ * 더해 y ≈ 10, 즉 축에서 110 단위 위)다. 가로로 쓸 수 있는 자리는 두 겹이다 —
+ * viewBox(100×130)가 140×140 무대에 `meet`으로 들어가며 배율이 130 기준(≈1.08px/단위)
+ * 으로 잡혀 좌우에 각각 약 16px(≈15 단위)이 남고, 그 바깥에 `--pg-pad-x`(52px ≈ 48 단위)가
+ * 또 있다. 합쳐 축 왼쪽으로 약 113 단위이므로 `110 × sin(θ) ≤ 113`, 즉 **90도까지도
+ * 잘리지 않는다.** 56도로 멈추는 건 잘림 때문이 아니라 그 이상 눕히면 "박고
+ * 자빠졌다"가 아니라 "누웠다"로 읽히기 때문이다. 각도를 바꿀 때 이 계산을 다시
+ * 할 필요는 없지만, 창 여백(`PET_PAD_X`)이나 viewBox를 바꾸면 다시 해야 한다.
+ *
+ * 뒤로(진행 방향 반대로) 넘어가야 "박고 튕겨서 자빠졌다"로 읽힌다. 좌우 반전은
+ * `.pg-stage--flip`이 하므로 각도 부호는 한 벌만 있으면 된다. */
+@keyframes pg-tumble {
+  /* 벽에 박는 순간 — 정면으로 콱 눌린다 */
+  0% {
+    transform: rotate(0deg) scale(1.18, 0.82);
+  }
+  /* 반동으로 뒤로 넘어가기 시작한다 */
+  22% {
+    transform: rotate(-32deg) scale(1.06, 0.95);
+  }
+  /* 등을 깔고 뻗는다 */
+  42% {
+    transform: rotate(-56deg) scale(1.02, 0.9);
+  }
+  /* 뻗은 채로 한 박자 버틴다 — 바로 일어나면 그냥 비틀한 것으로 보인다 */
+  64% {
+    transform: rotate(-54deg) scale(1.02, 0.9);
+  }
+  /* 끙, 하고 일어난다 */
+  85% {
+    transform: rotate(-9deg) scale(0.97, 1.05);
+  }
+  94% {
+    transform: rotate(3deg) scale(1.02, 0.98);
+  }
+  100% {
+    transform: rotate(0deg) scale(1, 1);
+  }
+}
+
+/* 날개는 허우적댄다 — 몸만 기울면 팔이 몸에 박힌 채로 넘어간다 */
+@keyframes pg-tumble-wing {
+  0% {
+    transform: rotate(14deg);
+  }
+  42%,
+  64% {
+    transform: rotate(74deg);
+  }
+  85% {
+    transform: rotate(12deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* 길이는 코어의 TUMBLE_MS(1100ms)와 맞춘다 — 짧으면 다 눕기 전에 끝나고,
+ * 길면 일어난 뒤에도 애니메이션이 남아 다음 동작과 겹친다. */
+.pg--tumble .pg-all {
+  animation: pg-tumble 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pg--tumble .pg-wing-near {
+  animation: pg-tumble-wing 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pg--tumble .pg-wing-far {
+  animation: pg-tumble-wing 1.1s cubic-bezier(0.22, 1, 0.36, 1) reverse;
+}
+
 /* 시선 추적 — 눈동자만 커서 쪽으로 밀린다 (R7). 깜빡임은 .pg-eye가 따로
  * 담당하므로 두 transform이 겹치지 않는다. */
 .pg-gaze {

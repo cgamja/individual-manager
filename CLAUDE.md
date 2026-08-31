@@ -95,6 +95,10 @@ docs/solutions/       재발 방지용 학습 기록 — 셸을 건드리기 전
 - **`#[tauri::command]`를 만들고 `lib.rs`의 `generate_handler!`에 등록하지 않으면
   컴파일·테스트·경고가 전부 통과하고 런타임에서만 조용히 reject된다.** 새 창의
   capabilities 라벨 누락도 같은 성격이다. → `docs/solutions/best-practices/tauri-command-registration-silent-failure.md`
+- **같은 이름의 `@keyframes`를 두 번 정의하면 앞의 애니메이션이 통째로 죽는다.** 나중
+  정의가 그 이름에 대한 참조 **전부**를 가져간다. 굴러떨어지기 그림이 한 PR 내내 죽어
+  있었고 두 러너·타입 검사·리뷰가 전부 통과했다. 이름은 **쓰는 클래스에서** 딴다
+  (`pg-thrown-spin`). → `docs/solutions/ui-bugs/duplicate-keyframes-silently-kills-animation.md`
 - 전체 목록: `docs/solutions/best-practices/tauri-v2-macos-menubar-app-pitfalls.md`
 
 **Tauri 플러그인을 넣거나 뺄 때는 네 곳을 함께 고친다** — `src-tauri/Cargo.toml`,

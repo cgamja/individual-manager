@@ -853,7 +853,11 @@ body,
 
 /* ── 던져짐 — 포물선을 그리며 구른다 (R12) ─────────────────────── */
 
-@keyframes pg-tumble {
+/* **이름이 `pg-tumble`이었다.** 굴러떨어지기(`.pg--tumble`)가 쓰는 이름과 겹쳐서,
+ * 나중에 정의된 이 규칙이 이겨 **굴러떨어지기 그림이 통째로 죽어 있었다** — 벽에
+ * 박고 나자빠지는 대신 제자리에서 한 바퀴 돌았다. 아무 테스트도 실패하지 않았고
+ * 눈으로만 잡히는 종류다. `pet-css.test.ts`에 중복 정의 가드를 넣었다. */
+@keyframes pg-thrown-spin {
   from {
     transform: rotate(0deg);
   }
@@ -866,7 +870,7 @@ body,
 .pg--thrown .pg-body,
 .pg--thrown .pg-head {
   transform-origin: 50px 76px;
-  animation: pg-tumble 0.65s linear infinite;
+  animation: pg-thrown-spin 0.65s linear infinite;
 }
 .pg--thrown .pg-wing-near {
   transform: rotate(-50deg);
@@ -1282,4 +1286,116 @@ body,
 
 .pg--fishing-pack .pg-all {
   animation: pg-fish-pack 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ── 슬라이딩 — 배를 깔고 주르륵 미끄러진다 ──────────────────────
+ *
+ * 지상 이동 수단이 걷기 하나뿐이라 속도가 늘 같았다. 완급을 준다.
+ *
+ * **눕기 → 미끄러짐 → 일어서기가 한 벌이다.** 얼음낚시는 판 길이가 난수라
+ * 정리(`Pack`) 국면을 따로 뒀지만, 슬라이딩은 길이가 `SLIDE_MS`로 고정이라
+ * 여기 한 애니메이션 안에 다 넣을 수 있다. 국면을 늘리면 코어 전이·클래스·
+ * 길이 가드가 전부 따라 는다.
+ *
+ * **축은 발밑(50,120)이고 78도까지만 눕힌다.** 굴러떨어지기 주석의 계산상
+ * 창 여백까지 세면 90도도 잘리지 않지만, 완전히 눕히면 발이 하늘을 향해
+ * "넘어졌다"로 읽힌다. 배를 깔았지 자빠진 게 아니다. */
+
+@keyframes pg-slide {
+  0% {
+    transform: translateY(0) rotate(0deg) scaleX(1) scaleY(1);
+  }
+  /* 몸을 던지듯 앞으로 기울이며 눕는다 */
+  10% {
+    transform: translateY(2px) rotate(58deg) scaleX(1.04) scaleY(0.94);
+  }
+  16%,
+  78% {
+    /* translateY를 주지 않는다 — 축이 발밑이라 눕히기만 해도 몸이 바닥에 닿고,
+     * 더 내리면 발이 바닥선을 뚫는다 */
+    transform: translateY(0) rotate(78deg) scaleX(1.06) scaleY(0.92);
+  }
+  /* 속도가 죽으면서 상체부터 든다 */
+  92% {
+    transform: translateY(1px) rotate(26deg) scaleX(1.02) scaleY(0.97);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scaleX(1) scaleY(1);
+  }
+}
+
+/* 날개는 뒤로 눕혀 몸에 붙인다 — 펴고 있으면 미는 것처럼 보인다 */
+@keyframes pg-slide-wing {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  16%,
+  78% {
+    transform: rotate(-34deg);
+  }
+}
+
+/* **머리는 반대로 돌려 앞을 보게 한다.**
+ *
+ * 몸만 78도 눕히면 부리가 아래를 향해 "박았다"로 읽힌다 — 배를 깔고 미끄러지는
+ * 펭귄은 고개를 들고 진행 방향을 본다. 널브러짐이 머리에만 세로 보정을 주는
+ * 것과 같은 부류의 보정이다. 몸이 돈 만큼 다 되돌리지는 않는다(-62 vs 78) —
+ * 완전히 세우면 목만 꺾인 것처럼 보인다. */
+@keyframes pg-slide-head {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  16%,
+  78% {
+    transform: rotate(-62deg);
+  }
+}
+
+/* 그림자도 몸을 따라간다 — 축이 발밑이라 몸은 앞으로 뻗는데 그림자만 제자리에
+ * 남으면 꼬리 밑에 동그랗게 떠 있다. 누운 몸 아래로 길게 늘인다. */
+@keyframes pg-slide-shadow {
+  0%,
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+  16%,
+  78% {
+    transform: translateX(26px) scaleX(1.7);
+  }
+}
+
+/* 발은 뒤로 쭉 뻗는다 */
+@keyframes pg-slide-foot {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  16%,
+  78% {
+    transform: rotate(22deg);
+  }
+}
+
+/* 길이는 코어의 SLIDE_MS와 같아야 한다 — `pet-css.test.ts`가 대조한다 */
+.pg--slide .pg-all {
+  animation: pg-slide 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-wing-near {
+  animation: pg-slide-wing 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-wing-far {
+  animation: pg-slide-wing 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-foot--near,
+.pg--slide .pg-foot--far {
+  animation: pg-slide-foot 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-head {
+  animation: pg-slide-head 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-shadow {
+  transform-origin: 50px 123px;
+  animation: pg-slide-shadow 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
 }

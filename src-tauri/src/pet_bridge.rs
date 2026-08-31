@@ -725,10 +725,27 @@ pub fn pet_fish(window: WebviewWindow, state: State<'_, PetState>, app: AppHandl
         .get_mut(id)
         .is_some_and(|pet| pet.start_fishing(now_ms()));
     if !started {
-        return Err("들고 있는 중에는 못 해요. 내려놓고 다시 눌러 주세요".into());
+        return Err("이미 낚시하는 중이거나 들고 계세요".into());
     }
     // 낚시는 창을 옮기지 않지만 **국면이 바로 보여야** 한다 — 다음 틱까지
     // 기다리면 누르고 나서 한 박자 뒤에 앉는다
+    flush(&app, id);
+    Ok(())
+}
+
+/// 설정 창의 "슬라이딩". 대상 규칙은 [`pet_fish`]와 같다.
+#[tauri::command]
+pub fn pet_slide(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let id = target_pet(&window, &state).ok_or("미끄러뜨릴 펭귄을 우클릭해서 열어 주세요")?;
+    let started = state
+        .pets
+        .lock()
+        .unwrap()
+        .get_mut(id)
+        .is_some_and(|pet| pet.start_slide(now_ms()));
+    if !started {
+        return Err("이미 미끄러지는 중이거나, 공중이거나 들고 계세요".into());
+    }
     flush(&app, id);
     Ok(())
 }

@@ -48,6 +48,7 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "splat" },
   { kind: "sprawl" },
   { kind: "tumble" },
+  { kind: "slide" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },
   { kind: "ice_fishing", fishing: "bite" },
@@ -90,6 +91,15 @@ describe("pet.css 커버리지", () => {
   it("CSS에_없어진_동작의_잔재가_남아있지_않다", () => {
     // Startled는 Sassy로 대체됐다. 죽은 규칙이 남으면 다음 사람이 헷갈린다
     expect(css).not.toContain("pg--startled");
+  });
+
+  it("같은_이름의_keyframes가_두_번_정의되지_않는다", () => {
+    // 실제로 겪은 사고: 던져짐의 회전이 `pg-tumble`이라는 이름을 굴러떨어지기와
+    // 나눠 써서, 나중 정의가 이겨 **굴러떨어지기 그림이 통째로 죽어 있었다.**
+    // 길이 동기화 가드로도 안 잡힌다 — 길이는 각자 맞기 때문이다
+    const defined = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
+    const 중복 = defined.filter((n, i) => defined.indexOf(n) !== i);
+    expect(중복, `중복 정의된 @keyframes: ${중복.join(", ")}`).toEqual([]);
   });
 
   it("정의된_keyframes가_모두_쓰인다", () => {
@@ -155,6 +165,7 @@ describe("동작 길이 동기화", () => {
     ["pg--fishing-catch", "FISHING_CATCH_MS"],
     ["pg--fishing-miss", "FISHING_MISS_MS"],
     ["pg--fishing-pack", "FISHING_PACK_MS"],
+    ["pg--slide", "SLIDE_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
     const b = rustMs(konst);

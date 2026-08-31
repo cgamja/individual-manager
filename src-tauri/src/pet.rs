@@ -349,6 +349,12 @@ impl Pets {
     pub fn is_empty(&self) -> bool {
         self.pets.is_empty()
     }
+
+    /// 전부 비운다 (설정에서 펭귄을 껐을 때). id는 계속 증가하므로 다시 켜도
+    /// 닫히는 중인 창과 라벨이 겹치지 않는다.
+    pub fn clear(&mut self) {
+        self.pets.clear();
+    }
 }
 
 impl Pet {

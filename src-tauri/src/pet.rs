@@ -1,6 +1,7 @@
 //! 펭귄 코어 — Tauri 무의존 순수 상태머신.
 //!
-//! 시간은 epoch ms로, 걸어다닐 수 있는 영역은 [`Bounds`]로 주입받는다. 난수도 코어가
+//! 시간은 epoch ms로, 놀 수 있는 영역은 [`World`](화면마다 자기 [`Bounds`]를 갖는
+//! [`Screen`]의 목록)로 주입받는다. 난수도 코어가
 //! 소유한 시드 PRNG라 같은 시드 + 같은 타임스탬프열은 항상 같은 동작 시퀀스를 낳는다 —
 //! 그래야 "스스로 움직이는" 동작을 테스트로 고정할 수 있다 (KTD1).
 
@@ -268,10 +269,20 @@ impl Screen {
         )
     }
 
+    /// 기준점이 이 화면의 가로 범위에서 얼마나 벗어났나. 안이면 0이다.
+    fn horizontal_distance(self, ax: f64) -> f64 {
+        let (x0, x1, _, _) = self.anchor_area();
+        (x0 - ax).max(ax - x1).max(0.0)
+    }
+
     /// 기준점에서 이 화면까지의 거리. 화면 위에 있으면 0이다.
+    ///
+    /// 안일 때 **정확히** `0.0`이 나오는 것이 [`World::screen_at`]의 포함 판정을
+    /// 떠받친다 — `dx`/`dy`가 각각 `max(0.0)`을 거치므로 부동소수 오차가 낄 자리가
+    /// 없다. 여기에 클램프되지 않은 항을 더하면 그 성질이 깨진다.
     fn anchor_distance(self, ax: f64, ay: f64) -> f64 {
-        let (x0, x1, y0, y1) = self.anchor_area();
-        let dx = (x0 - ax).max(ax - x1).max(0.0);
+        let (_, _, y0, y1) = self.anchor_area();
+        let dx = self.horizontal_distance(ax);
         let dy = (y0 - ay).max(ay - y1).max(0.0);
         (dx * dx + dy * dy).sqrt()
     }
@@ -338,8 +349,7 @@ impl World {
         let mut best = self.screens[0];
         let mut best_d = f64::INFINITY;
         for s in &self.screens {
-            let (x0, x1, _, _) = s.anchor_area();
-            let d = (x0 - ax).max(ax - x1).max(0.0);
+            let d = s.horizontal_distance(ax);
             if d < best_d {
                 best = *s;
                 best_d = d;
@@ -1938,15 +1948,99 @@ mod tests {
     }
 
     #[test]
-    fn 화면이_하나면_기존_경계_판정과_같다() {
-        // 같은 시드·같은 타임스탬프열이면 스냅샷 수열이 완전히 같아야 한다.
-        // World로 갈아탄 것이 동작을 바꾸지 않았다는 증거다.
-        let mut p = Pet::new(42, 0, &World::single(BOUNDS));
-        let seq = drive(&mut p, 0, 60_000, 50, &World::single(BOUNDS));
-        assert!(seq.iter().all(|s| s.x >= BOUNDS.left && s.x <= BOUNDS.right));
-        assert!(seq.iter().all(|s| s.y >= BOUNDS.top && s.y <= BOUNDS.floor_y));
-        // 화면 하나짜리 세계와 그 화면의 Bounds는 같은 값을 준다
-        assert_eq!(World::single(BOUNDS).first().bounds, BOUNDS);
+    fn 화면이_하나면_동작_수열이_그대로다() {
+        // 좌표계를 World로 갈아탄 것이 동작을 **바꾸지 않았다**는 증거다.
+        //
+        // "경계 안에 있는가"만 보면 안 된다 — 판정 사각형이 좁아지거나 밀려도,
+        // 심지어 기준점 계산이 망가져도 통과한다. 화면이 하나뿐이면 어떤 기준점이든
+        // 결국 같은 화면으로 떨어지기 때문이다. 그래서 **수열을 통째로 못박는다.**
+        let w = world();
+        let mut p = Pet::new(42, 0, &w);
+        let seq = drive(&mut p, 0, 60_000, 50, &w);
+        assert_eq!(seq.len(), 1_201);
+
+        // (인덱스, 동작, x, y) — 리팩터 직전 구현이 낸 값이다. 하나라도 달라지면
+        // 좌표계 교체가 동작을 건드린 것이다.
+        let golden = [
+            (0_usize, "Turn", 0.0, 800.0),
+            (97, "Idle { idle: Shake }", 142.8, 800.0),
+            (194, "Walk", 279.3, 800.0),
+            (291, "Walk", 417.9, 800.0),
+            (388, "Swim", 464.5, 568.3),
+            (485, "Splat", 394.8, 800.0),
+            (582, "Walk", 304.5, 800.0),
+            (679, "Swim", 400.1, 566.3),
+            (776, "Idle { idle: Shake }", 473.1, 800.0),
+            (873, "Walk", 615.9, 800.0),
+            (970, "Walk", 744.0, 800.0),
+            (1067, "Walk", 884.7, 800.0),
+            (1164, "Walk", 981.3, 800.0),
+        ];
+        for (i, behavior, x, y) in golden {
+            let s = seq[i];
+            assert_eq!(format!("{:?}", s.behavior), behavior, "{i}번째 동작");
+            assert_eq!(format!("{:.1}", s.x), format!("{x:.1}"), "{i}번째 x");
+            assert_eq!(format!("{:.1}", s.y), format!("{y:.1}"), "{i}번째 y");
+        }
+
+        // 사각형이 좁아지거나 밀리면 여기서 걸린다 — 펭귄은 실제로 양 끝과 바닥에 닿는다
+        assert!(seq.iter().any(|s| s.x == BOUNDS.left), "왼쪽 끝에 닿는다");
+        assert!(seq.iter().any(|s| s.x == BOUNDS.right), "오른쪽 끝에 닿는다");
+        assert!(seq.iter().any(|s| s.y == BOUNDS.floor_y), "바닥에 닿는다");
+    }
+
+    #[test]
+    fn 화면_판정_범위는_기준점만큼_밀려_있다() {
+        let w = world();
+        // 좌상단이 left에 있는 펭귄의 **발밑**은 left + PET_SIZE/2, floor_y + PET_SIZE에 있다
+        assert!(w
+            .screen_at(BOUNDS.left + PET_SIZE / 2.0, BOUNDS.floor_y + PET_SIZE)
+            .is_some());
+        // 보정하지 않고 좌상단 좌표로 물으면 화면 위가 아니다.
+        // 기준점 보정이 빠지면 이 단언이 먼저 깨진다.
+        assert!(w.screen_at(BOUNDS.left, BOUNDS.top).is_none());
+    }
+
+    #[test]
+    fn 발밑이_속한_화면의_바닥을_따른다() {
+        let w = 두_화면();
+        let mut p = Pet::new(7, 0, &w);
+        p.x = 2_500.0;
+        p.y = 900.0;
+        let s = p.step(1_000, &w);
+        assert_eq!(s.y, 900.0, "오른쪽 화면의 바닥을 따른다");
+        assert_eq!(p.bounds_in(&w).floor_y, 900.0);
+    }
+
+    #[test]
+    fn 정확히_같은_거리면_앞_화면이_이긴다() {
+        let w = 두_화면();
+        // 두 화면의 기준점 가로 범위는 [70,1070]과 [2070,3070] — 그 한가운데
+        let mid = (1_070.0 + 2_070.0) / 2.0;
+        assert_eq!(w.nearest(mid, 800.0 + PET_SIZE).id, 1, "동거리면 목록 앞이 이긴다");
+    }
+
+    #[test]
+    fn 틈에_놓인_x는_가까운_화면으로_간다() {
+        let w = 두_화면();
+        assert_eq!(w.screen_for_x(1_100.0).id, 1, "왼쪽 화면에 더 가깝다");
+        assert_eq!(w.screen_for_x(1_950.0).id, 2, "오른쪽 화면에 더 가깝다");
+    }
+
+    #[test]
+    fn 폭이_0인_화면이_섞여도_세계_폭은_전체를_덮는다() {
+        let w = World::new(vec![
+            Screen {
+                id: 1,
+                bounds: Bounds { left: 0.0, right: 0.0, top: 0.0, floor_y: 800.0 },
+            },
+            Screen {
+                id: 2,
+                bounds: Bounds { left: 2_000.0, right: 3_000.0, top: 0.0, floor_y: 800.0 },
+            },
+        ])
+        .expect("화면이 둘이면 세계가 만들어진다");
+        assert_eq!(w.width(), 3_000.0);
     }
 
     #[test]

@@ -514,27 +514,36 @@ pub fn pet_open_popover(window: WebviewWindow, state: State<'_, PetState>, app: 
     crate::toggle_popover_at(&app, at);
 }
 
+/// 모니터를 못 읽었을 때 쓰는 납작한 경계. 보수적으로 동작한다 —
+/// 폭이 0이라 펭귄이 제자리에 서고, 던지기 상한은 코어의 기본 폭으로 떨어진다.
+const FLAT_BOUNDS: Bounds = Bounds {
+    left: 0.0,
+    right: 0.0,
+    top: 0.0,
+    floor_y: 0.0,
+};
+
 /// 현재 세계. 모니터를 못 읽으면 납작한 경계 하나짜리를 쓴다.
+///
+/// **세계를 만드는 곳은 [`current_world`] 하나여야 한다.** 여기서 `World::single`을
+/// 따로 부르면, 화면 목록을 실제로 여러 개로 넓힐 때 한쪽만 넓어져 조용히 갈라진다.
 fn world_or_flat(app: &AppHandle, id: PetId) -> World {
-    World::single(bounds_or_flat(app, id))
+    pet_window(app, id)
+        .and_then(|w| current_world(&w))
+        .unwrap_or_else(|| World::single(FLAT_BOUNDS))
 }
 
 /// 아무 펭귄이나 기준으로 본 세계.
 fn world_or_flat_any(app: &AppHandle) -> World {
-    World::single(bounds_or_flat_any(app))
+    any_pet_window(app)
+        .and_then(|w| current_world(&w))
+        .or_else(|| {
+            app.get_webview_window("main")
+                .and_then(|w| current_world(&w))
+        })
+        .unwrap_or_else(|| World::single(FLAT_BOUNDS))
 }
 
-/// 현재 이동 영역. 모니터를 못 읽으면 납작한 경계를 쓴다 (보수적으로 동작한다).
-fn bounds_or_flat(app: &AppHandle, id: PetId) -> Bounds {
-    pet_window(app, id)
-        .and_then(|w| current_bounds(&w))
-        .unwrap_or(Bounds {
-            left: 0.0,
-            right: 0.0,
-            top: 0.0,
-            floor_y: 0.0,
-        })
-}
 
 /// 펭귄 위치에서 팝오버를 놓을 자리를 구한다. 모니터를 못 읽으면 `None`을
 /// 돌려 트레이 밑(기존 동작)으로 떨어진다.
@@ -722,22 +731,6 @@ fn next_to(x: f64, bounds: Bounds) -> f64 {
     candidate.clamp(bounds.left, bounds.right.max(bounds.left))
 }
 
-/// 아무 펫 창이나 기준으로 한 경계. 첫 마리를 만들 때처럼 기준 삼을 펭귄이
-/// 없을 때 쓴다.
-fn bounds_or_flat_any(app: &AppHandle) -> Bounds {
-    any_pet_window(app)
-        .and_then(|w| current_bounds(&w))
-        .or_else(|| {
-            app.get_webview_window("main")
-                .and_then(|w| current_bounds(&w))
-        })
-        .unwrap_or(Bounds {
-            left: 0.0,
-            right: 0.0,
-            top: 0.0,
-            floor_y: 0.0,
-        })
-}
 
 #[cfg(test)]
 mod tests {

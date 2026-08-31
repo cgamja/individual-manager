@@ -363,9 +363,13 @@ pub fn pet_drag_by(dx: f64, dy: f64, state: State<'_, PetState>, app: AppHandle)
 
 /// 드래그 놓기 (R6, R12). 웹뷰가 잰 놓는 순간의 속도(논리 px/초)를 그대로 넘긴다 —
 /// 세게 던졌으면 포물선을 그리고, 살짝 놓았으면 제자리에서 떨어진다.
+///
+/// 경계를 함께 넘기는 이유는 코어의 **속도 상한이 세계 폭에 비례**하기 때문이다.
+/// `pet_whack`과 같은 방식이다.
 #[tauri::command]
 pub fn pet_drag_end(vx: f64, vy: f64, state: State<'_, PetState>, app: AppHandle) {
-    state.0.lock().unwrap().drag_end(now_ms(), vx, vy);
+    let bounds = bounds_or_flat(&app);
+    state.0.lock().unwrap().drag_end(now_ms(), vx, vy, bounds);
     flush(&app);
 }
 

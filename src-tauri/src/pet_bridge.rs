@@ -322,6 +322,17 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             // 마리가 느려지면 안 된다.
             let mut any_moves = false;
 
+            // 상태에 없는데 창만 남은 펭귄을 닫는다. 삭제할 때 `close()`가 실패하면
+            // 아무도 움직이지 않는 **얼어붙은 펭귄**이 화면에 영영 남고, 상태에 없으니
+            // 다시 지울 수도 없다 — 사용자가 겪은 "펭귄이 두 마리" 그 모양이다.
+            for (label, window) in app.webview_windows() {
+                if let Some(orphan) = pet_id_from_label(&label) {
+                    if !ids.contains(&orphan) {
+                        let _ = window.close();
+                    }
+                }
+            }
+
             for id in ids {
                 let Some(window) = pet_window(&app, id) else {
                     // 창이 사라졌다 — 사용자의 선택이 아니라 이미 없어진 것이므로
@@ -337,7 +348,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 // 2초에 한 번만 다시 읽는다 — 마리가 늘수록 이 캐시가 더 중요해진다.
                 let stale = bounds
                     .get(&id)
-                    .map_or(true, |(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
+                    .is_none_or(|(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
                 if stale {
                     if let Some(area) = current_bounds(&window) {
                         bounds.insert(id, (area, now));

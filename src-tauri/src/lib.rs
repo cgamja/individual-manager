@@ -77,6 +77,9 @@ fn hide_popover(_app: &AppHandle, window: &WebviewWindow) {
 
 /// 트레이 클릭 — 메뉴바 밑에서 연다.
 pub(crate) fn toggle_popover(app: &AppHandle) {
+    // 트레이로 열면 "이 펭귄"이 없다. 지우지 않으면 아까 우클릭했던 펭귄이
+    // 대상으로 남아, 보고 있지도 않은 펭귄이 조용히 지워진다.
+    *app.state::<pet_bridge::PetState>().focused.lock().unwrap() = None;
     toggle_popover_at(app, None);
 }
 

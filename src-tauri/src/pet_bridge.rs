@@ -725,7 +725,7 @@ pub fn pet_fish(window: WebviewWindow, state: State<'_, PetState>, app: AppHandl
         .get_mut(id)
         .is_some_and(|pet| pet.start_fishing(now_ms()));
     if !started {
-        return Err("들고 있는 중에는 못 해요. 내려놓고 다시 눌러 주세요".into());
+        return Err("이미 낚시하는 중이거나 들고 계세요".into());
     }
     // 낚시는 창을 옮기지 않지만 **국면이 바로 보여야** 한다 — 다음 틱까지
     // 기다리면 누르고 나서 한 박자 뒤에 앉는다
@@ -744,7 +744,7 @@ pub fn pet_slide(window: WebviewWindow, state: State<'_, PetState>, app: AppHand
         .get_mut(id)
         .is_some_and(|pet| pet.start_slide(now_ms()));
     if !started {
-        return Err("바닥에 내려놓고 눌러 주세요".into());
+        return Err("이미 미끄러지는 중이거나, 공중이거나 들고 계세요".into());
     }
     flush(&app, id);
     Ok(())

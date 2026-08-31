@@ -93,6 +93,15 @@ describe("pet.css 커버리지", () => {
     expect(css).not.toContain("pg--startled");
   });
 
+  it("같은_이름의_keyframes가_두_번_정의되지_않는다", () => {
+    // 실제로 겪은 사고: 던져짐의 회전이 `pg-tumble`이라는 이름을 굴러떨어지기와
+    // 나눠 써서, 나중 정의가 이겨 **굴러떨어지기 그림이 통째로 죽어 있었다.**
+    // 길이 동기화 가드로도 안 잡힌다 — 길이는 각자 맞기 때문이다
+    const defined = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
+    const 중복 = defined.filter((n, i) => defined.indexOf(n) !== i);
+    expect(중복, `중복 정의된 @keyframes: ${중복.join(", ")}`).toEqual([]);
+  });
+
   it("정의된_keyframes가_모두_쓰인다", () => {
     const defined = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
     expect(defined.length).toBeGreaterThan(0);

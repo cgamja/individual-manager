@@ -801,23 +801,7 @@ impl Pet {
             }
             Behavior::Walk => {
                 self.x += self.facing.sign() * WALK_SPEED * dt;
-                // 걸어다닐 폭이 없는 화면(펭귄보다 좁은 작업 영역)에서는 양쪽 경계가
-                // 겹쳐 매 step마다 Turn으로 들어가 영원히 제자리에서 돈다.
-                // 그럴 때는 회전을 건너뛰고 평소처럼 유휴로 넘어가게 둔다.
-                if bounds.right <= bounds.left {
-                    self.x = bounds.left;
-                    if now_ms >= self.behavior_until_ms {
-                        self.pick_next(now_ms, bounds);
-                    }
-                } else if self.x <= bounds.left {
-                    self.x = bounds.left;
-                    self.hit_wall(now_ms);
-                } else if self.x >= bounds.right {
-                    self.x = bounds.right;
-                    self.hit_wall(now_ms);
-                } else if now_ms >= self.behavior_until_ms {
-                    self.pick_next(now_ms, bounds);
-                }
+                self.after_ground_move(now_ms, bounds);
             }
             Behavior::Turn => {
                 if now_ms >= self.behavior_until_ms {
@@ -833,22 +817,7 @@ impl Pet {
                 let remaining =
                     self.behavior_until_ms.saturating_sub(now_ms) as f64 / SLIDE_MS as f64;
                 self.x += self.facing.sign() * self.slide_speed * remaining * dt;
-                // 벽 판정은 걷기와 **같은 곳**을 쓴다. 두 벌이 되면 한쪽만 고쳐진다.
-                // 폭이 없는 화면 방어를 걷기와 같은 순서로 둔다
-                if bounds.right <= bounds.left {
-                    self.x = bounds.left;
-                    if now_ms >= self.behavior_until_ms {
-                        self.pick_next(now_ms, bounds);
-                    }
-                } else if self.x <= bounds.left {
-                    self.x = bounds.left;
-                    self.hit_wall(now_ms);
-                } else if self.x >= bounds.right {
-                    self.x = bounds.right;
-                    self.hit_wall(now_ms);
-                } else if now_ms >= self.behavior_until_ms {
-                    self.pick_next(now_ms, bounds);
-                }
+                self.after_ground_move(now_ms, bounds);
             }
             Behavior::Swing => {
                 if now_ms >= self.behavior_until_ms {
@@ -1021,7 +990,11 @@ impl Pet {
     ///
     /// 자극 시각을 갱신한다 — 시켜 놓고 5분 뒤에 조는 건 이상하다.
     pub fn start_fishing(&mut self, now_ms: u64) -> bool {
-        if self.behavior == Behavior::Dragged {
+        // 이미 낚시 중이면 거절한다 — 이유는 `start_slide`와 같다
+        if matches!(
+            self.behavior,
+            Behavior::Dragged | Behavior::IceFishing { .. }
+        ) {
             return false;
         }
         self.last_stimulus_ms = now_ms;
@@ -1038,7 +1011,12 @@ impl Pet {
     /// 걸을 폭이 없는 화면에서는 미끄러질 자리도 없다 — 그 판정은 세계를 아는
     /// 쪽(`step`)이 하므로 여기서는 보지 않고, 진입해도 첫 틱에 정리된다.
     pub fn start_slide(&mut self, now_ms: u64) -> bool {
-        if self.air || self.behavior == Behavior::Dragged {
+        // **이미 미끄러지는 중이면 거절한다.** 여기서 다시 진입하면 코어는 길이를
+        // 늘리는데 웹뷰는 클래스가 그대로라 애니메이션을 되감지 않는다 — 누운
+        // 그림이 끝나고도 펭귄이 선 채로 최대 2.4초를 더 미끄러진다.
+        // `shouldRestart`가 "같은 한 번짜리 클래스가 연달아 오지 않는다"에 기대고
+        // 있으므로, 그 전제를 깨지 않는 쪽을 고른다.
+        if self.air || matches!(self.behavior, Behavior::Dragged | Behavior::Slide) {
             return false;
         }
         self.last_stimulus_ms = now_ms;
@@ -1057,6 +1035,31 @@ impl Pet {
             roll,
         });
         self.speech_until_ms = now_ms + SPEECH_MS;
+    }
+
+    /// 지상 이동 한 틱을 마무리한다 — 경계에 닿았으면 벽 반응, 시간이 다 됐으면 다음 동작.
+    ///
+    /// **걷기와 슬라이딩이 이 함수를 공유한다.** `hit_wall`만 나눠 쓰고 그 앞의
+    /// 분기 사슬을 복사해 두면, 경계 처리를 고칠 때(F2의 화면 넘기가 그렇다)
+    /// 한쪽만 고쳐지고 조용히 갈라진다. 실제로 복사해 뒀다가 리뷰에서 잡혔다.
+    fn after_ground_move(&mut self, now_ms: u64, bounds: Bounds) {
+        if bounds.right <= bounds.left {
+            // 걸어다닐 폭이 없는 화면(펭귄보다 좁은 작업 영역)에서는 양쪽 경계가
+            // 겹쳐 매 step마다 Turn으로 들어가 영원히 제자리에서 돈다.
+            // 그럴 때는 회전을 건너뛰고 평소처럼 유휴로 넘어가게 둔다.
+            self.x = bounds.left;
+            if now_ms >= self.behavior_until_ms {
+                self.pick_next(now_ms, bounds);
+            }
+        } else if self.x <= bounds.left {
+            self.x = bounds.left;
+            self.hit_wall(now_ms);
+        } else if self.x >= bounds.right {
+            self.x = bounds.right;
+            self.hit_wall(now_ms);
+        } else if now_ms >= self.behavior_until_ms {
+            self.pick_next(now_ms, bounds);
+        }
     }
 
     /// 벽에 닿았을 때 — 얌전히 돌아서거나, 그대로 박고 굴러 넘어진다.
@@ -1830,6 +1833,20 @@ mod tests {
         들림.drag_start(1_000);
         assert!(!들림.start_slide(1_100));
         assert_eq!(들림.behavior(), Behavior::Dragged);
+    }
+
+    #[test]
+    fn 이미_하는_중이면_다시_시켜도_받지_않는다() {
+        // 다시 진입하면 코어는 길이를 늘리는데 웹뷰는 클래스가 그대로라
+        // 애니메이션을 되감지 않는다 — 그림과 상태가 어긋난다
+        let mut 낚시 = pet();
+        assert!(낚시.start_fishing(1_000));
+        assert!(!낚시.start_fishing(1_200), "낚시 중에 또 받았다");
+
+        let mut 슬라이딩 = pet();
+        슬라이딩.x = 400.0;
+        assert!(슬라이딩.start_slide(1_000));
+        assert!(!슬라이딩.start_slide(1_200), "미끄러지는 중에 또 받았다");
     }
 
     #[test]

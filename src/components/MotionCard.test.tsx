@@ -54,6 +54,30 @@ describe("MotionCard", () => {
     expect(await screen.findByText("바닥에 내려놓고 눌러 주세요")).toBeInTheDocument();
   });
 
+  it("늦게_도착한_거절_사유는_버린다", async () => {
+    // 빠르게 두 번 누르면 먼저 누른 쪽의 사유가 나중 동작의 설명 옆에 붙는다
+    let 낚시_거절: (reason: string) => void = () => {};
+    const 낚시 = vi.fn(
+      () => new Promise<void>((_, reject) => { 낚시_거절 = reject; }),
+    );
+    render(
+      <MotionCard
+        focused={1}
+        motions={[
+          { name: "얼음낚시", note: "a", run: 낚시 },
+          { name: "슬라이딩", note: "b", run: vi.fn().mockResolvedValue(undefined) },
+        ]}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "얼음낚시" }));
+    await userEvent.click(screen.getByRole("button", { name: "슬라이딩" }));
+    낚시_거절("이미 낚시하는 중이거나 들고 계세요");
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(screen.queryByText("이미 낚시하는 중이거나 들고 계세요")).not.toBeInTheDocument();
+    expect(screen.getByText("b")).toBeInTheDocument();
+  });
+
   it("사유가_문자열이_아니어도_조용히_넘어가지_않는다", async () => {
     render(<MotionCard focused={1} motions={동작들(vi.fn().mockRejectedValue(new Error("boom")))} />);
     await userEvent.click(screen.getByRole("button", { name: "얼음낚시" }));

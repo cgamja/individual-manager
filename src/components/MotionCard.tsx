@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 /** 시켜볼 수 있는 동작 하나. */
 export interface Motion {
@@ -31,14 +31,19 @@ export function MotionCard({ focused, motions }: MotionCardProps) {
   const [error, setError] = useState<string | null>(null);
   /** 방금 누른 동작 — 설명을 그것만 보여준다. 넷을 한꺼번에 늘어놓으면 안 읽힌다. */
   const [shown, setShown] = useState(0);
+  /** 마지막으로 누른 번째. **늦게 도착한 결과는 버린다** — 빠르게 두 번 누르면
+   * 먼저 누른 쪽의 거절 사유가 나중 동작의 설명 옆에 붙어 엉뚱한 짝이 된다. */
+  const pressSeq = useRef(0);
   const noTarget = focused === null;
 
   const press = async (index: number) => {
+    const seq = ++pressSeq.current;
     setShown(index);
     setError(null);
     try {
       await motions[index].run();
     } catch (err) {
+      if (pressSeq.current !== seq) return;
       setError(typeof err === "string" ? err : "시키지 못했어요");
     }
   };

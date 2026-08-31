@@ -702,6 +702,77 @@ body,
   animation: pg-sprawl-shadow 1.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* 굴러떨어지기 — 벽에 브레이크를 못 잡고 그대로 박아 뒤로 나자빠진다.
+ *
+ * 착지 3종과 달리 **바닥이 아니라 벽**에서 생긴다. 그래서 눌리는 게 아니라
+ * 기울어지는 것이 주된 그림이고, 실제 이동(창이 벽 반대쪽으로 밀려나는 것)은
+ * 코어가 담당한다 — 여기서는 자세만 만든다.
+ *
+ * **기울기 상한이 있다.** 축은 `.pg-all`의 발밑(50px 120px)이고, 몸에서 가장 먼
+ * 점은 머리 꼭대기(약 114 단위 위)다. 창 좌우 여백은 `--pg-pad-x`(52px ≈ 48 단위)
+ * 뿐이라 `114 × sin(θ) ≤ 48 + 50`을 지켜야 머리가 창 밖에서 잘리지 않는다 —
+ * θ는 약 59도가 한계다. 더 눕히고 싶으면 이 계산을 먼저 다시 한다.
+ *
+ * 뒤로(진행 방향 반대로) 넘어가야 "박고 튕겨서 자빠졌다"로 읽힌다. 좌우 반전은
+ * `.pg-stage--flip`이 하므로 각도 부호는 한 벌만 있으면 된다. */
+@keyframes pg-tumble {
+  /* 벽에 박는 순간 — 정면으로 콱 눌린다 */
+  0% {
+    transform: rotate(0deg) scale(1.18, 0.82);
+  }
+  /* 반동으로 뒤로 넘어가기 시작한다 */
+  22% {
+    transform: rotate(-32deg) scale(1.06, 0.95);
+  }
+  /* 등을 깔고 뻗는다 */
+  42% {
+    transform: rotate(-56deg) scale(1.02, 0.9);
+  }
+  /* 뻗은 채로 한 박자 버틴다 — 바로 일어나면 그냥 비틀한 것으로 보인다 */
+  64% {
+    transform: rotate(-54deg) scale(1.02, 0.9);
+  }
+  /* 끙, 하고 일어난다 */
+  85% {
+    transform: rotate(-9deg) scale(0.97, 1.05);
+  }
+  94% {
+    transform: rotate(3deg) scale(1.02, 0.98);
+  }
+  100% {
+    transform: rotate(0deg) scale(1, 1);
+  }
+}
+
+/* 날개는 허우적댄다 — 몸만 기울면 팔이 몸에 박힌 채로 넘어간다 */
+@keyframes pg-tumble-wing {
+  0% {
+    transform: rotate(14deg);
+  }
+  42%,
+  64% {
+    transform: rotate(74deg);
+  }
+  85% {
+    transform: rotate(12deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* 길이는 코어의 TUMBLE_MS(1100ms)와 맞춘다 — 짧으면 다 눕기 전에 끝나고,
+ * 길면 일어난 뒤에도 애니메이션이 남아 다음 동작과 겹친다. */
+.pg--tumble .pg-all {
+  animation: pg-tumble 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pg--tumble .pg-wing-near {
+  animation: pg-tumble-wing 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pg--tumble .pg-wing-far {
+  animation: pg-tumble-wing 1.1s cubic-bezier(0.22, 1, 0.36, 1) reverse;
+}
+
 /* 시선 추적 — 눈동자만 커서 쪽으로 밀린다 (R7). 깜빡임은 .pg-eye가 따로
  * 담당하므로 두 transform이 겹치지 않는다. */
 .pg-gaze {

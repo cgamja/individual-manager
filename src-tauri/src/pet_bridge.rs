@@ -708,6 +708,31 @@ pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle
     Ok(id)
 }
 
+/// 설정 창의 "얼음낚시" — 십 분에 한 번짜리 동작을 지금 보게 한다.
+///
+/// **대상은 우클릭해서 연 그 펭귄이다** (`pet_remove`와 같은 규칙). 여러 마리를
+/// 한꺼번에 시키면 "이 펭귄"을 고른 사용자의 의도와 어긋나고, 어느 놈을 보라는
+/// 건지도 알 수 없다.
+///
+/// 거절 사유는 문자열로 돌려준다 — 눌리는데 아무 일도 없으면 고장으로 읽힌다.
+#[tauri::command]
+pub fn pet_fish(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let id = target_pet(&window, &state).ok_or("낚시할 펭귄을 우클릭해서 열어 주세요")?;
+    let started = state
+        .pets
+        .lock()
+        .unwrap()
+        .get_mut(id)
+        .is_some_and(|pet| pet.start_fishing(now_ms()));
+    if !started {
+        return Err("들고 있는 중에는 못 해요. 내려놓고 다시 눌러 주세요".into());
+    }
+    // 낚시는 창을 옮기지 않지만 **국면이 바로 보여야** 한다 — 다음 틱까지
+    // 기다리면 누르고 나서 한 박자 뒤에 앉는다
+    flush(&app, id);
+    Ok(())
+}
+
 /// 우클릭한 펭귄을 삭제한다. **마지막 한 마리는 거부한다** (PRD §5.5).
 #[tauri::command]
 pub fn pet_remove(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {

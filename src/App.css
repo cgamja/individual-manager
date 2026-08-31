@@ -91,6 +91,22 @@ button:active {
   color: #98989d;
 }
 
+/* 카드 안의 버튼 줄. `PetCountCard`·`MotionCard`가 공유한다 —
+ * 규칙이 없으면 버튼이 서로 붙어 한 덩어리로 보인다. */
+.pet-count-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 왜 못 누르는지 / 방금 무슨 일이 있었는지 알려주는 한 줄. */
+.hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  opacity: 0.7;
+  line-height: 1.4;
+}
+
 .settings-hint {
   margin: 6px 0 0;
   font-size: 11px;

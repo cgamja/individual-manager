@@ -10,7 +10,7 @@ export type Vertical = "up" | "down" | "level";
 export type IdleKind = "look_around" | "stretch" | "shake" | "shift_feet";
 
 /** 얼음낚시 한 판이 거쳐 가는 국면. 어느 국면인지는 코어가 정한다. */
-export type FishingPhase = "dig" | "wait" | "bite" | "catch" | "miss";
+export type FishingPhase = "dig" | "wait" | "bite" | "catch" | "miss" | "pack";
 
 /** 클릭했을 때의 반응 — 놀라지 않고 싸가지 없게 군다. */
 export type SassyKind =
@@ -138,6 +138,24 @@ export const isOneShot = (cls: string): boolean =>
   // 때까지 찌가 계속 까딱거려야 하므로 되감으면 끊긴다
   (cls.startsWith("pg--fishing-") && cls !== "pg--fishing-wait");
 
+/**
+ * 한 번짜리 애니메이션을 처음부터 다시 재생해야 하는가.
+ *
+ * **"한 번짜리다"만으로는 부족하다.** 스냅샷은 동작이 그대로여도 날아온다 —
+ * 말풍선이 뜨거나 사라지기만 해도 브릿지의 `Look`이 달라져 다시 알린다.
+ * 그때마다 되감으면 1.8초짜리 잡기 동작이 중간에 처음으로 돌아갔다가 코어가
+ * 다음 동작으로 넘어가며 잘린다. 말은 7~18초마다 나오므로 자주 겹친다.
+ *
+ * 그래서 **새로 시작한 것인지**, 즉 클래스가 달라졌는지만 본다.
+ *
+ * 이 판정은 "같은 한 번짜리 클래스가 연달아 오지는 않는다"에 기댄다. 지금은
+ * 참이다 — 착지·굴러떨어지기는 `get_up`을 거치고, 싸가지는 코어가 같은 종류를
+ * 연속으로 고르지 않고, 낚시 국면은 사이에 드리우기가 낀다. 연달아 올 수 있는
+ * 동작을 한 번짜리로 만들려면 여기에 구분자(누적 횟수 같은 것)를 함께 넘겨야 한다.
+ */
+export const shouldRestart = (prev: string | null, next: string): boolean =>
+  isOneShot(next) && prev !== next;
+
 /** 자기 창의 펭귄 상태. 펫 창이 아닌 곳에서 부르면 `null`이다. */
 export const getPetState = (): Promise<PetSnapshot | null> => invoke("pet_get_state");
 
@@ -156,6 +174,14 @@ export const addPet = (): Promise<number> => invoke("pet_add");
 
 /** 우클릭한 펭귄을 삭제한다. 마지막 한 마리면 reject된다. */
 export const removePet = (): Promise<void> => invoke("pet_remove");
+
+/**
+ * 우클릭해서 연 그 펭귄에게 얼음낚시를 시킨다.
+ *
+ * 저절로는 십 분에 한 번쯤 나오는 동작이라 보고 싶을 때 못 본다.
+ * 대상이 없거나 그 펭귄이 바닥에 없으면 사유와 함께 reject된다.
+ */
+export const fishPet = (): Promise<void> => invoke("pet_fish");
 
 /** 빠따 — 왼쪽 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로). */
 export const whackPet = (): Promise<void> => invoke("pet_whack");

@@ -110,8 +110,10 @@ const SWIM_PERCENT: u64 = 30;
 
 /// 걷기·유휴가 끝났을 때 얼음낚시를 시작할 확률 (천분율).
 ///
-/// **백분율이 아니라 천분율인 이유**: 한 판이 평균 4초쯤이라 십 분에 한 번은
-/// 대략 0.7%다. `range((0, 99))`로는 최소가 1%라 이 등급을 표현할 수 없다.
+/// **백분율이 아니라 천분율인 이유**: 걷기·유휴 **한 사이클**이 평균 4초쯤이라
+/// 십 분에 한 번은 대략 0.7%다 (아래 `FISHING_SESSION_MS`의 "한 판"과는 다른
+/// 단위다 — 그쪽은 낚시 세션 전체다). `range((0, 99))`로는 최소가 1%라
+/// 이 등급을 표현할 수 없다.
 /// 자주 나오면 "가끔 보여서 반가운" 동작이 아니라 기본 동작이 된다.
 const ICE_FISHING_PERMILLE: u64 = 7;
 
@@ -125,6 +127,12 @@ const FISHING_BITE_MS: u64 = 700;
 const FISHING_CATCH_MS: u64 = 1_800;
 /// 꽝을 보고 시무룩해 있는 시간.
 const FISHING_MISS_MS: u64 = 1_300;
+/// 예산이 다 돼서 낚싯대를 접고 일어나는 시간.
+///
+/// **이 국면이 없으면 앉은 자세에서 선 자세로 한 프레임 만에 튄다.** 유휴는
+/// `.pg-all`을 건드리지 않으므로 눌림이 그 순간 사라진다. 모든 판이 여기로
+/// 끝나므로 매번 보인다.
+const FISHING_PACK_MS: u64 = 700;
 /// 한 판의 예산. 이 시간이 지나면 다음 드리우기 대신 일어난다.
 const FISHING_SESSION_MS: (u64, u64) = (30_000, 60_000);
 /// 채서 물고기가 딸려 나올 확률. 나머지는 꽝이다.
@@ -224,6 +232,8 @@ pub enum FishingPhase {
     Catch,
     /// 꽝. 시무룩하게 다시 드리운다
     Miss,
+    /// 예산이 다 됐다. 낚싯대를 접고 일어난다 — 모든 판이 이 국면으로 끝난다
+    Pack,
 }
 
 const SASSY_KINDS: [SassyKind; 5] = [
@@ -898,9 +908,21 @@ impl Pet {
                                 };
                             self.enter_fishing(phase, now_ms + hold);
                         }
-                        FishingPhase::Miss => self.enter_fishing_wait(now_ms),
-                        // 잡았으면 그 판은 끝이다
-                        FishingPhase::Catch => self.enter_idle(now_ms),
+                        // **잡아도 판이 끝나지 않는다.** 잡을 때마다 끝내면 판
+                        // 길이가 40% 확률에 좌우돼 중앙값이 20초 아래로 내려간다
+                        // — 졸기(12~25초)보다 짧아져서 "가장 긴 동작"이라는
+                        // 존재 이유가 사라진다. 예산 하나만 판 길이를 정한다.
+                        FishingPhase::Miss | FishingPhase::Catch => {
+                            self.enter_fishing_wait(now_ms)
+                        }
+                        FishingPhase::Pack => {
+                            if self.air {
+                                // 허공에서 낚시했으면 이제 마저 떨어진다
+                                self.enter(Behavior::Falling, now_ms);
+                            } else {
+                                self.enter_idle(now_ms);
+                            }
+                        }
                     }
                 }
             }
@@ -931,6 +953,26 @@ impl Pet {
         self.vy = 0.0;
         // 치켜드는 단계를 두지 않는다 — 클릭하면 바로 휘두른다
         self.enter(Behavior::Swing, now_ms + SWING_MS);
+    }
+
+    /// 사용자가 시켜서 낚시를 시작한다 (설정 창의 "얼음낚시").
+    ///
+    /// **고도를 그대로 물려받는다.** 헤엄치는 중에 시키면 그 높이에 그대로 앉아
+    /// 허공에서 낚시한다 — 얼음도 물도 없는 데서 낚싯대를 드리우는 게 이 앱의
+    /// 결에 맞는다 (PRINCIPLE 1). 바닥으로 끌어내리면 헤엄치다 순간이동한다.
+    ///
+    /// **들려 있을 때만 거절한다.** 손에 쥔 채로 낚시를 시작하면 놓는 순간
+    /// 낙하와 낚시가 겹친다. 시작했으면 참을 돌려주므로, 부르는 쪽이 "왜 아무
+    /// 일도 없나"를 설명할 수 있다.
+    ///
+    /// 자극 시각을 갱신한다 — 시켜 놓고 5분 뒤에 조는 건 이상하다.
+    pub fn start_fishing(&mut self, now_ms: u64) -> bool {
+        if self.behavior == Behavior::Dragged {
+            return false;
+        }
+        self.last_stimulus_ms = now_ms;
+        self.enter_ice_fishing(now_ms);
+        true
     }
 
     /// 킹받는 한마디를 띄운다. 문구는 웹뷰가 고른다.
@@ -1051,14 +1093,15 @@ impl Pet {
 
     /// 드리우기로 들어가거나, 예산이 다 됐으면 일어난다.
     ///
-    /// **구멍을 다 뚫었을 때와 꽝을 봤을 때가 이 함수를 공유한다.** 예산을 보는
-    /// 코드가 두 벌이 되면 한쪽만 고쳐지고 조용히 갈라진다 (`hit_wall`과 같은 이유).
+    /// **구멍을 다 뚫었을 때·잡았을 때·꽝을 봤을 때가 이 함수를 공유한다.** 예산을
+    /// 보는 코드가 두 벌이 되면 한쪽만 고쳐지고 조용히 갈라진다 (`hit_wall`과 같은 이유).
+    /// 판이 끝나는 길도 여기 하나뿐이므로 **모든 판은 `Pack`을 거친다.**
     ///
-    /// 나가는 길이 `get_up`이 아니라 `enter_idle`인 것은 의도다 — 넘어졌다
-    /// 일어난 뒤와 달리, 30초 얌전히 앉아 있다가 갑자기 약을 올리는 건 결이 다르다.
+    /// 나가는 길이 `get_up`이 아닌 것은 의도다 — 넘어졌다 일어난 뒤와 달리,
+    /// 30초 얌전히 앉아 있다가 갑자기 약을 올리는 건 결이 다르다.
     fn enter_fishing_wait(&mut self, now_ms: u64) {
         if now_ms >= self.fishing_until_ms {
-            self.enter_idle(now_ms);
+            self.enter_fishing(FishingPhase::Pack, now_ms + FISHING_PACK_MS);
             return;
         }
         let until = now_ms + self.range(FISHING_WAIT_MS);
@@ -1073,7 +1116,12 @@ impl Pet {
         // 반응·드래그는 고도를 그대로 물려받고, 나머지는 동작이 곧 고도를 정한다.
         // 착지(Land)는 바닥에 닿은 시점이라 확실히 지상이다.
         match behavior {
-            Behavior::Sassy { .. } | Behavior::Dragged | Behavior::Swing => {}
+            // 고도를 그대로 물려받는 동작들. 낚시는 **시켜서** 공중에서 시작할 수
+            // 있어서 여기 있다 — 저절로 나오는 낚시는 `pick_next`가 바닥에서만 부른다
+            Behavior::Sassy { .. }
+            | Behavior::Dragged
+            | Behavior::Swing
+            | Behavior::IceFishing { .. } => {}
             Behavior::Land | Behavior::Splat | Behavior::Sprawl | Behavior::Tumble => {
                 self.air = false
             }
@@ -1526,48 +1574,74 @@ mod tests {
                 if *phase != FishingPhase::Miss {
                     continue;
                 }
-                let Some(다음) = 국면.get(i + 1) else {
-                    // 예산이 다 됐으면 꽝이 마지막일 수 있다
-                    continue;
-                };
-                봤다 = true;
-                assert_eq!(*다음, FishingPhase::Wait, "시드 {seed}: {국면:?}");
+                let 다음 = 국면.get(i + 1);
+                if 다음 == Some(&FishingPhase::Wait) {
+                    봤다 = true;
+                }
+                // 예산이 다 됐으면 다시 드리우지 않고 접는다
+                assert!(
+                    matches!(다음, Some(FishingPhase::Wait) | Some(FishingPhase::Pack)),
+                    "시드 {seed}: 꽝 뒤가 {다음:?}다 — {국면:?}"
+                );
             }
         }
         assert!(봤다, "꽝 뒤에 다시 드리우는 판이 하나도 없다");
     }
 
     #[test]
-    fn 물고기를_잡으면_그_판이_끝난다() {
-        let mut 봤다 = false;
+    fn 물고기를_잡아도_예산이_남으면_다시_드리운다() {
+        // 잡을 때마다 판을 끝내면 길이가 40% 확률에 좌우돼 중앙값이 20초 아래로
+        // 내려간다 — 졸기보다 짧아지면 "가장 긴 동작"이 아니다
+        let mut 다시_드리운_적 = false;
         for seed in 1u64..40 {
             let (국면, _, _) = 낚시_한_판(seed);
-            if let Some(i) = 국면.iter().position(|p| *p == FishingPhase::Catch) {
-                봤다 = true;
-                assert_eq!(
-                    i,
-                    국면.len() - 1,
-                    "시드 {seed}: 잡고 나서도 계속한다 — {국면:?}"
+            for (i, phase) in 국면.iter().enumerate() {
+                if *phase != FishingPhase::Catch {
+                    continue;
+                }
+                let 다음 = 국면.get(i + 1);
+                if 다음 == Some(&FishingPhase::Wait) {
+                    다시_드리운_적 = true;
+                }
+                assert!(
+                    matches!(다음, Some(FishingPhase::Wait) | Some(FishingPhase::Pack)),
+                    "시드 {seed}: 잡은 뒤가 {다음:?}다 — {국면:?}"
                 );
             }
         }
-        assert!(봤다, "물고기를 잡는 판이 하나도 없다");
+        assert!(다시_드리운_적, "잡고 나서 다시 드리우는 판이 하나도 없다");
+    }
+
+    #[test]
+    fn 모든_판은_낚싯대를_접고_끝난다() {
+        // 앉은 자세에서 곧장 유휴로 가면 눌림이 한 프레임 만에 사라져 튄다
+        for seed in 1u64..40 {
+            let (국면, _, _) = 낚시_한_판(seed);
+            assert_eq!(
+                국면.last(),
+                Some(&FishingPhase::Pack),
+                "시드 {seed}: {국면:?}"
+            );
+        }
     }
 
     #[test]
     fn 얼음낚시_한_판은_예산_안에_끝난다() {
         // 국면 도중에 자르지 않으므로 상한은 예산 + 마지막 한 바퀴다.
         // 무한히 도는 판을 잡는 게 이 테스트의 목적이다.
+        // 판을 끝내는 것은 **예산 하나뿐**이므로 하한이 예산의 하한이다.
+        // 잡았다고 끝나던 때는 이 단언이 성립하지 않았고, 실제 중앙값이
+        // 18.6초까지 내려가 있었다 (리뷰 실측).
         let 상한 = FISHING_SESSION_MS.1
             + FISHING_WAIT_MS.1
             + FISHING_BITE_MS
-            + FISHING_MISS_MS
-            + FISHING_CATCH_MS;
+            + FISHING_MISS_MS.max(FISHING_CATCH_MS)
+            + FISHING_PACK_MS;
         for seed in 1u64..40 {
             let (국면, _, 끝) = 낚시_한_판(seed);
             assert!(
-                끝 >= FISHING_DIG_MS + FISHING_WAIT_MS.0,
-                "시드 {seed}: {끝}ms 만에 끝났다 — {국면:?}"
+                끝 >= FISHING_SESSION_MS.0,
+                "시드 {seed}: {끝}ms 만에 끝났다 — 예산보다 짧다 — {국면:?}"
             );
             assert!(끝 <= 상한, "시드 {seed}: {끝}ms 나 걸렸다 — {국면:?}");
         }
@@ -1632,6 +1706,76 @@ mod tests {
         let s = p.step(50, &world());
         assert!(!s.air);
         assert_eq!(s.y, BOUNDS.floor_y, "바닥에 앉는다");
+    }
+
+    #[test]
+    fn 시키면_바로_낚시를_시작한다() {
+        let mut p = pet();
+        assert!(p.start_fishing(1_000));
+        assert_eq!(
+            p.behavior(),
+            Behavior::IceFishing {
+                fishing: FishingPhase::Dig
+            }
+        );
+    }
+
+    #[test]
+    fn 들려_있으면_시켜도_낚시하지_않는다() {
+        // 손에 쥔 채로 시작하면 놓는 순간 낙하와 낚시가 겹친다
+        let mut 들림 = pet();
+        들림.drag_start(1_000);
+        assert!(!들림.start_fishing(1_100));
+        assert_eq!(들림.behavior(), Behavior::Dragged);
+    }
+
+    #[test]
+    fn 공중에서_시키면_허공에서_낚시한다() {
+        // 바닥으로 끌어내리면 헤엄치다 순간이동한다
+        let w = world();
+        let mut p = pet();
+        p.air = true;
+        p.y = 300.0;
+        assert!(p.start_fishing(1_000));
+
+        let s = p.step(1_050, &w);
+        assert!(matches!(s.behavior, Behavior::IceFishing { .. }));
+        assert!(s.air, "고도를 잃으면 안 된다");
+        assert_eq!(s.y, 300.0, "그 높이에 그대로 앉는다");
+    }
+
+    #[test]
+    fn 허공에서_낚시가_끝나면_떨어진다() {
+        // 유휴로 바로 가면 clamp가 바닥으로 순간이동시킨다
+        let w = world();
+        let mut p = pet();
+        p.air = true;
+        p.y = 300.0;
+        assert!(p.start_fishing(0));
+        let 동작: Vec<Behavior> = drive(&mut p, 0, 120_000, 50, &w)
+            .iter()
+            .map(|s| s.behavior)
+            .collect();
+        let 낚시_뒤 = 동작
+            .iter()
+            .skip_while(|b| matches!(b, Behavior::IceFishing { .. }))
+            .next()
+            .copied();
+        assert_eq!(낚시_뒤, Some(Behavior::Falling), "{:?}", &동작[..5]);
+    }
+
+    #[test]
+    fn 시켜서_시작한_낚시_중에는_졸지_않는다() {
+        // 자극 시각을 갱신하지 않으면 시켜 놓고 조는 판이 생긴다
+        let w = world();
+        let mut p = Pet::new(42, 0, &w);
+        let 시작 = SLEEP_AFTER_MS + 10_000;
+        assert!(p.start_fishing(시작));
+        let 동작: Vec<Behavior> = drive(&mut p, 시작, 시작 + 90_000, 100, &w)
+            .iter()
+            .map(|s| s.behavior)
+            .collect();
+        assert!(!동작.contains(&Behavior::Sleep), "낚시하다 졸았다");
     }
 
     #[test]
@@ -2629,5 +2773,6 @@ mod tests {
         assert_eq!(s.y, 900.0, "오른쪽 화면의 바닥에서 시작한다");
     }
 }
+
 
 

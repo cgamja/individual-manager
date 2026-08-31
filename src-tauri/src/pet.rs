@@ -108,6 +108,29 @@ const WALK_AGAIN_PERCENT: u64 = 72;
 /// 동작이 끝났을 때 공중으로 떠오를 확률(%).
 const SWIM_PERCENT: u64 = 30;
 
+/// 미끄러지는 한 판의 길이. **고정이다** — 거리는 출발 속도로 흔든다.
+///
+/// 길이를 뽑으면 CSS 애니메이션 길이를 이 값과 맞출 수 없다
+/// (`pet-css.test.ts`의 "동작 길이 동기화"가 대조하는 것이 고정 상수다).
+const SLIDE_MS: u64 = 2_400;
+
+/// 배를 깔고 출발하는 속도 범위 (논리 px/초). 여기서 뽑아 감속한다 —
+/// 거리는 `속도 × 길이 / 2`라 매번 다르다 (264~408px).
+///
+/// **하한은 취향이 아니라 계산이다.** 가장 느리게 출발해도 가장 오래 걸은 것
+/// (`WALK_SPEED × WALK_MS.1` = 252px)보다 멀리 가야 "걷기보다 멀리"가 조건 없이
+/// 참이 된다. 180으로 뒀더니 216px이라 긴 걷기에 졌다.
+const SLIDE_SPEED: (f64, f64) = (220.0, 340.0);
+
+/// **걷기가** 끝났을 때 미끄러질 확률(%).
+///
+/// 유휴 뒤에는 나오지 않는다 — 서 있다가 갑자기 배를 깔면 준비 동작이 없다.
+/// 걷던 관성이 있어야 미끄러지는 것으로 읽힌다.
+const SLIDE_AFTER_WALK_PERCENT: u64 = 20;
+
+// 회전이 다 돌기도 전에 미끄러짐이 끝나면 자세가 튄다
+const _: () = assert!(SLIDE_MS > TURN_MS);
+
 /// 걷기·유휴가 끝났을 때 얼음낚시를 시작할 확률 (천분율).
 ///
 /// **백분율이 아니라 천분율인 이유**: 걷기·유휴 **한 사이클**이 평균 4초쯤이라
@@ -280,6 +303,9 @@ pub enum Behavior {
     /// 굴러떨어지기 — 벽에 박고 반동으로 데굴 굴러 나자빠진다.
     /// 착지 4단계와 달리 **바닥이 아니라 벽**에서 생긴다.
     Tumble,
+    /// 슬라이딩 — 배를 깔고 미끄러진다. 걷기보다 빠르고 멀리 가며,
+    /// 멈출 때 바로 서지 않고 주르륵 밀린다. 지상 이동에 완급을 준다.
+    Slide,
     /// 얼음낚시 — 바닥에 앉아 구멍을 뚫고 드리운다. 30~60초로 이 앱에서
     /// 가장 긴 동작이고, **안에서 갈래가 갈리는 첫 동작**이다 (잡음/꽝).
     IceFishing { fishing: FishingPhase },
@@ -498,6 +524,9 @@ pub struct Pet {
     target: (f64, f64),
     /// 직전 step의 y — 세로 방향(오름/내림)을 이걸로 판정한다.
     last_y: f64,
+    /// 이번 슬라이딩의 출발 속도 (논리 px/초). 진입할 때 한 번 뽑는다 —
+    /// 길이는 고정이고 이 값이 거리를 정한다.
+    slide_speed: f64,
     /// 지금 하는 얼음낚시 한 판이 끝나는 시각. **절대 시각 하나로 갖는다** —
     /// 국면마다 남은 시간을 빼 나가면 국면이 늘 때마다 계산이 갈라진다.
     fishing_until_ms: u64,
@@ -672,6 +701,7 @@ impl Pet {
             air: false,
             target: (x, bounds.floor_y),
             last_y: bounds.floor_y,
+            slide_speed: 0.0,
             fishing_until_ms: 0,
             rng: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
         };
@@ -794,6 +824,30 @@ impl Pet {
                     self.facing = self.facing.flipped();
                     let until = now_ms + self.range(WALK_MS);
                     self.enter(Behavior::Walk, until);
+                }
+            }
+            Behavior::Slide => {
+                // 감속은 남은 시간 비율로 한다. 마찰 상수를 두면 정지 판정이 따로
+                // 필요해지고 그게 틀리면 영원히 미끄러지는데, 이 방식은 끝나는
+                // 순간 속도가 정확히 0이라 그 상태를 표현할 수 없다 (굴러떨어지기와 같다).
+                let remaining =
+                    self.behavior_until_ms.saturating_sub(now_ms) as f64 / SLIDE_MS as f64;
+                self.x += self.facing.sign() * self.slide_speed * remaining * dt;
+                // 벽 판정은 걷기와 **같은 곳**을 쓴다. 두 벌이 되면 한쪽만 고쳐진다.
+                // 폭이 없는 화면 방어를 걷기와 같은 순서로 둔다
+                if bounds.right <= bounds.left {
+                    self.x = bounds.left;
+                    if now_ms >= self.behavior_until_ms {
+                        self.pick_next(now_ms, bounds);
+                    }
+                } else if self.x <= bounds.left {
+                    self.x = bounds.left;
+                    self.hit_wall(now_ms);
+                } else if self.x >= bounds.right {
+                    self.x = bounds.right;
+                    self.hit_wall(now_ms);
+                } else if now_ms >= self.behavior_until_ms {
+                    self.pick_next(now_ms, bounds);
                 }
             }
             Behavior::Swing => {
@@ -1082,6 +1136,14 @@ impl Pet {
         self.enter(Behavior::Swim, now_ms + budget_ms);
     }
 
+    /// 미끄러지기 시작한다. **출발 속도를 여기서 한 번 뽑는다** — 길이는 고정이고
+    /// 이 값이 거리를 정하므로, 매 틱 뽑으면 감속이 들쭉날쭉해진다.
+    fn enter_slide(&mut self, now_ms: u64) {
+        let (lo, hi) = SLIDE_SPEED;
+        self.slide_speed = lo + self.fraction() * (hi - lo);
+        self.enter(Behavior::Slide, now_ms + SLIDE_MS);
+    }
+
     /// 얼음낚시 한 판을 시작한다. 구멍 뚫기부터다.
     ///
     /// 예산을 **여기서 한 번만** 뽑아 절대 시각으로 들고 있는다 — 국면이
@@ -1170,6 +1232,15 @@ impl Pet {
         // 바닥 전용이다 — 공중에는 앉을 자리가 없다.
         if !self.air && self.range((0, 999)) < ICE_FISHING_PERMILLE {
             self.enter_ice_fishing(now_ms);
+            return;
+        }
+        // 걷다 말고 배를 깔고 미끄러진다. **걷기 뒤에만** 나온다 — 서 있다가
+        // 갑자기 눕는 건 준비 동작이 없다. 걸을 폭이 없으면 미끄러질 자리도 없다.
+        if matches!(self.behavior, Behavior::Walk)
+            && bounds.right > bounds.left
+            && self.range((0, 99)) < SLIDE_AFTER_WALK_PERCENT
+        {
+            self.enter_slide(now_ms);
             return;
         }
         // 가끔 공중으로 떠서 화면 위쪽까지 돌아다닌다 (R11).
@@ -1794,6 +1865,224 @@ mod tests {
                 p.air = true;
             }
         }
+    }
+
+    // ── 슬라이딩 ──────────────────────────────────────────────────
+
+    /// 걷기가 끝나는 순간의 갈래 하나를 본다. 걷기 시간이 다 되도록 몰아 놓고
+    /// 한 틱 더 진행시킨다.
+    fn 걷기_뒤(seed: u64) -> Behavior {
+        let w = world();
+        let mut p = Pet::new(seed, 0, &w);
+        // 벽에 닿아 hit_wall로 새지 않게 가운데에서 출발시킨다
+        p.x = 400.0;
+        let mut t = 50;
+        while t < 20_000 {
+            let b = p.step(t, &w).behavior;
+            if b != Behavior::Walk {
+                return b;
+            }
+            t += 50;
+        }
+        panic!("시드 {seed}: 걷기가 끝나지 않는다");
+    }
+
+    /// 미끄러지기 시작한 펭귄과 시작 시각.
+    fn 미끄러지는_펭귄() -> (Pet, u64) {
+        let w = world();
+        for seed in 1u64..500 {
+            let mut p = Pet::new(seed, 0, &w);
+            p.x = 400.0;
+            let mut t = 50;
+            while t < 20_000 {
+                if p.step(t, &w).behavior == Behavior::Slide {
+                    return (p, t);
+                }
+                t += 50;
+            }
+        }
+        panic!("미끄러지는 시드가 하나도 없다");
+    }
+
+    #[test]
+    fn 걷기가_끝나면_가끔_미끄러진다() {
+        let 갈래: Vec<Behavior> = (1u64..120).map(걷기_뒤).collect();
+        assert!(
+            갈래.contains(&Behavior::Slide),
+            "미끄러지는 경우가 하나도 없다"
+        );
+        assert!(
+            갈래.iter().any(|b| matches!(b, Behavior::Idle { .. })),
+            "쉬는 경우가 사라졌다 — 걷고 나면 늘 미끄러진다"
+        );
+    }
+
+    #[test]
+    fn 유휴가_끝났을_때는_미끄러지지_않는다() {
+        // 서 있다가 갑자기 배를 깔면 준비 동작이 없다. 걷던 관성이 있어야
+        // 미끄러지는 것으로 읽힌다
+        for seed in 1u64..300 {
+            let mut p = Pet::new(seed, 0, &world());
+            p.behavior = Behavior::Idle { idle: IdleKind::Shake };
+            p.pick_next(1_000, BOUNDS);
+            assert_ne!(p.behavior, Behavior::Slide, "시드 {seed}");
+        }
+    }
+
+    #[test]
+    fn 미끄러지는_동안_진행_방향으로_이동한다() {
+        let (mut p, t) = 미끄러지는_펭귄();
+        let 시작 = p.snapshot();
+        let 뒤 = p.step(t + 200, &world());
+        let 나아간_거리 = (뒤.x - 시작.x) * 시작.facing.sign();
+        assert!(나아간_거리 > 0.0, "{나아간_거리}");
+    }
+
+    #[test]
+    fn 슬라이딩은_걷기보다_빠르다() {
+        let (mut p, t) = 미끄러지는_펭귄();
+        let 시작_x = p.snapshot().x;
+        let facing = p.snapshot().facing;
+        let 뒤 = p.step(t + 200, &world());
+        let 미끄러진_거리 = (뒤.x - 시작_x).abs();
+        let 걸었을_거리 = WALK_SPEED * 0.2;
+        assert!(
+            미끄러진_거리 > 걸었을_거리,
+            "{미끄러진_거리} vs 걷기 {걸었을_거리}"
+        );
+        let _ = facing;
+    }
+
+    #[test]
+    fn 미끄러지는_동안_속도가_줄어든다() {
+        let (mut p, t0) = 미끄러지는_펭귄();
+        let mut 이동량 = Vec::new();
+        let mut prev = p.snapshot().x;
+        let sign = p.snapshot().facing.sign();
+        let mut t = t0 + 50;
+        while t < t0 + SLIDE_MS {
+            let x = p.step(t, &world()).x;
+            이동량.push((x - prev) * sign);
+            prev = x;
+            t += 50;
+        }
+        assert!(
+            이동량.first().unwrap() > 이동량.last().unwrap(),
+            "뒤로 갈수록 덜 움직여야 주르륵 멈추는 것으로 읽힌다: {이동량:?}"
+        );
+    }
+
+    #[test]
+    fn 슬라이딩이_끝나면_멈춘다() {
+        let (mut p, t0) = 미끄러지는_펭귄();
+        drive(&mut p, t0 + 50, t0 + SLIDE_MS, 50, &world());
+        let 끝난_뒤 = p.step(t0 + SLIDE_MS + 10, &world()).x;
+        let 더_뒤 = p.step(t0 + SLIDE_MS + 60, &world()).x;
+        assert!(
+            (끝난_뒤 - 더_뒤).abs() < 0.001 || p.behavior() != Behavior::Slide,
+            "끝났는데도 미끄러진다"
+        );
+    }
+
+    #[test]
+    fn 미끄러진_거리는_매번_다르다() {
+        // 길이는 고정이고 출발 속도를 뽑는다 — 길이를 뽑으면 CSS와 맞출 수 없다
+        let w = world();
+        let mut 거리 = Vec::new();
+        for seed in 1u64..400 {
+            let mut p = Pet::new(seed, 0, &w);
+            p.x = 400.0;
+            let mut t = 50;
+            while t < 20_000 {
+                if p.step(t, &w).behavior == Behavior::Slide {
+                    let 시작 = p.snapshot().x;
+                    let sign = p.snapshot().facing.sign();
+                    drive(&mut p, t + 50, t + SLIDE_MS, 50, &w);
+                    거리.push(((p.snapshot().x - 시작) * sign * 10.0).round() as i64);
+                    break;
+                }
+                t += 50;
+            }
+            if 거리.len() >= 8 {
+                break;
+            }
+        }
+        assert!(거리.len() >= 3, "표본이 모자라다: {거리:?}");
+        assert!(
+            거리.iter().collect::<std::collections::HashSet<_>>().len() > 1,
+            "거리가 늘 같다: {거리:?}"
+        );
+    }
+
+    #[test]
+    fn 슬라이딩이_걷기보다_멀리_간다() {
+        // 가장 느리게 출발해도 가장 오래 걷는 것보다 멀리 간다
+        let 최소_거리 = SLIDE_SPEED.0 * (SLIDE_MS as f64 / 1000.0) / 2.0;
+        let 걷기_최대 = WALK_SPEED * (WALK_MS.1 as f64 / 1000.0);
+        assert!(최소_거리 > 걷기_최대, "{최소_거리} vs {걷기_최대}");
+    }
+
+    #[test]
+    fn 미끄러지다_벽에_닿으면_돌아서거나_굴러떨어진다() {
+        // 벽 판정이 걷기와 두 벌이 되면 한쪽만 고쳐지고 조용히 갈라진다
+        let w = world();
+        let (mut p, _) = 미끄러지는_펭귄();
+        // 진행 방향 벽 바로 앞에 갖다 놓는다
+        let 벽 = if p.snapshot().facing == Facing::Right {
+            BOUNDS.right
+        } else {
+            BOUNDS.left
+        };
+        p.x = 벽 - p.snapshot().facing.sign() * 2.0;
+        let s = p.step(p.last_step_ms + 100, &w);
+        assert!(
+            matches!(s.behavior, Behavior::Turn | Behavior::Tumble),
+            "{:?}",
+            s.behavior
+        );
+        assert!(s.x >= BOUNDS.left && s.x <= BOUNDS.right, "경계를 넘었다");
+    }
+
+    #[test]
+    fn 걸을_폭이_없는_화면에서는_미끄러지지_않는다() {
+        let narrow = World::single(Bounds {
+            left: 10.0,
+            right: 10.0,
+            top: 0.0,
+            floor_y: 50.0,
+        });
+        for seed in 1u64..200 {
+            let mut p = Pet::new(seed, 0, &narrow);
+            let seen: Vec<Behavior> = drive(&mut p, 100, 20_000, 100, &narrow)
+                .iter()
+                .map(|s| s.behavior)
+                .collect();
+            assert!(!seen.contains(&Behavior::Slide), "시드 {seed}");
+        }
+    }
+
+    #[test]
+    fn 슬라이딩은_지상_동작이다() {
+        assert!(!Behavior::Slide.is_airborne());
+        assert!(!Behavior::Slide.is_landing());
+        assert!(Behavior::Slide.moves_window(), "창이 따라 움직여야 한다");
+        let (p, _) = 미끄러지는_펭귄();
+        assert!(!p.snapshot().air);
+        assert_eq!(p.snapshot().y, BOUNDS.floor_y);
+    }
+
+    #[test]
+    fn 미끄러지는_중에_클릭하면_방망이를_휘두른다() {
+        let (mut p, t) = 미끄러지는_펭귄();
+        p.whack(t + 100, &world());
+        assert_eq!(p.behavior(), Behavior::Swing);
+    }
+
+    #[test]
+    fn 미끄러지는_중에_들어_올릴_수_있다() {
+        let (mut p, t) = 미끄러지는_펭귄();
+        p.drag_start(t + 100);
+        assert_eq!(p.behavior(), Behavior::Dragged);
     }
 
     #[test]
@@ -2670,8 +2959,8 @@ mod tests {
         // 결국 같은 화면으로 떨어지기 때문이다. 그래서 **수열을 통째로 못박는다.**
         //
         // 값은 **확률 갈래가 하나 늘 때마다** 다시 뜬다. 갈래는 난수를 하나 더
-        // 뽑고, 그러면 그 뒤가 통째로 밀린다. 지금까지 두 번 재기준화했다 —
-        // 벽 굴림(`hit_wall`), 그리고 얼음낚시(`pick_next`). 둘 다 의도한 변경이다.
+        // 뽑고, 그러면 그 뒤가 통째로 밀린다. 지금까지 세 번 재기준화했다 —
+        // 벽 굴림(`hit_wall`), 얼음낚시, 슬라이딩(둘 다 `pick_next`). 전부 의도한 변경이다.
         // **동작을 늘리지 않았는데 이 배열이 흔들리면 그건 의도하지 않은 변경이다.**
         let w = world();
         let mut p = Pet::new(42, 0, &w);
@@ -2681,18 +2970,18 @@ mod tests {
         // (인덱스, 동작, x, y)
         let golden = [
             (0_usize, "Turn", 0.0, 800.0),
-            (97, "Idle { idle: Shake }", 123.9, 800.0),
-            (194, "Swim", 350.4, 590.2),
-            (291, "Swim", 688.4, 277.1),
-            (388, "Sassy { sassy: WingFlick }", 806.9, 800.0),
-            (485, "Swim", 602.7, 652.8),
-            (582, "Walk", 535.1, 800.0),
-            (679, "Walk", 331.4, 800.0),
-            (776, "Walk", 247.4, 800.0),
-            (873, "Swim", 347.7, 593.4),
-            (970, "Swim", 652.5, 247.8),
-            (1067, "Sassy { sassy: WingFlick }", 765.6, 800.0),
-            (1164, "Idle { idle: LookAround }", 765.6, 800.0),
+            (97, "Swim", 206.4, 701.8),
+            (194, "Swim", 502.8, 349.1),
+            (291, "Sprawl", 643.4, 800.0),
+            (388, "Walk", 716.9, 800.0),
+            (485, "Walk", 960.1, 800.0),
+            (582, "Idle { idle: LookAround }", 848.8, 800.0),
+            (679, "Walk", 670.3, 800.0),
+            (776, "Swim", 296.9, 567.4),
+            (873, "Sassy { sassy: HeadFlick }", 121.6, 800.0),
+            (970, "Idle { idle: Stretch }", 121.6, 800.0),
+            (1067, "Walk", 77.5, 800.0),
+            (1164, "Walk", 115.5, 800.0),
         ];
         for (i, behavior, x, y) in golden {
             let s = seq[i];
@@ -2773,6 +3062,7 @@ mod tests {
         assert_eq!(s.y, 900.0, "오른쪽 화면의 바닥에서 시작한다");
     }
 }
+
 
 
 

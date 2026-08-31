@@ -1040,13 +1040,17 @@ impl Pet {
         // `drag_start`를 부르므로 여기 도달할 때 동작은 이미 `Dragged`이고,
         // 그 검사는 실제 앱에서 한 번도 참이 되지 않는다.
         if now_ms < self.squawk_until_ms {
-            // 여기서 맞은 것은 **다음 연타로도 세지 않는다.** 세면 끝나자마자
-            // 한 번 더 터진다.
-            self.whack_run = 0;
             self.last_whack_ms = Some(now_ms);
-            // 클릭이 `Dragged`로 가로챘으면 되돌린다. **종료 시각은 원래 값
-            // 그대로다** — 늘리면 계속 때려서 무한히 화내게 만들 수 있다.
-            self.enter(Behavior::Squawk, self.squawk_until_ms);
+            // **판을 새로 연다.** 원래 종료 시각으로 되돌리면 안 된다 — 클릭
+            // 한 번은 `drag_start` → `Dragged` 스냅샷을 웹뷰에 흘리므로 클래스가
+            // `pg--squawk` → `pg--dragged` → `pg--squawk`로 오가고, 웹뷰는 그때
+            // 1.4초짜리 애니메이션을 **처음부터 다시 재생한다.** 코어가 남은
+            // 시간만 주면 부풀다 말고 끊겨, 연타할수록 영원히 부풀기만 하는
+            // 펭귄이 된다 — 흡수가 막으려던 바로 그 그림이다.
+            //
+            // 새로 여는 쪽이 결도 맞는다: **때리는 동안 계속 화낸다.** 손을
+            // 떼면 1.4초 뒤에 끝나므로 늘어나는 것은 사용자가 정한다.
+            self.enter_squawk(now_ms);
             return;
         }
 
@@ -2549,15 +2553,19 @@ mod tests {
 
     #[test]
     fn 빽빽거리는_중에_맞아도_끊기지_않는다() {
-        // 매 클릭이 360ms 스윙으로 화를 자르면 화가 보일 시간이 없다
+        // 매 클릭이 360ms 스윙으로 화를 자르면 화가 보일 시간이 없다.
+        // 대신 판이 새로 열리므로 **때리는 동안 계속 화낸다.**
         let (mut p, t) = 빽빽거리는_펭귄();
         클릭(&mut p, t + 200);
         assert_eq!(p.behavior(), Behavior::Squawk, "스윙으로 끊기면 안 된다");
         클릭(&mut p, t + 400);
         assert_eq!(p.behavior(), Behavior::Squawk);
-        // 종료 시각도 밀리지 않는다 — 밀리면 계속 때려서 무한히 늘릴 수 있다
-        let after = p.step(t + SQUAWK_MS + 20, &world());
-        assert_ne!(after.behavior, Behavior::Squawk, "제 시간에 끝나야 한다");
+        // 마지막 클릭에서 판이 새로 열렸으므로 거기서부터 한 판을 더 채운다 —
+        // 웹뷰가 애니메이션을 되감는 것과 길이를 맞추기 위해서다
+        let mid = p.step(t + 400 + SQUAWK_MS - 50, &world());
+        assert_eq!(mid.behavior, Behavior::Squawk, "새 판이 아직 안 끝났다");
+        let after = p.step(t + 400 + SQUAWK_MS + 20, &world());
+        assert_ne!(after.behavior, Behavior::Squawk, "손을 떼면 제 시간에 끝난다");
     }
 
     #[test]
@@ -2567,8 +2575,10 @@ mod tests {
         for i in 1..=3 {
             클릭(&mut p, t + i * 100);
         }
-        p.step(t + SQUAWK_MS + 20, &world());
-        p.whack(t + SQUAWK_MS + 60, &world());
+        // 마지막 클릭에서 열린 판이 끝날 때까지 진행시킨다
+        let end = t + 300 + SQUAWK_MS + 20;
+        p.step(end, &world());
+        클릭(&mut p, end + 40);
         assert_eq!(p.behavior(), Behavior::Swing, "카운터가 초기화돼야 한다");
     }
 

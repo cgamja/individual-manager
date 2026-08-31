@@ -1494,26 +1494,35 @@ body,
   }
 }
 
-/* 아래턱은 평소에 없다 — 벌릴 때만 나타난다 (방망이와 같은 방식) */
+/* 아래턱은 평소에 없다 — 벌릴 때만 나타난다.
+ *
+ * **`opacity: 0`으로 감추면 안 된다.** 후광 규칙
+ * (`.pg-halo :is(path, circle, ellipse, rect) { opacity: 1 }`)이 더 구체적이라
+ * 후광 한 벌이 평소에도 살아남아 **부리 밑에 회색 쐐기가 영원히 붙는다.**
+ * 낚시 도구(`.pg-rod` 등)가 `display: none`을 쓰는 이유가 정확히 이것이다.
+ * 방망이(`.pg-bat`)가 `opacity`로 되는 건 그쪽이 `<g>`라 후광 선택자에
+ * 걸리지 않아서다 — 도형 하나를 숨길 때는 따라 하면 안 된다. */
 .pg-beak-lower {
   transform-origin: 64px 33px;
-  opacity: 0;
+  display: none;
 }
 
 /* 길이는 코어의 SQUAWK_MS와 같아야 한다 — `pet-css.test.ts`가 대조한다 */
 .pg--squawk .pg-all {
   animation: pg-squawk 1.4s cubic-bezier(0.3, 0, 0.2, 1);
 }
+/* 주기 × 횟수가 SQUAWK_MS(1.4초)와 **정확히** 맞아야 한다. 짧으면 날개가
+ * 먼저 멈춘 채 몸만 가라앉고, 길면 퍼덕이다 잘린다 — `pet-css.test.ts`가 대조한다 */
 .pg--squawk .pg-wing-near {
-  animation: pg-squawk-wing 0.16s ease-in-out 8;
+  animation: pg-squawk-wing 0.175s ease-in-out 8;
 }
 .pg--squawk .pg-wing-far {
-  animation: pg-squawk-wing-far 0.16s ease-in-out 8;
+  animation: pg-squawk-wing-far 0.175s ease-in-out 8;
 }
 .pg--squawk .pg-head {
   animation: pg-squawk-head 0.35s ease-in-out 4;
 }
 .pg--squawk .pg-beak-lower {
-  opacity: 1;
+  display: inline;
   animation: pg-squawk-beak 0.35s ease-in-out 4;
 }

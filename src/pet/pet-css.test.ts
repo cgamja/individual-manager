@@ -177,6 +177,61 @@ describe("동작 길이 동기화", () => {
   });
 });
 
+describe("평소 숨기는 도형", () => {
+  // **실제로 밟은 함정이다.** 후광은 같은 도형을 한 벌 더 그리는데,
+  // `.pg-halo :is(path, circle, ellipse, rect) { opacity: 1 }`이 도형 클래스보다
+  // 구체적이라 `opacity: 0`으로 감추면 **후광 한 벌이 화면에 그대로 남는다.**
+  // 눈으로만 잡히고 커버리지 테스트도 통과한다 — `display: none`이어야 한다.
+  const 숨기는_도형 = ["pg-hole", "pg-rod", "pg-line", "pg-float", "pg-fish", "pg-beak-lower"];
+
+  /** 선택자에 이 클래스가 정확히 등장하는 모든 규칙 블록의 본문.
+   *
+   * **주석을 먼저 걷어낸다.** 안 걷어내면 주석에 적힌 클래스 이름이 바로 뒤
+   * 규칙의 선택자로 읽혀 엉뚱한 규칙이 걸린다 — 이 테스트를 쓰다 실제로 겪었다. */
+  function 규칙들(cls: string): string[] {
+    const 본문 = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+    const found: string[] = [];
+    for (const m of 본문.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      // `@keyframes` 안쪽 블록과 미디어 쿼리 헤더는 선택자가 아니다
+      if (m[1].includes("@")) continue;
+      if (new RegExp(`\\.${cls}(?![\\w-])`).test(m[1])) found.push(m[2]);
+    }
+    return found;
+  }
+
+  it.each(숨기는_도형.map((c) => [c] as const))("%s 는 display로 감춘다", (cls) => {
+    const blocks = 규칙들(cls);
+    expect(blocks.length, `.${cls} 규칙을 못 찾았다`).toBeGreaterThan(0);
+    expect(
+      blocks.some((b) => /display:\s*none/.test(b)),
+      `.${cls} 를 감추는 display: none 규칙이 없다`,
+    ).toBe(true);
+    for (const b of blocks) {
+      expect(
+        /opacity:\s*0\s*(?:;|$)/m.test(b),
+        `.${cls} 를 opacity: 0으로 감추면 후광이 남는다`,
+      ).toBe(false);
+    }
+  });
+});
+
+describe("빽빽거리기 부위 애니메이션 길이", () => {
+  // 부위 애니메이션은 짧은 주기를 여러 번 돌린다. **주기 × 횟수**가 코어의
+  // `SQUAWK_MS`와 어긋나도 아무것도 실패하지 않는다 — 짧으면 날개가 먼저 멈춘 채
+  // 몸만 가라앉고, 길면 퍼덕이다 잘린다. 위의 "동작 길이 동기화"는 `.pg-all`만 본다.
+  it("부위마다_주기_×_횟수가_SQUAWK_MS와_같다", () => {
+    const total = rustMs("SQUAWK_MS");
+    expect(total, "Rust에서 SQUAWK_MS를 못 찾았다").not.toBeNull();
+    const re = /\.pg--squawk\s+(\.[\w-]+)\s*\{[^}]*animation:\s*[\w-]+\s+([0-9.]+)s[^;]*?(?:\s(\d+))?;/g;
+    const 부위 = [...css.matchAll(re)];
+    expect(부위.length, ".pg--squawk 부위 애니메이션을 못 찾았다").toBeGreaterThan(1);
+    for (const [, sel, secs, count] of 부위) {
+      const ms = Math.round(Number(secs) * 1000) * Number(count ?? 1);
+      expect(ms, `${sel} 의 주기 × 횟수가 SQUAWK_MS와 다르다`).toBe(total);
+    }
+  });
+});
+
 describe("PetApp이 쓰는 클래스에 스타일이 있다", () => {
   // 실제로 겪은 사고: 말풍선·방망이를 그려 놓고 CSS를 빠뜨렸다. 아무 테스트도
   // 실패하지 않았고, 방망이가 거대한 정지 이미지로 화면에 남았다.

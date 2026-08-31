@@ -77,6 +77,9 @@ fn hide_popover(_app: &AppHandle, window: &WebviewWindow) {
 
 /// 트레이 클릭 — 메뉴바 밑에서 연다.
 pub(crate) fn toggle_popover(app: &AppHandle) {
+    // 트레이로 열면 "이 펭귄"이 없다. 지우지 않으면 아까 우클릭했던 펭귄이
+    // 대상으로 남아, 보고 있지도 않은 펭귄이 조용히 지워진다.
+    *app.state::<pet_bridge::PetState>().focused.lock().unwrap() = None;
     toggle_popover_at(app, None);
 }
 
@@ -151,14 +154,10 @@ pub fn run() {
 
             // 바탕화면 펭귄 — 실패해도 앱 본체는 계속 뜬다 (장식 기능이 셸을 막지 않는다).
             // 실제 이동 영역은 첫 틱에서 모니터를 읽어 정정하므로 여기서는 잠정값이다.
-            let start = timer_bridge::now_ms();
-            app.manage(pet_bridge::PetState(Mutex::new(pet::Pet::new(
-                start,
-                start,
-                pet::Bounds { left: 0.0, right: 800.0, top: 0.0, floor_y: 400.0 },
-            ))));
+            app.manage(pet_bridge::PetState::new(pet::Pets::new()));
             if pet_bridge::pet_enabled(app.handle()) {
-                if let Err(err) = pet_bridge::create_pet_window(app.handle()) {
+                // 저장된 마릿수만큼 만든다. 실패해도 앱 본체는 계속 뜬다.
+                if let Err(err) = pet_bridge::spawn_saved_pets(app.handle()) {
                     eprintln!("펭귄 창 생성 실패: {err}");
                 }
             }
@@ -192,6 +191,9 @@ pub fn run() {
             pet_bridge::pet_drag_end,
             pet_bridge::pet_get_state,
             pet_bridge::pet_set_enabled,
+            pet_bridge::pet_summary,
+            pet_bridge::pet_add,
+            pet_bridge::pet_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

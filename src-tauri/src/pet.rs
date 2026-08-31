@@ -271,11 +271,104 @@ fn clamp_throw(vx: f64, vy: f64, world_width: f64) -> (f64, f64) {
     (vx * k, vy * k)
 }
 
+/// 펭귄 식별자. 창 라벨(`pet-<id>`)과 짝을 이룬다.
+pub type PetId = u32;
+
+/// 동시에 띄울 수 있는 최대 마릿수. 창 하나가 웹뷰 하나이고 각각 수십 MB를 쓴다.
+/// 사용자가 **고른** 마릿수를 막지 않되, 실수로 눌러 100마리가 되는 길은 닫는다.
+pub const MAX_PETS: usize = 8;
+
+/// 여러 마리를 담는 자리. `BTreeMap`인 이유는 순회 순서가 안정적이어서
+/// 틱이 매번 같은 순서로 돌기 때문이다.
+#[derive(Default)]
+pub struct Pets {
+    pets: std::collections::BTreeMap<PetId, Pet>,
+    /// **증가만 한다.** 지운 자리의 id를 다시 쓰면, 닫히는 중인 창과 새 창이
+    /// 같은 라벨을 다퉈 창 이동이 엉뚱한 쪽으로 간다.
+    next_id: PetId,
+}
+
+impl Pets {
+    pub fn new() -> Self {
+        Pets::default()
+    }
+
+    /// 한 마리 추가. 상한에 걸리면 `None`.
+    ///
+    /// 시드는 `seed_base`와 id를 섞어 만든다 — 같은 시드를 받으면 두 마리가
+    /// 똑같이 움직여 한 마리가 복제된 것처럼 보인다.
+    pub fn add(
+        &mut self,
+        seed_base: u64,
+        now_ms: u64,
+        bounds: Bounds,
+        start_x: f64,
+    ) -> Option<PetId> {
+        if self.pets.len() >= MAX_PETS {
+            return None;
+        }
+        let id = self.next_id.wrapping_add(1);
+        self.next_id = id;
+        let seed = seed_base ^ u64::from(id).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        self.pets
+            .insert(id, Pet::new_at(seed, now_ms, bounds, start_x));
+        Some(id)
+    }
+
+    /// 한 마리 삭제. **마지막 한 마리는 거부한다** — 전부 없애는 것은 on/off의 일이고,
+    /// 두 장치가 같은 일을 다투면 안 된다.
+    pub fn remove(&mut self, id: PetId) -> bool {
+        if self.pets.len() <= 1 {
+            return false;
+        }
+        self.pets.remove(&id).is_some()
+    }
+
+    /// 창이 사라진 펭귄을 정리한다. 마지막 한 마리 보호를 받지 않는다 —
+    /// 창이 없는 펭귄은 사용자의 선택이 아니라 이미 없어진 것이다.
+    pub fn forget(&mut self, id: PetId) {
+        self.pets.remove(&id);
+    }
+
+    pub fn get_mut(&mut self, id: PetId) -> Option<&mut Pet> {
+        self.pets.get_mut(&id)
+    }
+
+    pub fn get(&self, id: PetId) -> Option<&Pet> {
+        self.pets.get(&id)
+    }
+
+    pub fn ids(&self) -> Vec<PetId> {
+        self.pets.keys().copied().collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.pets.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pets.is_empty()
+    }
+
+    /// 전부 비운다 (설정에서 펭귄을 껐을 때). id는 계속 증가하므로 다시 켜도
+    /// 닫히는 중인 창과 라벨이 겹치지 않는다.
+    pub fn clear(&mut self) {
+        self.pets.clear();
+    }
+}
+
 impl Pet {
     /// 시드는 0이면 안 된다 (xorshift가 0에 갇힌다) — 0이 들어오면 대체한다.
     pub fn new(seed: u64, start_ms: u64, bounds: Bounds) -> Self {
-        Pet {
-            x: bounds.left,
+        Pet::new_at(seed, start_ms, bounds, bounds.left)
+    }
+
+    /// 시작 x를 지정해 만든다. 새로 부른 펭귄이 부른 펭귄 옆에서 나타나게 하려고
+    /// 쓴다 — 전부 같은 자리에서 시작하면 겹쳐서 한 마리로 보인다.
+    pub fn new_at(seed: u64, start_ms: u64, bounds: Bounds, start_x: f64) -> Self {
+        let x = start_x.clamp(bounds.left, bounds.right.max(bounds.left));
+        let mut pet = Pet {
+            x,
             y: bounds.floor_y,
             facing: Facing::Right,
             behavior: Behavior::Walk,
@@ -292,10 +385,14 @@ impl Pet {
             vx: 0.0,
             vy: 0.0,
             air: false,
-            target: (bounds.left, bounds.floor_y),
+            target: (x, bounds.floor_y),
             last_y: bounds.floor_y,
             rng: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
-        }
+        };
+        // 첫 한마디까지의 간격도 **뽑는다.** 고정값으로 두면 같은 순간에 태어난
+        // 펭귄들이 다 같이 첫마디를 한다 — 여러 마리가 한목소리로 떠드는 꼴이다.
+        pet.next_taunt_ms = start_ms + pet.range(TAUNT_GAP_MS);
+        pet
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -1186,6 +1283,111 @@ mod tests {
     /// 폭 1440 화면의 상한. KTD2의 비율(0.9)이 바뀌면 이 값도 함께 움직인다.
     fn 상한(width: f64) -> f64 {
         throw_max_speed(width)
+    }
+
+    // ---- 여러 마리 (Pets) ----
+
+    fn pets_with_one() -> Pets {
+        let mut pets = Pets::new();
+        pets.add(1, 0, BOUNDS, BOUNDS.left).expect("첫 마리는 들어간다");
+        pets
+    }
+
+    #[test]
+    fn 같은_순간에_태어나도_첫마디_시각이_다르다() {
+        // 시작할 때 저장된 마릿수만큼 한꺼번에 만든다. 첫 한마디까지가 고정값이면
+        // 앱을 켤 때마다 전부 한목소리로 떠든다.
+        let mut pets = Pets::new();
+        let a = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
+        let b = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
+        let first = |pets: &mut Pets, id| {
+            let mut t = 0;
+            while t < 60_000 {
+                t += 100;
+                if pets.get_mut(id).unwrap().step(t, BOUNDS).speech.is_some() {
+                    return t;
+                }
+            }
+            panic!("60초 안에 한마디도 안 했다");
+        };
+        assert_ne!(first(&mut pets, a), first(&mut pets, b));
+    }
+
+    #[test]
+    fn 펭귄을_추가하면_새_id를_받는다() {
+        let mut pets = pets_with_one();
+        let second = pets.add(1, 0, BOUNDS, 300.0).expect("두 번째도 들어간다");
+        assert_eq!(pets.len(), 2);
+        assert!(pets.get(second).is_some());
+    }
+
+    #[test]
+    fn 지운_id는_다시_쓰이지_않는다() {
+        let mut pets = pets_with_one();
+        let second = pets.add(1, 0, BOUNDS, 300.0).unwrap();
+        assert!(pets.remove(second));
+        let third = pets.add(1, 0, BOUNDS, 300.0).unwrap();
+        assert_ne!(
+            second, third,
+            "닫히는 중인 창과 새 창이 같은 라벨을 다투면 창 이동이 엉뚱한 쪽으로 간다"
+        );
+    }
+
+    #[test]
+    fn 마지막_한_마리는_삭제되지_않는다() {
+        let mut pets = pets_with_one();
+        let only = pets.ids()[0];
+        assert!(!pets.remove(only), "전부 없애는 것은 on/off의 일이다");
+        assert_eq!(pets.len(), 1);
+    }
+
+    #[test]
+    fn 창이_사라진_펭귄은_마지막_한_마리여도_정리된다() {
+        let mut pets = pets_with_one();
+        let only = pets.ids()[0];
+        pets.forget(only);
+        assert!(pets.is_empty(), "창이 없는 펭귄은 사용자의 선택이 아니다");
+    }
+
+    #[test]
+    fn 상한을_넘겨_추가하면_거부된다() {
+        let mut pets = Pets::new();
+        for _ in 0..MAX_PETS {
+            assert!(pets.add(1, 0, BOUNDS, BOUNDS.left).is_some());
+        }
+        assert!(pets.add(1, 0, BOUNDS, BOUNDS.left).is_none());
+        assert_eq!(pets.len(), MAX_PETS);
+    }
+
+    #[test]
+    fn 마리마다_시드가_달라_다르게_움직인다() {
+        let mut pets = Pets::new();
+        let a = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
+        let b = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
+        // 같은 시각·같은 경계로 나란히 돌린다. 시드가 같으면 영원히 붙어 다닌다.
+        let mut diverged = false;
+        let mut t = 0;
+        while t < 60_000 && !diverged {
+            t += 100;
+            let sa = pets.get_mut(a).unwrap().step(t, BOUNDS);
+            let sb = pets.get_mut(b).unwrap().step(t, BOUNDS);
+            diverged = sa.x != sb.x || sa.behavior != sb.behavior;
+        }
+        assert!(diverged, "시드가 같으면 한 마리가 복제된 것처럼 보인다");
+    }
+
+    #[test]
+    fn 새_펭귄은_지정한_x에서_시작한다() {
+        let mut pets = Pets::new();
+        let id = pets.add(1, 0, BOUNDS, 640.0).unwrap();
+        assert_eq!(pets.get(id).unwrap().snapshot().x, 640.0);
+    }
+
+    #[test]
+    fn 시작_x는_영역_밖으로_나가지_않는다() {
+        let mut pets = Pets::new();
+        let id = pets.add(1, 0, BOUNDS, BOUNDS.right + 5_000.0).unwrap();
+        assert_eq!(pets.get(id).unwrap().snapshot().x, BOUNDS.right);
     }
 
     #[test]

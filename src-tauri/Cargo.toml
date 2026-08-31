@@ -25,7 +25,10 @@ tauri-plugin-positioner = { version = "2.3.3", features = ["tray-icon"] }
 tauri-plugin-store = "2.4.4"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-single-instance = "2"
+serde_json = "1.0.151"
 
 # v2.0에서 걷어낸 것 (앱이 서비스 API를 직접 부르지 않는다 — PRINCIPLE 1):
-#   reqwest·keyring·chrono·tokio·serde_json, dev의 wiremock
+#   reqwest·keyring·chrono·tokio, dev의 wiremock
+# serde_json은 되돌아왔다 — 설정 저장소(tauri-plugin-store)가 serde_json::Value로
+# 오가고, 마릿수를 읽고-고쳐-쓰기 하려면 필요하다.
 

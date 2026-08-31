@@ -3,16 +3,19 @@
 //! 창 플래그는 전부 여기 한 곳에서 정한다. 창 레벨을 "항상 위"에서 "데스크톱 뒤"로
 //! 뒤집고 싶어지면 고칠 곳도 여기 하나다 (KTD3).
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use serde::Serialize;
+
 use tauri::{
-    AppHandle, Emitter, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
+    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 use tauri_plugin_store::StoreExt;
 
-use crate::pet::{Behavior, Bounds, Facing, Pet, Snapshot, Vertical};
+use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, MAX_PETS};
 use crate::timer_bridge::now_ms;
 
 /// 웹뷰가 구독하는 상태 이벤트.
@@ -26,8 +29,50 @@ const TICK_MS: u64 = 50;
 const SLEEP_TICK_MS: u64 = 500;
 /// 모니터 작업 영역을 다시 읽는 주기.
 const BOUNDS_REFRESH_MS: u64 = 2_000;
+/// 상태와 창이 어긋난 것을 보고 **정리하기까지 기다리는 시간**.
+///
+/// 펭귄을 추가할 때는 (1) 상태에 넣고 (2) 창을 만든다. 그 사이 몇 ms 동안은
+/// "상태엔 있는데 창이 없는" 정상적인 어긋남이 생긴다. 한 번 보고 바로 지우면
+/// **방금 부른 펭귄을 곧바로 지워 버린다** — 추가가 아무 일도 안 하는 것처럼 보인다.
+/// 삭제도 (1) 상태에서 빼고 (2) 창을 닫는 순서라 같은 창이 열린다.
+const RECONCILE_GRACE_MS: u64 = 1_000;
 
-pub struct PetState(pub Mutex<Pet>);
+/// 어긋남을 처음 본 시각들 중, 유예를 다 쓴 것들.
+///
+/// 순수 함수로 떼어 낸 이유는 이 판단이 틀리면 **정상 동작이 조용히 취소되기** 때문이다.
+/// 틱 스레드 안에 두면 눈으로만 잡힌다.
+fn due_for_cleanup(mismatch_since: &HashMap<PetId, u64>, now_ms: u64) -> Vec<PetId> {
+    mismatch_since
+        .iter()
+        .filter(|(_, since)| now_ms.saturating_sub(**since) >= RECONCILE_GRACE_MS)
+        .map(|(id, _)| *id)
+        .collect()
+}
+
+pub struct PetState {
+    pub pets: Mutex<Pets>,
+    /// 마지막으로 우클릭된 펭귄. 팝오버(`main` 창)는 자기가 **어느 펭귄 때문에**
+    /// 열렸는지 모르므로, 삭제 대상을 알려면 여는 쪽이 남겨 줘야 한다 (KTD6).
+    pub focused: Mutex<Option<PetId>>,
+}
+
+impl PetState {
+    pub fn new(pets: Pets) -> Self {
+        PetState {
+            pets: Mutex::new(pets),
+            focused: Mutex::new(None),
+        }
+    }
+}
+
+/// 팝오버가 버튼 상태를 정하는 데 쓰는 요약. 누를 수 없는 버튼은 **비활성**으로
+/// 보여야 한다 — 눌리는데 아무 일도 없으면 고장으로 읽힌다.
+#[derive(Serialize)]
+pub struct PetSummary {
+    pub count: usize,
+    pub max: usize,
+    pub focused: Option<PetId>,
+}
 
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
 /// **CSS 클래스에 영향을 주는 값은 빠짐없이 들어가야 한다.** 하나라도 빠지면
@@ -67,9 +112,84 @@ pub fn pet_enabled(app: &AppHandle) -> bool {
         .unwrap_or(true)
 }
 
-/// 펫 창 라벨. `capabilities/default.json`의 `windows`에도 같은 값이 들어 있어야
-/// 이벤트가 전달된다 — 빠뜨리면 조용히 아무것도 오지 않는다 (KTD8).
-pub const PET_LABEL: &str = "pet";
+/// 저장된 마릿수. 없으면 한 마리, 범위를 벗어나면 조인다 —
+/// 저장 파일이 손으로 고쳐져도 0마리나 100마리로 뜨지 않게.
+pub fn pet_count(app: &AppHandle) -> usize {
+    app.store(SETTINGS_FILE)
+        .ok()
+        .and_then(|store| store.get(PET_KEY))
+        .and_then(|value| value.get("count").and_then(|v| v.as_u64()))
+        .map_or(1, |n| (n as usize).clamp(1, MAX_PETS))
+}
+
+/// 마릿수를 저장한다. **읽고-고쳐-쓰기**여야 한다 — `pet` 키 아래 `enabled`가
+/// 함께 살아서, 객체를 통째로 덮어쓰면 켜짐/꺼짐 설정이 날아간다 (KTD3).
+fn save_pet_count(app: &AppHandle, count: usize) {
+    let Ok(store) = app.store(SETTINGS_FILE) else {
+        return;
+    };
+    let mut value = store
+        .get(PET_KEY)
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("count".into(), serde_json::json!(count));
+        store.set(PET_KEY, value);
+        let _ = store.save();
+    }
+}
+
+/// 저장된 마릿수만큼 펭귄을 만든다. 이미 있으면 모자란 만큼만 채운다.
+pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
+    let wanted = pet_count(app);
+    let now = now_ms();
+    let bounds = bounds_or_flat_any(app);
+    while app.state::<PetState>().pets.lock().unwrap().len() < wanted {
+        // 첫 마리는 왼쪽 끝, 그다음부터는 앞 마리 옆에 세운다 — 전부 같은 자리에
+        // 겹쳐 뜨면 한 마리로 보인다
+        let start_x = {
+            let state = app.state::<PetState>();
+            let pets = state.pets.lock().unwrap();
+            pets.ids()
+                .last()
+                .and_then(|id| pets.get(*id))
+                .map_or(bounds.left, |p| next_to(p.snapshot().x, bounds))
+        };
+        let Some(id) = app
+            .state::<PetState>()
+            .pets
+            .lock()
+            .unwrap()
+            .add(now, now, bounds, start_x)
+        else {
+            break;
+        };
+        if let Err(err) = create_pet_window(app, id, window_origin(start_x, bounds.floor_y)) {
+            app.state::<PetState>().pets.lock().unwrap().forget(id);
+            return Err(err);
+        }
+    }
+    Ok(())
+}
+
+/// 펫 창 라벨 접두어. 마리마다 `pet-<id>`가 된다.
+///
+/// `capabilities/default.json`의 `windows`에 **`pet-*` 글롭**이 들어 있어야 이벤트와
+/// 커맨드가 전달된다 — 빠뜨리면 컴파일·테스트는 전부 통과하고 런타임에서만 조용히
+/// reject된다 (KTD8, `docs/solutions/best-practices/tauri-command-registration-silent-failure.md`).
+pub const PET_LABEL_PREFIX: &str = "pet-";
+
+/// 펭귄 id → 창 라벨.
+pub fn pet_label(id: PetId) -> String {
+    format!("{PET_LABEL_PREFIX}{id}")
+}
+
+/// 창 라벨 → 펭귄 id. 펫 창이 아니면 `None`.
+///
+/// 커맨드가 "누가 불렀는가"를 이걸로 정한다 — 웹뷰가 id를 인자로 보내면 틀린 id를
+/// 보낼 수도, 남의 펭귄을 조작할 수도 있다. 라벨은 위조할 수 없다 (KTD1).
+pub fn pet_id_from_label(label: &str) -> Option<PetId> {
+    label.strip_prefix(PET_LABEL_PREFIX)?.parse().ok()
+}
 
 /// 펭귄 자체가 차지하는 한 변 (논리 px). 이동 경계는 이 값으로 계산한다.
 pub const PET_SIZE: f64 = 140.0;
@@ -93,20 +213,26 @@ pub fn window_origin(pet_x: f64, pet_y: f64) -> (f64, f64) {
     (pet_x - PET_PAD_X, pet_y - PET_PAD_TOP)
 }
 
-pub fn pet_window(app: &AppHandle) -> Option<WebviewWindow> {
-    app.get_webview_window(PET_LABEL)
+pub fn pet_window(app: &AppHandle, id: PetId) -> Option<WebviewWindow> {
+    app.get_webview_window(&pet_label(id))
+}
+
+/// 살아 있는 아무 펫 창 하나. 화면 경계처럼 "어느 펭귄이든 상관없는" 조회에 쓴다.
+fn any_pet_window(app: &AppHandle) -> Option<WebviewWindow> {
+    let ids = app.state::<PetState>().pets.lock().unwrap().ids();
+    ids.into_iter().find_map(|id| pet_window(app, id))
 }
 
 /// 펫 창을 만든다. 이미 있으면 그것을 돌려준다 (중복 생성 방지).
-pub fn create_pet_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    if let Some(existing) = pet_window(app) {
+pub fn create_pet_window(app: &AppHandle, id: PetId, at: (f64, f64)) -> tauri::Result<WebviewWindow> {
+    if let Some(existing) = pet_window(app, id) {
         return Ok(existing);
     }
 
-    WebviewWindowBuilder::new(app, PET_LABEL, WebviewUrl::App("pet.html".into()))
+    WebviewWindowBuilder::new(app, pet_label(id), WebviewUrl::App("pet.html".into()))
         .title("Penguin Pet")
         .inner_size(PET_WINDOW_W, PET_WINDOW_H)
-        .position(120.0, 120.0)
+        .position(at.0, at.1)
         // 투명 창 — app.macOSPrivateApi(이미 true) + pet.css의 배경 투명이 함께 필요하다
         .transparent(true)
         .decorations(false)
@@ -133,10 +259,18 @@ pub fn create_pet_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         })
 }
 
-/// 펫 창을 닫는다. 없으면 아무것도 하지 않는다.
-pub fn close_pet_window(app: &AppHandle) {
-    if let Some(window) = pet_window(app) {
+/// 펫 창 하나를 닫는다. 없으면 아무것도 하지 않는다.
+pub fn close_pet_window(app: &AppHandle, id: PetId) {
+    if let Some(window) = pet_window(app, id) {
         let _ = window.close();
+    }
+}
+
+/// 모든 펫 창을 닫는다 (설정에서 껐을 때).
+pub fn close_all_pet_windows(app: &AppHandle) {
+    let ids = app.state::<PetState>().pets.lock().unwrap().ids();
+    for id in ids {
+        close_pet_window(app, id);
     }
 }
 
@@ -190,47 +324,106 @@ fn current_bounds(window: &WebviewWindow) -> Option<Bounds> {
 /// 그러니 여기서는 `run_on_main_thread`로 감싸지 않는다.
 pub fn spawn_pet_tick_thread(app: AppHandle) {
     std::thread::spawn(move || {
-        let mut bounds: Option<Bounds> = None;
-        let mut bounds_read_at: u64 = 0;
-        // 웹뷰에 마지막으로 알린 겉모습. 창은 20Hz로 움직이지만 CSS 클래스는
-        // 전이할 때만 바뀌므로, 매 틱 emit하면 웹뷰가 이유 없이 20Hz로 리렌더한다.
-        // **세로 방향도 포함해야 한다** — 헤엄 중 오름→내림은 동작도 좌우 방향도
-        // 그대로라, 빠뜨리면 몸 기울기가 영영 갱신되지 않는다.
-        let mut last_look: Option<Look> = None;
+        // 경계와 겉모습은 **마리별**이다. 두 펭귄이 다른 모니터에 있을 수 있고,
+        // 한 마리가 자는 동안 다른 마리는 걷는다.
+        let mut bounds: HashMap<PetId, (Bounds, u64)> = HashMap::new();
+        let mut last_look: HashMap<PetId, Look> = HashMap::new();
+        // 상태와 창이 어긋난 것을 **처음 본** 시각. 곧바로 정리하지 않는 이유는
+        // 추가·삭제가 두 단계라 정상적으로도 잠깐 어긋나기 때문이다.
+        let mut mismatch_since: HashMap<PetId, u64> = HashMap::new();
         loop {
-            let Some(window) = pet_window(&app) else {
-                // 설정에서 껐거나 아직 만들기 전 — 창이 생길 때까지 느리게 돈다
-                std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
-                continue;
-            };
-            // current_monitor()는 이벤트 루프를 왕복하는 블로킹 호출이라 20Hz로
-            // 부르면 상주 비용이 아깝다. 모니터·해상도는 자주 바뀌지 않으므로
-            // 2초에 한 번만 다시 읽는다.
+            let ids = app.state::<PetState>().pets.lock().unwrap().ids();
             let now = now_ms();
-            if bounds.is_none() || now.saturating_sub(bounds_read_at) >= BOUNDS_REFRESH_MS {
-                bounds = current_bounds(&window).or(bounds);
-                bounds_read_at = now;
+
+            // 상태에 없는데 창만 남은 펭귄 — 삭제할 때 `close()`가 실패하면 아무도
+            // 움직이지 않는 **얼어붙은 펭귄**이 화면에 영영 남고, 상태에 없으니 다시
+            // 지울 수도 없다. 사용자가 겪은 "펭귄이 두 마리" 그 모양이다.
+            let mut orphan_windows: HashMap<PetId, WebviewWindow> = HashMap::new();
+            for (label, window) in app.webview_windows() {
+                if let Some(orphan) = pet_id_from_label(&label) {
+                    if !ids.contains(&orphan) {
+                        orphan_windows.insert(orphan, window);
+                    }
+                }
             }
-            let Some(area) = bounds else {
+
+            // 이번 틱에 어긋난 것들을 표시하고, 맞는 것들은 표시를 지운다
+            let mut mismatched: Vec<PetId> = orphan_windows.keys().copied().collect();
+            for id in &ids {
+                if pet_window(&app, *id).is_none() {
+                    mismatched.push(*id);
+                }
+            }
+            mismatch_since.retain(|id, _| mismatched.contains(id));
+            for id in &mismatched {
+                mismatch_since.entry(*id).or_insert(now);
+            }
+
+            // 유예를 다 쓴 것만 정리한다
+            for id in due_for_cleanup(&mismatch_since, now) {
+                if let Some(window) = orphan_windows.get(&id) {
+                    let _ = window.close();
+                } else {
+                    // 창이 사라졌다 — 사용자의 선택이 아니라 이미 없어진 것이므로
+                    // 마지막 한 마리 보호를 받지 않고 정리한다
+                    app.state::<PetState>().pets.lock().unwrap().forget(id);
+                }
+                mismatch_since.remove(&id);
+                bounds.remove(&id);
+                last_look.remove(&id);
+            }
+
+            if ids.is_empty() {
+                // 설정에서 껐거나 아직 만들기 전 — 생길 때까지 느리게 돈다
                 std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
                 continue;
-            };
+            }
 
-            let snapshot = {
-                let state = app.state::<PetState>();
-                let mut pet = state.0.lock().unwrap();
-                pet.step(now, area)
-            };
+            // 한 마리라도 움직이면 빠른 주기를 유지한다. 자는 마리 때문에 걷는
+            // 마리가 느려지면 안 된다.
+            let mut any_moves = false;
 
-            let moves = snapshot.behavior.moves_window();
-            let look = look_of(&snapshot);
-            // 졸기로 "전이하는" 그 스냅샷은 반드시 알려야 한다. 움직임 여부로만
-            // 거르면 자는 모습이 웹뷰에 영영 도달하지 않아 직전 동작이 그대로 남는다.
-            apply(&window, snapshot, moves, should_notify(last_look, look));
-            last_look = Some(look);
+            for id in ids {
+                let Some(window) = pet_window(&app, id) else {
+                    // 아직 만들어지는 중일 수 있다 — 위의 유예가 판단한다
+                    continue;
+                };
+
+                // current_monitor()는 이벤트 루프를 왕복하는 블로킹 호출이라 20Hz로
+                // 부르면 상주 비용이 아깝다. 모니터·해상도는 자주 바뀌지 않으므로
+                // 2초에 한 번만 다시 읽는다 — 마리가 늘수록 이 캐시가 더 중요해진다.
+                let stale = bounds
+                    .get(&id)
+                    .is_none_or(|(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
+                if stale {
+                    if let Some(area) = current_bounds(&window) {
+                        bounds.insert(id, (area, now));
+                    }
+                }
+                let Some((area, _)) = bounds.get(&id).copied() else {
+                    continue;
+                };
+
+                let snapshot = {
+                    let state = app.state::<PetState>();
+                    let mut pets = state.pets.lock().unwrap();
+                    let Some(pet) = pets.get_mut(id) else {
+                        continue;
+                    };
+                    pet.step(now, area)
+                };
+
+                let moves = snapshot.behavior.moves_window();
+                any_moves |= moves;
+                let look = look_of(&snapshot);
+                // 졸기로 "전이하는" 그 스냅샷은 반드시 알려야 한다. 움직임 여부로만
+                // 거르면 자는 모습이 웹뷰에 영영 도달하지 않아 직전 동작이 그대로 남는다.
+                apply(&window, snapshot, moves, should_notify(last_look.get(&id).copied(), look));
+                last_look.insert(id, look);
+            }
 
             // 자는 동안에는 창을 옮기지 않고 틱도 느려진다 (R10)
-            let interval = if moves { TICK_MS } else { SLEEP_TICK_MS };
+            let interval = if any_moves { TICK_MS } else { SLEEP_TICK_MS };
             std::thread::sleep(Duration::from_millis(interval));
         }
     });
@@ -244,40 +437,70 @@ fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, notify: 
         let _ = window.set_position(LogicalPosition::new(wx, wy));
     }
     if notify {
-        let _ = window.emit(EVENT_PET_STATE, snapshot);
+        // **`emit`이 아니라 `emit_to`다.** `Emitter::emit`은 창에서 불러도 "모든
+        // 대상"에 보낸다 — 창 하나에 보내는 게 아니다. 한 마리였을 때는 차이가
+        // 없었지만 여러 마리가 되면 **모든 펭귄이 모든 펭귄의 스냅샷을 받는다**:
+        // 다 같이 동시에 떠들고, 남의 동작을 대신 재생하고, 틱마다 N배로 이벤트가
+        // 쏟아져 애니메이션이 미친 듯이 빨라진다.
+        let _ = window.emit_to(
+            EventTarget::webview_window(window.label()),
+            EVENT_PET_STATE,
+            snapshot,
+        );
     }
 }
 
 /// 커맨드가 상태를 바꾼 뒤 즉시 화면에 반영한다 — 다음 틱(최대 500ms)을
 /// 기다리면 클릭·드래그 반응이 굼떠 보인다. 커맨드는 항상 동작을 바꾸므로
 /// 이동과 통지를 모두 한다.
-fn flush(app: &AppHandle) -> Option<Snapshot> {
-    let window = pet_window(app)?;
-    let snapshot = app.state::<PetState>().0.lock().unwrap().snapshot();
+fn flush(app: &AppHandle, id: PetId) -> Option<Snapshot> {
+    let window = pet_window(app, id)?;
+    let snapshot = app.state::<PetState>().pets.lock().unwrap().get(id)?.snapshot();
     apply(&window, snapshot, true, true);
     Some(snapshot)
 }
 
+/// 커맨드를 부른 창의 펭귄. 펫 창이 아니면 `None` — 빠따·드래그처럼 **자기
+/// 펭귄에게만** 가야 하는 조작은 여기서 걸러진다 (KTD1).
+fn caller_pet(window: &WebviewWindow) -> Option<PetId> {
+    pet_id_from_label(window.label())
+}
+
+/// 추가·삭제의 대상. 펫 창이 부르면 자기 자신이고, 팝오버(`main`)가 부르면
+/// 마지막으로 우클릭된 펭귄이다 (KTD6).
+fn target_pet(window: &WebviewWindow, state: &PetState) -> Option<PetId> {
+    caller_pet(window).or_else(|| *state.focused.lock().unwrap())
+}
+
 /// 빠따 — 왼쪽 클릭 한 번에 펭귄이 한 번 날아간다 (R14).
 #[tauri::command]
-pub fn pet_whack(state: State<'_, PetState>, app: AppHandle) {
-    let bounds = bounds_or_flat(&app);
-    state.0.lock().unwrap().whack(now_ms(), bounds);
-    flush(&app);
+pub fn pet_whack(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
+    let Some(id) = caller_pet(&window) else { return };
+    let bounds = bounds_or_flat(&app, id);
+    if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
+        pet.whack(now_ms(), bounds);
+    }
+    flush(&app, id);
 }
 
 /// 오른쪽 클릭 — **펭귄 옆에서** 창을 연다(타이머·설정). 왼쪽 클릭은 빠따가 가져갔다.
 /// 메뉴바 밑에서 열면 눌렀는데 화면 반대편에서 뜨는 셈이라 연결이 끊긴다.
 #[tauri::command]
-pub fn pet_open_popover(state: State<'_, PetState>, app: AppHandle) {
-    let snapshot = state.0.lock().unwrap().snapshot();
-    let at = popover_anchor(&app, snapshot.x, snapshot.y);
+pub fn pet_open_popover(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
+    let Some(id) = caller_pet(&window) else { return };
+    let Some(snapshot) = state.pets.lock().unwrap().get(id).map(|p| p.snapshot()) else {
+        return;
+    };
+    // 팝오버가 열리기 **전에** 대상을 남긴다 — 팝오버는 자기가 어느 펭귄 때문에
+    // 열렸는지 알 방법이 없고, "이 펭귄 삭제"는 그 답을 필요로 한다 (KTD6).
+    *state.focused.lock().unwrap() = Some(id);
+    let at = popover_anchor(&app, id, snapshot.x, snapshot.y);
     crate::toggle_popover_at(&app, at);
 }
 
 /// 현재 이동 영역. 모니터를 못 읽으면 납작한 경계를 쓴다 (보수적으로 동작한다).
-fn bounds_or_flat(app: &AppHandle) -> Bounds {
-    pet_window(app)
+fn bounds_or_flat(app: &AppHandle, id: PetId) -> Bounds {
+    pet_window(app, id)
         .and_then(|w| current_bounds(&w))
         .unwrap_or(Bounds {
             left: 0.0,
@@ -289,9 +512,9 @@ fn bounds_or_flat(app: &AppHandle) -> Bounds {
 
 /// 펭귄 위치에서 팝오버를 놓을 자리를 구한다. 모니터를 못 읽으면 `None`을
 /// 돌려 트레이 밑(기존 동작)으로 떨어진다.
-fn popover_anchor(app: &AppHandle, pet_x: f64, pet_y: f64) -> Option<(f64, f64)> {
+fn popover_anchor(app: &AppHandle, id: PetId, pet_x: f64, pet_y: f64) -> Option<(f64, f64)> {
     let popover = app.get_webview_window("main")?;
-    let monitor = pet_window(app)?.current_monitor().ok().flatten()?;
+    let monitor = pet_window(app, id)?.current_monitor().ok().flatten()?;
     let scale = monitor.scale_factor();
     let area = monitor.work_area();
     // 팝오버 크기는 **팝오버가 있는 화면**의 배율로 나눠야 한다. 펭귄 쪽 배율을
@@ -348,17 +571,23 @@ pub fn popover_position_near(
 
 /// 드래그 시작 — 자율 이동을 멈춘다 (R6).
 #[tauri::command]
-pub fn pet_drag_start(state: State<'_, PetState>, app: AppHandle) {
-    state.0.lock().unwrap().drag_start(now_ms());
-    flush(&app);
+pub fn pet_drag_start(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
+    let Some(id) = caller_pet(&window) else { return };
+    if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
+        pet.drag_start(now_ms());
+    }
+    flush(&app, id);
 }
 
 /// 드래그 이동량(논리 px). 창 위치의 소유자는 Rust 하나뿐이라 웹뷰는
 /// 이동량만 보내고 직접 `setPosition`을 부르지 않는다 (KTD4).
 #[tauri::command]
-pub fn pet_drag_by(dx: f64, dy: f64, state: State<'_, PetState>, app: AppHandle) {
-    state.0.lock().unwrap().drag_by(dx, dy);
-    flush(&app);
+pub fn pet_drag_by(dx: f64, dy: f64, window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
+    let Some(id) = caller_pet(&window) else { return };
+    if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
+        pet.drag_by(dx, dy);
+    }
+    flush(&app, id);
 }
 
 /// 드래그 놓기 (R6, R12). 웹뷰가 잰 놓는 순간의 속도(논리 px/초)를 그대로 넘긴다 —
@@ -367,10 +596,13 @@ pub fn pet_drag_by(dx: f64, dy: f64, state: State<'_, PetState>, app: AppHandle)
 /// 경계를 함께 넘기는 이유는 코어의 **속도 상한이 세계 폭에 비례**하기 때문이다.
 /// `pet_whack`과 같은 방식이다.
 #[tauri::command]
-pub fn pet_drag_end(vx: f64, vy: f64, state: State<'_, PetState>, app: AppHandle) {
-    let bounds = bounds_or_flat(&app);
-    state.0.lock().unwrap().drag_end(now_ms(), vx, vy, bounds);
-    flush(&app);
+pub fn pet_drag_end(vx: f64, vy: f64, window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
+    let Some(id) = caller_pet(&window) else { return };
+    let bounds = bounds_or_flat(&app, id);
+    if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
+        pet.drag_end(now_ms(), vx, vy, bounds);
+    }
+    flush(&app, id);
 }
 
 /// 펭귄을 켜고 끈다 (R8). 끄면 창을 숨기지 않고 닫는다 — 틱 스레드도
@@ -379,18 +611,105 @@ pub fn pet_drag_end(vx: f64, vy: f64, state: State<'_, PetState>, app: AppHandle
 #[tauri::command]
 pub fn pet_set_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
     if enabled {
-        create_pet_window(&app).map(|_| ()).map_err(|e| e.to_string())
+        spawn_saved_pets(&app).map_err(|e| e.to_string())
     } else {
-        close_pet_window(&app);
+        close_all_pet_windows(&app);
+        app.state::<PetState>().pets.lock().unwrap().clear();
         Ok(())
     }
 }
 
 /// 웹뷰가 처음 뜰 때 현재 상태를 한 번 받아 간다 (첫 틱을 기다리지 않게).
 #[tauri::command]
-pub fn pet_get_state(state: State<'_, PetState>) -> Snapshot {
-    let snapshot = state.0.lock().unwrap().snapshot();
+pub fn pet_get_state(window: WebviewWindow, state: State<'_, PetState>) -> Option<Snapshot> {
+    let id = caller_pet(&window)?;
+    let snapshot = state.pets.lock().unwrap().get(id).map(|p| p.snapshot());
     snapshot
+}
+
+/// 팝오버가 버튼 상태를 정하는 데 쓰는 요약 (마릿수·상한·우클릭 대상).
+#[tauri::command]
+pub fn pet_summary(state: State<'_, PetState>) -> PetSummary {
+    let count = state.pets.lock().unwrap().len();
+    let focused = *state.focused.lock().unwrap();
+    PetSummary {
+        count,
+        max: MAX_PETS,
+        focused,
+    }
+}
+
+/// 펭귄 한 마리를 **부른 펭귄 옆에** 추가한다.
+///
+/// 전부 같은 자리에서 시작하면 겹쳐서 한 마리로 보이고, 무작위로 흩뿌리면 어디서
+/// 생겼는지 모른다. "얘가 하나 더 불렀다"가 눈에 보이는 편이 낫다 (KTD5).
+#[tauri::command]
+pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<PetId, String> {
+    let origin = target_pet(&window, &state);
+    let bounds = origin
+        .map(|id| bounds_or_flat(&app, id))
+        .unwrap_or_else(|| bounds_or_flat_any(&app));
+    let start_x = origin
+        .and_then(|id| state.pets.lock().unwrap().get(id).map(|p| p.snapshot().x))
+        .map(|x| next_to(x, bounds))
+        .unwrap_or(bounds.left);
+
+    let now = now_ms();
+    let id = state
+        .pets
+        .lock()
+        .unwrap()
+        .add(now, now, bounds, start_x)
+        .ok_or_else(|| format!("펭귄은 {MAX_PETS}마리까지예요"))?;
+
+    let at = window_origin(start_x, bounds.floor_y);
+    if let Err(err) = create_pet_window(&app, id, at) {
+        // 창을 못 만들면 상태에만 남은 유령이 된다 — 되돌린다
+        state.pets.lock().unwrap().forget(id);
+        return Err(err.to_string());
+    }
+    save_pet_count(&app, state.pets.lock().unwrap().len());
+    Ok(id)
+}
+
+/// 우클릭한 펭귄을 삭제한다. **마지막 한 마리는 거부한다** (PRD §5.5).
+#[tauri::command]
+pub fn pet_remove(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let id = target_pet(&window, &state).ok_or("어느 펭귄인지 모르겠어요")?;
+    if !state.pets.lock().unwrap().remove(id) {
+        return Err("마지막 한 마리는 지울 수 없어요. 전부 없애려면 펭귄을 꺼 주세요".into());
+    }
+    close_pet_window(&app, id);
+    if *state.focused.lock().unwrap() == Some(id) {
+        *state.focused.lock().unwrap() = None;
+    }
+    save_pet_count(&app, state.pets.lock().unwrap().len());
+    Ok(())
+}
+
+/// 부른 펭귄 옆자리. 오른쪽을 우선하되 넘치면 왼쪽으로 접는다.
+fn next_to(x: f64, bounds: Bounds) -> f64 {
+    let gap = PET_SIZE * 0.75;
+    let right = x + gap;
+    let candidate = if right <= bounds.right { right } else { x - gap };
+    candidate.clamp(bounds.left, bounds.right.max(bounds.left))
+}
+
+/// 아무 펫 창이나 기준으로 한 경계. 첫 마리를 만들 때처럼 기준 삼을 펭귄이
+/// 없을 때 쓴다.
+fn bounds_or_flat_any(app: &AppHandle) -> Bounds {
+    any_pet_window(app)
+        .and_then(|w| current_bounds(&w))
+        .or_else(|| {
+            app.get_webview_window("main")
+                .and_then(|w| current_bounds(&w))
+        })
+        .unwrap_or(Bounds {
+            left: 0.0,
+            right: 0.0,
+            top: 0.0,
+            floor_y: 0.0,
+        })
 }
 
 #[cfg(test)]
@@ -427,6 +746,68 @@ mod tests {
                 "`{name}`이 lib.rs의 invoke_handler 목록에 없다"
             );
         }
+    }
+
+    #[test]
+    fn 방금_어긋난_것은_정리하지_않는다() {
+        // 펭귄 추가는 (1) 상태에 넣고 (2) 창을 만드는 두 단계다. 그 사이를 보고
+        // 바로 지우면 **방금 부른 펭귄이 조용히 사라진다** — 추가가 아무 일도
+        // 안 하는 것처럼 보인다. 실제로 한 번 이렇게 깨졌다.
+        let mut seen = HashMap::new();
+        seen.insert(2, 10_000);
+        assert!(due_for_cleanup(&seen, 10_050).is_empty(), "50ms만에 지우면 안 된다");
+        assert!(due_for_cleanup(&seen, 10_999).is_empty());
+    }
+
+    #[test]
+    fn 유예를_다_쓰면_정리한다() {
+        let mut seen = HashMap::new();
+        seen.insert(2, 10_000);
+        assert_eq!(due_for_cleanup(&seen, 11_000), vec![2]);
+        assert_eq!(due_for_cleanup(&seen, 30_000), vec![2]);
+    }
+
+    #[test]
+    fn 시계가_뒤로_가도_정리가_앞당겨지지_않는다() {
+        let mut seen = HashMap::new();
+        seen.insert(2, 10_000);
+        assert!(due_for_cleanup(&seen, 9_000).is_empty(), "음수 대신 0으로 본다");
+    }
+
+    #[test]
+    fn 라벨에서_펭귄_id를_뽑는다() {
+        assert_eq!(pet_label(3), "pet-3");
+        assert_eq!(pet_id_from_label("pet-3"), Some(3));
+        assert_eq!(pet_id_from_label(&pet_label(42)), Some(42));
+    }
+
+    #[test]
+    fn 펫이_아닌_라벨은_id가_없다() {
+        // 커맨드가 "누가 불렀는가"를 라벨로 정하므로, 여기서 새면 팝오버가
+        // 남의 펭귄을 조작하게 된다 (KTD1)
+        for label in ["main", "pet", "pet-", "pet-x", "pets-1", "", "PET-1"] {
+            assert_eq!(pet_id_from_label(label), None, "`{label}`은 펫 창이 아니다");
+        }
+    }
+
+    #[test]
+    fn 옆자리는_영역_안에_들어온다() {
+        let b = Bounds { left: 0.0, right: 1_000.0, top: 0.0, floor_y: 800.0 };
+        // 오른쪽에 자리가 있으면 오른쪽
+        assert!(next_to(100.0, b) > 100.0);
+        // 오른쪽 끝이면 왼쪽으로 접는다
+        assert!(next_to(b.right, b) < b.right);
+        // 어느 쪽이든 영역 밖으로 나가지 않는다
+        for x in [b.left, 500.0, b.right] {
+            let n = next_to(x, b);
+            assert!(n >= b.left && n <= b.right, "{n}이 영역을 벗어났다");
+        }
+    }
+
+    #[test]
+    fn 영역이_없어도_옆자리_계산이_패닉하지_않는다() {
+        let flat = Bounds { left: 0.0, right: 0.0, top: 0.0, floor_y: 0.0 };
+        assert_eq!(next_to(0.0, flat), 0.0);
     }
 
     use crate::pet::{IdleKind, SassyKind, Vertical};

@@ -15,7 +15,7 @@ use tauri::{
 };
 use tauri_plugin_store::StoreExt;
 
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, MAX_PETS};
+use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Screen, Snapshot, Vertical, World, MAX_PETS};
 
 /// 지금(epoch ms). 코어(`pet.rs`)는 시간을 주입받는 순수 모듈이라 시계를 갖지 않는다 —
 /// 시계를 읽는 곳은 브릿지 하나뿐이어야 테스트가 시간을 마음대로 돌릴 수 있다.
@@ -150,7 +150,8 @@ fn save_pet_count(app: &AppHandle, count: usize) {
 pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
     let wanted = pet_count(app);
     let now = now_ms();
-    let bounds = bounds_or_flat_any(app);
+    let world = world_or_flat_any(app);
+    let bounds = world.first().bounds;
     while app.state::<PetState>().pets.lock().unwrap().len() < wanted {
         // 첫 마리는 왼쪽 끝, 그다음부터는 앞 마리 옆에 세운다 — 전부 같은 자리에
         // 겹쳐 뜨면 한 마리로 보인다
@@ -167,7 +168,7 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
             .pets
             .lock()
             .unwrap()
-            .add(now, now, bounds, start_x)
+            .add(now, now, &world, start_x)
         else {
             break;
         };
@@ -199,8 +200,9 @@ pub fn pet_id_from_label(label: &str) -> Option<PetId> {
     label.strip_prefix(PET_LABEL_PREFIX)?.parse().ok()
 }
 
-/// 펭귄 자체가 차지하는 한 변 (논리 px). 이동 경계는 이 값으로 계산한다.
-pub const PET_SIZE: f64 = 140.0;
+/// 펭귄 자체가 차지하는 한 변 (논리 px). **코어가 소유한다** — 어느 화면 위에
+/// 서 있는지를 정하는 기준점이 이 값에서 나오기 때문이다. 여기서는 재노출만 한다.
+pub use crate::pet::PET_SIZE;
 /// 펭귄 좌우로 비워 두는 여백 — 방망이가 휘둘러질 자리.
 pub const PET_PAD_X: f64 = 52.0;
 /// 펭귄 위로 비워 두는 여백 — 말풍선이 뜰 자리.
@@ -326,6 +328,12 @@ fn current_bounds(window: &WebviewWindow) -> Option<Bounds> {
     ))
 }
 
+/// 지금의 세계. **아직 화면 하나짜리다** — 연결된 화면 전부를 담는 것은
+/// 다음 항목(모니터 경계 넘기)의 일이고, 여기서는 코어의 자리만 바꿔 둔다.
+fn current_world(window: &WebviewWindow) -> Option<World> {
+    current_bounds(window).map(World::single)
+}
+
 /// 위치·동작 틱. 트레이(`set_title`)와 달리 `set_position`은 어느 스레드에서
 /// 불러도 안전하다 — tauri-runtime-wry가 메인 스레드가 아니면 이벤트 루프로
 /// 넘기고, tao의 macOS 구현이 다시 메인 스레드로 디스패치한다 (KTD5).
@@ -334,7 +342,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
     std::thread::spawn(move || {
         // 경계와 겉모습은 **마리별**이다. 두 펭귄이 다른 모니터에 있을 수 있고,
         // 한 마리가 자는 동안 다른 마리는 걷는다.
-        let mut bounds: HashMap<PetId, (Bounds, u64)> = HashMap::new();
+        let mut worlds: HashMap<PetId, (World, u64)> = HashMap::new();
         let mut last_look: HashMap<PetId, Look> = HashMap::new();
         // 상태와 창이 어긋난 것을 **처음 본** 시각. 곧바로 정리하지 않는 이유는
         // 추가·삭제가 두 단계라 정상적으로도 잠깐 어긋나기 때문이다.
@@ -377,7 +385,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     app.state::<PetState>().pets.lock().unwrap().forget(id);
                 }
                 mismatch_since.remove(&id);
-                bounds.remove(&id);
+                worlds.remove(&id);
                 last_look.remove(&id);
             }
 
@@ -400,15 +408,15 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 // current_monitor()는 이벤트 루프를 왕복하는 블로킹 호출이라 20Hz로
                 // 부르면 상주 비용이 아깝다. 모니터·해상도는 자주 바뀌지 않으므로
                 // 2초에 한 번만 다시 읽는다 — 마리가 늘수록 이 캐시가 더 중요해진다.
-                let stale = bounds
+                let stale = worlds
                     .get(&id)
                     .is_none_or(|(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
                 if stale {
-                    if let Some(area) = current_bounds(&window) {
-                        bounds.insert(id, (area, now));
+                    if let Some(world) = current_world(&window) {
+                        worlds.insert(id, (world, now));
                     }
                 }
-                let Some((area, _)) = bounds.get(&id).copied() else {
+                let Some((world, _)) = worlds.get(&id) else {
                     continue;
                 };
 
@@ -418,7 +426,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     let Some(pet) = pets.get_mut(id) else {
                         continue;
                     };
-                    pet.step(now, area)
+                    pet.step(now, world)
                 };
 
                 let moves = snapshot.behavior.moves_window();
@@ -484,9 +492,9 @@ fn target_pet(window: &WebviewWindow, state: &PetState) -> Option<PetId> {
 #[tauri::command]
 pub fn pet_whack(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
     let Some(id) = caller_pet(&window) else { return };
-    let bounds = bounds_or_flat(&app, id);
+    let world = world_or_flat(&app, id);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
-        pet.whack(now_ms(), bounds);
+        pet.whack(now_ms(), &world);
     }
     flush(&app, id);
 }
@@ -504,6 +512,16 @@ pub fn pet_open_popover(window: WebviewWindow, state: State<'_, PetState>, app: 
     *state.focused.lock().unwrap() = Some(id);
     let at = popover_anchor(&app, id, snapshot.x, snapshot.y);
     crate::toggle_popover_at(&app, at);
+}
+
+/// 현재 세계. 모니터를 못 읽으면 납작한 경계 하나짜리를 쓴다.
+fn world_or_flat(app: &AppHandle, id: PetId) -> World {
+    World::single(bounds_or_flat(app, id))
+}
+
+/// 아무 펭귄이나 기준으로 본 세계.
+fn world_or_flat_any(app: &AppHandle) -> World {
+    World::single(bounds_or_flat_any(app))
 }
 
 /// 현재 이동 영역. 모니터를 못 읽으면 납작한 경계를 쓴다 (보수적으로 동작한다).
@@ -606,9 +624,9 @@ pub fn pet_drag_by(dx: f64, dy: f64, window: WebviewWindow, state: State<'_, Pet
 #[tauri::command]
 pub fn pet_drag_end(vx: f64, vy: f64, window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
     let Some(id) = caller_pet(&window) else { return };
-    let bounds = bounds_or_flat(&app, id);
+    let world = world_or_flat(&app, id);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
-        pet.drag_end(now_ms(), vx, vy, bounds);
+        pet.drag_end(now_ms(), vx, vy, &world);
     }
     flush(&app, id);
 }
@@ -654,9 +672,10 @@ pub fn pet_summary(state: State<'_, PetState>) -> PetSummary {
 #[tauri::command]
 pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<PetId, String> {
     let origin = target_pet(&window, &state);
-    let bounds = origin
-        .map(|id| bounds_or_flat(&app, id))
-        .unwrap_or_else(|| bounds_or_flat_any(&app));
+    let world = origin
+        .map(|id| world_or_flat(&app, id))
+        .unwrap_or_else(|| world_or_flat_any(&app));
+    let bounds = world.first().bounds;
     let start_x = origin
         .and_then(|id| state.pets.lock().unwrap().get(id).map(|p| p.snapshot().x))
         .map(|x| next_to(x, bounds))
@@ -667,7 +686,7 @@ pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle
         .pets
         .lock()
         .unwrap()
-        .add(now, now, bounds, start_x)
+        .add(now, now, &world, start_x)
         .ok_or_else(|| format!("펭귄은 {MAX_PETS}마리까지예요"))?;
 
     let at = window_origin(start_x, bounds.floor_y);

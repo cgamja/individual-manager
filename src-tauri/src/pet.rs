@@ -6,6 +6,13 @@
 
 use serde::Serialize;
 
+/// 펭귄 자체가 차지하는 한 변 (논리 px).
+///
+/// 브릿지가 아니라 **코어가 소유한다** — 어느 화면 위에 서 있는지를 정하는
+/// 기준점이 이 값에서 나오기 때문이다. 남의 모듈에서 가져와 자기 판정에 쓰면
+/// 그 모듈을 고칠 때 판정이 조용히 따라 바뀐다.
+pub const PET_SIZE: f64 = 140.0;
+
 /// 걷는 속도 (논리 px/초).
 const WALK_SPEED: f64 = 42.0;
 /// 헤엄치는 속도 (논리 px/초). 걷기보다 빨라야 "떠서 이동한다"는 느낌이 난다.
@@ -232,6 +239,96 @@ pub struct Bounds {
     pub floor_y: f64,
 }
 
+/// 화면 식별자. 브릿지가 화면의 기하(위치·크기)에서 만든다 — macOS의
+/// `Monitor::name()`은 모델 번호라 같은 모델 두 대를 구분하지 못하고, 고유값인
+/// `CGDirectDisplayID`는 Tauri가 노출하지 않는다 (플랜 KTD2).
+pub type ScreenId = u64;
+
+/// 화면 하나. 배치가 바뀌면 `id`도 바뀌는데, 그건 버그가 아니라 "배치가 바뀌었다"는
+/// 신호로 쓴다.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Screen {
+    pub id: ScreenId,
+    pub bounds: Bounds,
+}
+
+impl Screen {
+    /// 기준점(펭귄 발밑 중앙)이 이 화면 위에 있다고 볼 범위 — `(x0, x1, y0, y1)`.
+    ///
+    /// [`Bounds`]는 **펭귄 좌상단**의 범위라 기준점 기준으로는 그만큼 밀려 있다.
+    /// 창 크기를 이미 빼 놓은 값이므로, 화면 둘이 실제로 맞닿아 있어도 이 범위
+    /// 사이에는 **창 하나만큼 빈틈이 남는다.** 화면이 하나뿐인 지금은 드러나지
+    /// 않지만, 경계를 넘나들게 만들 때는 그 빈틈을 메워야 한다.
+    fn anchor_area(self) -> (f64, f64, f64, f64) {
+        (
+            self.bounds.left + PET_SIZE / 2.0,
+            self.bounds.right + PET_SIZE / 2.0,
+            self.bounds.top + PET_SIZE,
+            self.bounds.floor_y + PET_SIZE,
+        )
+    }
+
+    /// 기준점에서 이 화면까지의 거리. 화면 위에 있으면 0이다.
+    fn anchor_distance(self, ax: f64, ay: f64) -> f64 {
+        let (x0, x1, y0, y1) = self.anchor_area();
+        let dx = (x0 - ax).max(ax - x1).max(0.0);
+        let dy = (y0 - ay).max(ay - y1).max(0.0);
+        (dx * dx + dy * dy).sqrt()
+    }
+}
+
+/// 펭귄이 노는 세계 — 연결된 화면 전부 (PRD §5.2).
+///
+/// **불변식: 비어 있지 않다.** 화면이 하나도 없는 세계에는 펭귄이 있을 자리가 없고,
+/// 그 상태를 표현할 수 있게 두면 모든 판정에 `Option`이 번진다. 그래서 생성자에서
+/// 한 번만 막는다.
+#[derive(Clone, PartialEq, Debug)]
+pub struct World {
+    screens: Vec<Screen>,
+}
+
+impl World {
+    /// 화면 목록에서 세계를 만든다. 비어 있으면 `None`.
+    pub fn new(screens: Vec<Screen>) -> Option<Self> {
+        todo!("U1")
+    }
+
+    /// 화면 하나짜리 세계. 모니터를 못 읽었을 때와 테스트에서 쓴다.
+    pub fn single(bounds: Bounds) -> Self {
+        todo!("U1")
+    }
+
+    pub fn screens(&self) -> &[Screen] {
+        todo!("U1")
+    }
+
+    /// 목록의 첫 화면. 비어 있지 않다는 불변식 덕에 항상 있다.
+    pub fn first(&self) -> Screen {
+        todo!("U1")
+    }
+
+    /// 기준점이 놓인 화면. 어느 화면에도 없으면 `None`.
+    pub fn screen_at(&self, ax: f64, ay: f64) -> Option<Screen> {
+        todo!("U1")
+    }
+
+    /// 기준점에서 가장 가까운 화면. 세계가 비어 있지 않으므로 항상 있다.
+    pub fn nearest(&self, ax: f64, ay: f64) -> Screen {
+        todo!("U1")
+    }
+
+    /// 펭귄 x좌표가 놓일 화면. 새 펭귄을 어디에 만들지 정할 때 쓴다.
+    pub fn screen_for_x(&self, x: f64) -> Screen {
+        todo!("U1")
+    }
+
+    /// 세계 전체의 가로 폭 — 던지기 상한이 여기에 비례한다 (KTD7).
+    /// 화면이 하나면 그 화면의 이동 폭과 같다.
+    pub fn width(&self) -> f64 {
+        todo!("U1")
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug, Serialize)]
 pub struct Snapshot {
     pub x: f64,
@@ -337,7 +434,7 @@ impl Pets {
         &mut self,
         seed_base: u64,
         now_ms: u64,
-        bounds: Bounds,
+        world: &World,
         start_x: f64,
     ) -> Option<PetId> {
         if self.pets.len() >= MAX_PETS {
@@ -347,7 +444,7 @@ impl Pets {
         self.next_id = id;
         let seed = seed_base ^ u64::from(id).wrapping_mul(0x9E37_79B9_7F4A_7C15);
         self.pets
-            .insert(id, Pet::new_at(seed, now_ms, bounds, start_x));
+            .insert(id, Pet::new_at(seed, now_ms, world, start_x));
         Some(id)
     }
 
@@ -421,13 +518,15 @@ fn landing_of(impact_vy: f64) -> Landing {
 
 impl Pet {
     /// 시드는 0이면 안 된다 (xorshift가 0에 갇힌다) — 0이 들어오면 대체한다.
-    pub fn new(seed: u64, start_ms: u64, bounds: Bounds) -> Self {
-        Pet::new_at(seed, start_ms, bounds, bounds.left)
+    pub fn new(seed: u64, start_ms: u64, world: &World) -> Self {
+        let start_x = world.first().bounds.left;
+        Pet::new_at(seed, start_ms, world, start_x)
     }
 
     /// 시작 x를 지정해 만든다. 새로 부른 펭귄이 부른 펭귄 옆에서 나타나게 하려고
     /// 쓴다 — 전부 같은 자리에서 시작하면 겹쳐서 한 마리로 보인다.
-    pub fn new_at(seed: u64, start_ms: u64, bounds: Bounds, start_x: f64) -> Self {
+    pub fn new_at(seed: u64, start_ms: u64, world: &World, start_x: f64) -> Self {
+        let bounds = world.screen_for_x(start_x).bounds;
         let x = start_x.clamp(bounds.left, bounds.right.max(bounds.left));
         let mut pet = Pet {
             x,
@@ -490,8 +589,29 @@ impl Pet {
         self.behavior
     }
 
+    /// 판정의 기준점 — **발밑 중앙**이다 (PRD §5.2).
+    ///
+    /// 창은 두 화면에 걸쳐도 되지만 규칙은 이 점 하나가 정한다. 좌상단을 쓰면
+    /// 화면 오른쪽 끝에서 실제로 서 있는 화면과 판정 화면이 어긋난다.
+    fn anchor(&self) -> (f64, f64) {
+        (self.x + PET_SIZE / 2.0, self.y + PET_SIZE)
+    }
+
+    /// 지금 발을 딛고 있는 화면의 이동 영역. 어느 화면에도 없으면 가장 가까운
+    /// 화면을 쓴다 — 좌표가 잠깐 어긋나도 판정이 멈추지 않아야 한다.
+    fn bounds_in(&self, world: &World) -> Bounds {
+        let (ax, ay) = self.anchor();
+        world
+            .screen_at(ax, ay)
+            .unwrap_or_else(|| world.nearest(ax, ay))
+            .bounds
+    }
+
     /// 시간을 진행시키고 현재 상태를 돌려준다. 브릿지가 매 틱 호출한다.
-    pub fn step(&mut self, now_ms: u64, bounds: Bounds) -> Snapshot {
+    pub fn step(&mut self, now_ms: u64, world: &World) -> Snapshot {
+        // 이번 틱의 판정은 **지금 발을 딛고 있는 화면**을 따른다. 이동한 뒤 화면이
+        // 바뀌는 경우(경계 넘기)는 아직 다루지 않는다 — 화면이 하나뿐이라 같은 값이다.
+        let bounds = self.bounds_in(world);
         let elapsed = now_ms.saturating_sub(self.last_step_ms).min(MAX_STEP_MS);
         self.last_step_ms = now_ms;
         let dt = elapsed as f64 / 1000.0;
@@ -655,7 +775,7 @@ impl Pet {
     /// 빠따 — 클릭 한 번에 펭귄이 방망이를 한 번 휘두른다. **맞는 쪽이 아니라
     /// 휘두르는 쪽이다.** 제자리에서 휘두르므로 날아가지 않는다 — 날려 보내는 건
     /// 드래그로 던졌을 때(`drag_end`)뿐이다. 연타하면 계속 휘두른다.
-    pub fn whack(&mut self, now_ms: u64, _bounds: Bounds) {
+    pub fn whack(&mut self, now_ms: u64, _world: &World) {
         self.last_stimulus_ms = now_ms;
         self.whack_seq += 1;
         // 제자리에서 맞는다 — 속도를 주지 않는다
@@ -713,11 +833,11 @@ impl Pet {
     /// 드래그 놓기 (R6, R12). 놓는 순간의 속도(논리 px/초)를 받아, 세게 던졌으면
     /// 그 속도로 포물선을 그리고 살짝 놓았으면 제자리에서 떨어진다.
     ///
-    /// 경계를 받는 이유는 **속도 상한이 이동 가능 폭에 비례**하기 때문이다 — 좁은
+    /// 세계를 받는 이유는 **속도 상한이 세계의 가로 폭에 비례**하기 때문이다 — 좁은
     /// 화면에서 눈 깜짝할 새 가로지르지 않게, 넓어지면 같은 손짓이 더 멀리 가게.
-    pub fn drag_end(&mut self, now_ms: u64, vx: f64, vy: f64, bounds: Bounds) {
+    pub fn drag_end(&mut self, now_ms: u64, vx: f64, vy: f64, world: &World) {
         self.last_stimulus_ms = now_ms;
-        let (vx, vy) = clamp_throw(vx, vy, bounds.right - bounds.left);
+        let (vx, vy) = clamp_throw(vx, vy, world.width());
         if (vx * vx + vy * vy).sqrt() >= THROW_MIN_SPEED {
             self.vx = vx;
             self.vy = vy;
@@ -852,16 +972,21 @@ mod tests {
         floor_y: 800.0,
     };
 
+    /// 화면 하나짜리 세계. 대부분의 테스트는 지금까지처럼 한 화면만 본다.
+    fn world() -> World {
+        World::single(BOUNDS)
+    }
+
     fn pet() -> Pet {
-        Pet::new(42, 0, BOUNDS)
+        Pet::new(42, 0, &world())
     }
 
     /// `from`부터 `to`까지 `dt` 간격으로 진행시키며 스냅샷을 모은다.
-    fn drive(pet: &mut Pet, from: u64, to: u64, dt: u64, bounds: Bounds) -> Vec<Snapshot> {
+    fn drive(pet: &mut Pet, from: u64, to: u64, dt: u64, world: &World) -> Vec<Snapshot> {
         let mut out = Vec::new();
         let mut t = from;
         while t <= to {
-            out.push(pet.step(t, bounds));
+            out.push(pet.step(t, world));
             t += dt;
         }
         out
@@ -874,60 +999,60 @@ mod tests {
         assert_eq!(before.behavior, Behavior::Walk);
         assert_eq!(before.facing, Facing::Right);
 
-        let after = p.step(1_000, BOUNDS);
+        let after = p.step(1_000, &world());
         // 1초에 WALK_SPEED만큼 — MAX_STEP_MS(250ms)로 잘리므로 그 몫만 이동한다
         assert!(after.x > before.x, "오른쪽을 보면 x가 커져야 한다");
     }
 
     #[test]
     fn 왼쪽_경계에_닿으면_방향을_전환하고_경계를_넘지_않는다() {
-        let mut p = Pet::new(7, 0, BOUNDS);
+        let mut p = Pet::new(7, 0, &world());
         p.facing = Facing::Left;
         p.x = 5.0;
 
-        let s = p.step(200, BOUNDS);
+        let s = p.step(200, &world());
         assert_eq!(s.x, BOUNDS.left, "경계를 넘어가면 안 된다");
         assert_eq!(s.behavior, Behavior::Turn);
     }
 
     #[test]
     fn 오른쪽_경계에_닿으면_방향을_전환하고_경계를_넘지_않는다() {
-        let mut p = Pet::new(7, 0, BOUNDS);
+        let mut p = Pet::new(7, 0, &world());
         p.x = BOUNDS.right - 3.0;
 
-        let s = p.step(200, BOUNDS);
+        let s = p.step(200, &world());
         assert_eq!(s.x, BOUNDS.right);
         assert_eq!(s.behavior, Behavior::Turn);
     }
 
     #[test]
     fn 방향_전환이_끝나면_반대_방향으로_걷는다() {
-        let mut p = Pet::new(7, 0, BOUNDS);
+        let mut p = Pet::new(7, 0, &world());
         p.x = BOUNDS.right - 3.0;
-        p.step(200, BOUNDS);
+        p.step(200, &world());
         assert_eq!(p.snapshot().facing, Facing::Right);
 
-        let s = p.step(200 + TURN_MS + 10, BOUNDS);
+        let s = p.step(200 + TURN_MS + 10, &world());
         assert_eq!(s.facing, Facing::Left, "전환이 끝나면 방향이 뒤집힌다");
         assert_eq!(s.behavior, Behavior::Walk);
     }
 
     #[test]
     fn 같은_시드는_같은_동작_시퀀스를_낳는다() {
-        let mut a = Pet::new(2024, 0, BOUNDS);
-        let mut b = Pet::new(2024, 0, BOUNDS);
-        let seq_a: Vec<Behavior> = drive(&mut a, 100, 60_000, 100, BOUNDS)
+        let mut a = Pet::new(2024, 0, &world());
+        let mut b = Pet::new(2024, 0, &world());
+        let seq_a: Vec<Behavior> = drive(&mut a, 100, 60_000, 100, &world())
             .iter()
             .map(|s| s.behavior)
             .collect();
-        let seq_b: Vec<Behavior> = drive(&mut b, 100, 60_000, 100, BOUNDS)
+        let seq_b: Vec<Behavior> = drive(&mut b, 100, 60_000, 100, &world())
             .iter()
             .map(|s| s.behavior)
             .collect();
         assert_eq!(seq_a, seq_b);
         // 시드가 다르면 시퀀스도 달라야 난수가 실제로 쓰이는 것이다
-        let mut c = Pet::new(999, 0, BOUNDS);
-        let seq_c: Vec<Behavior> = drive(&mut c, 100, 60_000, 100, BOUNDS)
+        let mut c = Pet::new(999, 0, &world());
+        let seq_c: Vec<Behavior> = drive(&mut c, 100, 60_000, 100, &world())
             .iter()
             .map(|s| s.behavior)
             .collect();
@@ -938,7 +1063,7 @@ mod tests {
     fn 여러_종류의_동작이_나타난다() {
         let mut p = pet();
         let kinds: std::collections::HashSet<Behavior> =
-            drive(&mut p, 100, 80_000, 100, BOUNDS).iter().map(|s| s.behavior).collect();
+            drive(&mut p, 100, 80_000, 100, &world()).iter().map(|s| s.behavior).collect();
         assert!(
             kinds.len() >= 3,
             "80초 동안 최소 3가지 동작이 나와야 한다 (실제: {kinds:?})"
@@ -948,7 +1073,7 @@ mod tests {
     #[test]
     fn 유휴_동작은_연속으로_같은_종류가_반복되지_않는다() {
         let mut p = pet();
-        let idles: Vec<IdleKind> = drive(&mut p, 100, 80_000, 100, BOUNDS)
+        let idles: Vec<IdleKind> = drive(&mut p, 100, 80_000, 100, &world())
             .iter()
             .filter_map(|s| match s.behavior {
                 Behavior::Idle { idle } => Some(idle),
@@ -970,7 +1095,7 @@ mod tests {
     #[test]
     fn 오랫동안_자극이_없으면_졸기로_전이한다() {
         let mut p = pet();
-        let seen = drive(&mut p, 100, SLEEP_AFTER_MS + 30_000, 250, BOUNDS);
+        let seen = drive(&mut p, 100, SLEEP_AFTER_MS + 30_000, 250, &world());
         assert!(
             seen.iter().any(|s| s.behavior == Behavior::Sleep),
             "자극 없이 오래 두면 졸기가 나와야 한다"
@@ -980,7 +1105,7 @@ mod tests {
     #[test]
     fn 졸기_전까지는_움직이는_시간이_멈춰_있는_시간보다_길다() {
         let mut p = pet();
-        let seen = drive(&mut p, 100, 120_000, 100, BOUNDS);
+        let seen = drive(&mut p, 100, 120_000, 100, &world());
         // 헤엄·낙하도 이동이다 — 이 테스트가 지키려는 것은 "가만히 있지 않는다"이지
         // "걷기라는 특정 동작을 많이 한다"가 아니다
         let moving = seen
@@ -1002,7 +1127,7 @@ mod tests {
         // 졸 때까지 진행시킨다
         let mut t = 100;
         while p.behavior() != Behavior::Sleep && t < SLEEP_AFTER_MS + 60_000 {
-            p.step(t, BOUNDS);
+            p.step(t, &world());
             t += 250;
         }
         assert_eq!(p.behavior(), Behavior::Sleep, "졸기에 도달해야 한다");
@@ -1010,7 +1135,7 @@ mod tests {
         let x = p.snapshot().x;
         for _ in 0..20 {
             t += 250;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
             if p.behavior() != Behavior::Sleep {
                 break;
             }
@@ -1025,13 +1150,13 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -300.0);
-        p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
+        p.step(1_050, &world());
+        p.drag_end(1_100, 0.0, 0.0, &world());
         assert_eq!(p.behavior(), Behavior::Falling);
         let mut t = 1_100;
         while p.behavior() == Behavior::Falling && t < 8_000 {
             t += 50;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         assert!(p.behavior().is_landing());
     }
@@ -1040,15 +1165,15 @@ mod tests {
     fn 휘둘러도_날아가지_않는다() {
         // 나는 건 드래그로 던졌을 때뿐이다 — 클릭으로 날아가면 안 된다
         let mut p = pet();
-        p.step(1_000, BOUNDS);
+        p.step(1_000, &world());
         let before = p.snapshot();
-        p.whack(1_000, BOUNDS);
+        p.whack(1_000, &world());
         assert_eq!(p.behavior(), Behavior::Swing, "클릭하면 바로 휘두른다");
 
         let mut t = 1_000;
         for _ in 0..30 {
             t += 50;
-            let s = p.step(t, BOUNDS);
+            let s = p.step(t, &world());
             assert_eq!(s.x, before.x, "옆으로 밀리면 안 된다");
             assert_eq!(s.y, before.y, "떠오르면 안 된다");
             assert_ne!(s.behavior, Behavior::Thrown, "던져진 상태가 되면 안 된다");
@@ -1058,10 +1183,10 @@ mod tests {
     #[test]
     fn 휘두르고_나면_약을_올린다() {
         let mut p = pet();
-        p.step(1_000, BOUNDS);
-        p.whack(1_000, BOUNDS);
+        p.step(1_000, &world());
+        p.whack(1_000, &world());
         assert_eq!(p.behavior(), Behavior::Swing, "클릭 즉시 휘두른다");
-        let after = p.step(1_000 + SWING_MS + 20, BOUNDS);
+        let after = p.step(1_000 + SWING_MS + 20, &world());
         assert!(
             matches!(after.behavior, Behavior::Sassy { .. }),
             "휘두르고 나면 약이 올라야 한다 (실제: {:?})",
@@ -1075,7 +1200,7 @@ mod tests {
         let mut p = pet();
         assert_eq!(p.snapshot().whack_seq, 0);
         for i in 1..=5u64 {
-            p.whack(1_000 + i * 100, BOUNDS);
+            p.whack(1_000 + i * 100, &world());
             assert_eq!(p.snapshot().whack_seq, i, "{i}번째 빠따가 안 세어졌다");
         }
     }
@@ -1086,28 +1211,28 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -300.0);
-        p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 600.0, -400.0, BOUNDS);
+        p.step(1_050, &world());
+        p.drag_end(1_100, 600.0, -400.0, &world());
         assert_eq!(p.behavior(), Behavior::Thrown);
 
         // 아직 공중일 때 때린다
         let mut t = 1_100;
         for _ in 0..4 {
             t += 50;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         assert_eq!(p.behavior(), Behavior::Thrown, "아직 나는 중이어야 한다");
         assert!(p.snapshot().air, "공중 상태여야 한다");
 
-        p.whack(t, BOUNDS);
+        p.whack(t, &world());
         let hit_y = p.snapshot().y;
         assert_eq!(p.behavior(), Behavior::Swing);
         t += 50;
-        let swinging = p.step(t, BOUNDS);
+        let swinging = p.step(t, &world());
         assert_eq!(swinging.y, hit_y, "휘두른다고 솟아오르거나 떨어지면 안 된다");
 
         // 움찔이 끝나면 마저 떨어진다
-        let after = p.step(t + SWING_MS + 20, BOUNDS);
+        let after = p.step(t + SWING_MS + 20, &world());
         assert_eq!(after.behavior, Behavior::Falling, "공중이었으니 마저 떨어진다");
     }
 
@@ -1116,11 +1241,11 @@ mod tests {
         let mut p = pet();
         let mut t = 100;
         while p.behavior() != Behavior::Sleep && t < SLEEP_AFTER_MS + 60_000 {
-            p.step(t, BOUNDS);
+            p.step(t, &world());
             t += 250;
         }
         assert_eq!(p.behavior(), Behavior::Sleep);
-        p.whack(t, BOUNDS);
+        p.whack(t, &world());
         assert_eq!(p.behavior(), Behavior::Swing, "클릭 즉시 휘두른다");
     }
 
@@ -1128,10 +1253,10 @@ mod tests {
     fn 휘두른다고_말하지는_않는다() {
         // 말은 클릭이 아니라 시간에 맞춰 나온다 — 때릴 때마다 떠들면 시끄럽다
         let mut p = pet();
-        p.whack(1_000, BOUNDS);
+        p.whack(1_000, &world());
         assert!(p.snapshot().speech.is_none(), "클릭으로 말이 나오면 안 된다");
-        p.whack(1_100, BOUNDS);
-        p.whack(1_200, BOUNDS);
+        p.whack(1_100, &world());
+        p.whack(1_200, &world());
         assert!(p.snapshot().speech.is_none(), "연타해도 마찬가지다");
     }
 
@@ -1161,9 +1286,9 @@ mod tests {
     fn 말풍선은_시간이_지나면_사라진다() {
         let mut p = pet();
         p.say(1_000);
-        assert!(p.step(1_500, BOUNDS).speech.is_some(), "금방 사라지면 못 읽는다");
+        assert!(p.step(1_500, &world()).speech.is_some(), "금방 사라지면 못 읽는다");
         assert!(
-            p.step(1_000 + SPEECH_MS + 100, BOUNDS).speech.is_none(),
+            p.step(1_000 + SPEECH_MS + 100, &world()).speech.is_none(),
             "계속 떠 있으면 안 된다"
         );
     }
@@ -1171,7 +1296,7 @@ mod tests {
     #[test]
     fn 가만_둬도_가끔_한마디_한다() {
         let mut p = pet();
-        let seen = drive(&mut p, 100, 120_000, 100, BOUNDS);
+        let seen = drive(&mut p, 100, 120_000, 100, &world());
         let spoke: std::collections::HashSet<u64> =
             seen.iter().filter_map(|s| s.speech.map(|v| v.seq)).collect();
         assert!(spoke.len() >= 2, "2분 동안 한마디도 안 하면 심심하다 (실제 {})", spoke.len());
@@ -1184,13 +1309,13 @@ mod tests {
         let before = p.snapshot();
 
         // 자율 이동이 없어야 한다
-        let s = p.step(2_000, BOUNDS);
+        let s = p.step(2_000, &world());
         assert_eq!(s.x, before.x);
         assert_eq!(s.behavior, Behavior::Dragged);
 
         // 드래그 이동량은 그대로 반영된다
         p.drag_by(100.0, -200.0);
-        let moved = p.step(2_100, BOUNDS);
+        let moved = p.step(2_100, &world());
         assert_eq!(moved.x, before.x + 100.0);
         assert_eq!(moved.y, before.y - 200.0);
     }
@@ -1201,10 +1326,10 @@ mod tests {
         p.drag_start(1_000);
         p.drag_by(5_000.0, -500.0);
         // 들고 있는 동안에는 clamp하지 않는다 — 사용자가 끄는 대로 간다
-        assert_eq!(p.step(1_100, BOUNDS).x, BOUNDS.left + 5_000.0);
+        assert_eq!(p.step(1_100, &world()).x, BOUNDS.left + 5_000.0);
 
-        p.drag_end(1_200, 0.0, 0.0, BOUNDS);
-        let s = p.step(1_300, BOUNDS);
+        p.drag_end(1_200, 0.0, 0.0, &world());
+        let s = p.step(1_300, &world());
         assert_eq!(s.x, BOUNDS.right, "놓으면 영역 안으로 정산된다");
     }
 
@@ -1213,14 +1338,14 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -400.0);
-        p.step(1_100, BOUNDS);
-        p.drag_end(1_200, 0.0, 0.0, BOUNDS);
+        p.step(1_100, &world());
+        p.drag_end(1_200, 0.0, 0.0, &world());
         assert_eq!(p.behavior(), Behavior::Falling);
 
         let mut t = 1_200;
         while p.behavior() == Behavior::Falling && t < 6_000 {
             t += 50;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         assert!(p.behavior().is_landing(), "바닥에 닿으면 착지한다");
         assert_eq!(p.snapshot().y, BOUNDS.floor_y);
@@ -1229,20 +1354,20 @@ mod tests {
     #[test]
     fn 걸어다닐_폭이_없는_화면에서도_영원히_돌지_않는다() {
         // 작업 영역이 펭귄보다 좁으면 양쪽 경계가 겹쳐 매 step이 Turn이 된다
-        let narrow = Bounds { left: 10.0, right: 10.0, top: 0.0, floor_y: 50.0 };
-        let mut p = Pet::new(5, 0, narrow);
-        let seen = drive(&mut p, 100, 40_000, 250, narrow);
+        let narrow = World::single(Bounds { left: 10.0, right: 10.0, top: 0.0, floor_y: 50.0 });
+        let mut p = Pet::new(5, 0, &narrow);
+        let seen = drive(&mut p, 100, 40_000, 250, &narrow);
         assert!(
             seen.iter().any(|s| !matches!(s.behavior, Behavior::Turn)),
             "회전 말고 다른 동작으로 넘어가야 한다"
         );
-        assert!(seen.iter().all(|s| s.x == narrow.left));
+        assert!(seen.iter().all(|s| s.x == narrow.first().bounds.left));
     }
 
     #[test]
     fn 헤엄을_치면_바닥에서_떠오른다() {
         let mut p = pet();
-        let seen = drive(&mut p, 100, 120_000, 100, BOUNDS);
+        let seen = drive(&mut p, 100, 120_000, 100, &world());
         assert!(
             seen.iter().any(|s| s.behavior == Behavior::Swim),
             "가끔은 공중으로 떠야 한다"
@@ -1259,7 +1384,7 @@ mod tests {
     #[test]
     fn 헤엄은_영역을_벗어나지_않는다() {
         let mut p = pet();
-        for s in drive(&mut p, 100, 120_000, 100, BOUNDS) {
+        for s in drive(&mut p, 100, 120_000, 100, &world()) {
             assert!(s.x >= BOUNDS.left && s.x <= BOUNDS.right, "x가 벗어났다: {}", s.x);
             assert!(s.y >= BOUNDS.top && s.y <= BOUNDS.floor_y, "y가 벗어났다: {}", s.y);
         }
@@ -1268,7 +1393,7 @@ mod tests {
     #[test]
     fn 올라갈_때와_내려갈_때의_세로_방향이_다르다() {
         let mut p = pet();
-        let seen = drive(&mut p, 100, 120_000, 100, BOUNDS);
+        let seen = drive(&mut p, 100, 120_000, 100, &world());
         assert!(seen.iter().any(|s| s.vertical == Vertical::Up), "오르는 구간이 없다");
         assert!(seen.iter().any(|s| s.vertical == Vertical::Down), "내려가는 구간이 없다");
         // 지상 동작에서는 항상 Level이어야 CSS가 엉뚱한 기울기를 잡지 않는다
@@ -1284,9 +1409,9 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -300.0);
-        p.step(1_050, BOUNDS);
+        p.step(1_050, &world());
         // 오른쪽 위로 세게 던진다
-        p.drag_end(1_100, 700.0, -400.0, BOUNDS);
+        p.drag_end(1_100, 700.0, -400.0, &world());
         assert_eq!(p.behavior(), Behavior::Thrown);
 
         let start_x = p.snapshot().x;
@@ -1294,7 +1419,7 @@ mod tests {
         let mut t = 1_100;
         while p.behavior() == Behavior::Thrown && t < 12_000 {
             t += 50;
-            ys.push(p.step(t, BOUNDS).y);
+            ys.push(p.step(t, &world()).y);
         }
         assert!(p.behavior().is_landing(), "결국 착지해야 한다");
         assert!(p.snapshot().x > start_x, "던진 방향으로 나아가야 한다");
@@ -1309,12 +1434,12 @@ mod tests {
         let throw = |vx: f64| {
             let mut p = pet();
             p.drag_start(1_000);
-            p.drag_end(1_000, vx, -200.0, BOUNDS);
+            p.drag_end(1_000, vx, -200.0, &world());
             let start = p.snapshot().x;
             let mut t = 1_000;
             while p.behavior() == Behavior::Thrown && t < 12_000 {
                 t += 50;
-                p.step(t, BOUNDS);
+                p.step(t, &world());
             }
             p.snapshot().x - start
         };
@@ -1326,15 +1451,15 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -300.0);
-        p.step(1_050, BOUNDS);
+        p.step(1_050, &world());
         let x = p.snapshot().x;
-        p.drag_end(1_100, 20.0, 5.0, BOUNDS);
+        p.drag_end(1_100, 20.0, 5.0, &world());
         assert_eq!(p.behavior(), Behavior::Falling);
 
         let mut t = 1_100;
         while p.behavior() == Behavior::Falling && t < 12_000 {
             t += 50;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         assert!((p.snapshot().x - x).abs() < 1.0, "좌우로 날아가면 안 된다");
     }
@@ -1345,11 +1470,11 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, 90.0); // 바닥보다 90px 아래로 끌어내림
-        p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 700.0, -400.0, BOUNDS); // 오른쪽 위로 세게
+        p.step(1_050, &world());
+        p.drag_end(1_100, 700.0, -400.0, &world()); // 오른쪽 위로 세게
         assert_eq!(p.behavior(), Behavior::Thrown);
 
-        let first = p.step(1_150, BOUNDS);
+        let first = p.step(1_150, &world());
         assert_eq!(
             first.behavior,
             Behavior::Thrown,
@@ -1367,7 +1492,7 @@ mod tests {
 
     fn pets_with_one() -> Pets {
         let mut pets = Pets::new();
-        pets.add(1, 0, BOUNDS, BOUNDS.left).expect("첫 마리는 들어간다");
+        pets.add(1, 0, &world(), BOUNDS.left).expect("첫 마리는 들어간다");
         pets
     }
 
@@ -1378,12 +1503,12 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -drop_height);
-        p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 0.0, 0.0, BOUNDS); // 살짝 놓는다 — 낙하만 시킨다
+        p.step(1_050, &world());
+        p.drag_end(1_100, 0.0, 0.0, &world()); // 살짝 놓는다 — 낙하만 시킨다
         let mut t = 1_100;
         while p.behavior() == Behavior::Falling && t < 20_000 {
             t += 20;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         p.behavior()
     }
@@ -1412,14 +1537,14 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -60.0);
-        p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
+        p.step(1_050, &world());
+        p.drag_end(1_100, 0.0, 0.0, &world());
         let mut t = 1_100;
         let mut 닿았다 = false;
         let mut 다시_떠올랐다 = false;
         while p.behavior() == Behavior::Falling && t < 20_000 {
             t += 20;
-            let s = p.step(t, BOUNDS);
+            let s = p.step(t, &world());
             if s.y >= BOUNDS.floor_y {
                 닿았다 = true;
             } else if 닿았다 {
@@ -1435,12 +1560,12 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -300.0);
-        p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
+        p.step(1_050, &world());
+        p.drag_end(1_100, 0.0, 0.0, &world());
         let mut t = 1_100;
         while p.behavior() == Behavior::Falling && t < 12_000 {
             t += 20;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         assert!(p.behavior().is_landing(), "12초 안에 서야 한다 — {:?}", p.behavior());
     }
@@ -1450,12 +1575,12 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -600.0);
-        p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 200.0, 900.0, BOUNDS); // 아래로 세게
+        p.step(1_050, &world());
+        p.drag_end(1_100, 200.0, 900.0, &world()); // 아래로 세게
         let mut t = 1_100;
         while matches!(p.behavior(), Behavior::Thrown) && t < 20_000 {
             t += 20;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         assert_eq!(p.behavior(), Behavior::Sprawl);
     }
@@ -1465,13 +1590,13 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -600.0);
-        p.step(1_050, BOUNDS);
+        p.step(1_050, &world());
         // 살짝 아래로 — 낙하 중 가속을 더해 철푸덕 구간에 들어온다
-        p.drag_end(1_100, 300.0, 120.0, BOUNDS);
+        p.drag_end(1_100, 300.0, 120.0, &world());
         let mut t = 1_100;
         while matches!(p.behavior(), Behavior::Thrown) && t < 20_000 {
             t += 20;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         assert!(
             p.behavior().is_landing() && p.behavior() != Behavior::Land,
@@ -1485,17 +1610,17 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -350.0);
-        p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
+        p.step(1_050, &world());
+        p.drag_end(1_100, 0.0, 0.0, &world());
         let mut t = 1_100;
         while p.behavior() != Behavior::Splat && t < 20_000 {
             t += 20;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         let 철푸덕_시작 = t;
         while p.behavior() == Behavior::Splat && t < 철푸덕_시작 + 10_000 {
             t += 20;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         assert_ne!(p.behavior(), Behavior::Splat, "영영 퍼져 있으면 안 된다");
         assert!(t - 철푸덕_시작 >= SPLAT_MS, "너무 빨리 일어난다");
@@ -1507,12 +1632,12 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         p.drag_by(0.0, -350.0);
-        p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
+        p.step(1_050, &world());
+        p.drag_end(1_100, 0.0, 0.0, &world());
         let mut t = 1_100;
         while p.behavior() != Behavior::Splat && t < 20_000 {
             t += 20;
-            p.step(t, BOUNDS);
+            p.step(t, &world());
         }
         assert!(!p.snapshot().air);
     }
@@ -1522,13 +1647,13 @@ mod tests {
         // 시작할 때 저장된 마릿수만큼 한꺼번에 만든다. 첫 한마디까지가 고정값이면
         // 앱을 켤 때마다 전부 한목소리로 떠든다.
         let mut pets = Pets::new();
-        let a = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
-        let b = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
+        let a = pets.add(7, 0, &world(), BOUNDS.left).unwrap();
+        let b = pets.add(7, 0, &world(), BOUNDS.left).unwrap();
         let first = |pets: &mut Pets, id| {
             let mut t = 0;
             while t < 60_000 {
                 t += 100;
-                if pets.get_mut(id).unwrap().step(t, BOUNDS).speech.is_some() {
+                if pets.get_mut(id).unwrap().step(t, &world()).speech.is_some() {
                     return t;
                 }
             }
@@ -1540,7 +1665,7 @@ mod tests {
     #[test]
     fn 펭귄을_추가하면_새_id를_받는다() {
         let mut pets = pets_with_one();
-        let second = pets.add(1, 0, BOUNDS, 300.0).expect("두 번째도 들어간다");
+        let second = pets.add(1, 0, &world(), 300.0).expect("두 번째도 들어간다");
         assert_eq!(pets.len(), 2);
         assert!(pets.get(second).is_some());
     }
@@ -1548,9 +1673,9 @@ mod tests {
     #[test]
     fn 지운_id는_다시_쓰이지_않는다() {
         let mut pets = pets_with_one();
-        let second = pets.add(1, 0, BOUNDS, 300.0).unwrap();
+        let second = pets.add(1, 0, &world(), 300.0).unwrap();
         assert!(pets.remove(second));
-        let third = pets.add(1, 0, BOUNDS, 300.0).unwrap();
+        let third = pets.add(1, 0, &world(), 300.0).unwrap();
         assert_ne!(
             second, third,
             "닫히는 중인 창과 새 창이 같은 라벨을 다투면 창 이동이 엉뚱한 쪽으로 간다"
@@ -1577,24 +1702,24 @@ mod tests {
     fn 상한을_넘겨_추가하면_거부된다() {
         let mut pets = Pets::new();
         for _ in 0..MAX_PETS {
-            assert!(pets.add(1, 0, BOUNDS, BOUNDS.left).is_some());
+            assert!(pets.add(1, 0, &world(), BOUNDS.left).is_some());
         }
-        assert!(pets.add(1, 0, BOUNDS, BOUNDS.left).is_none());
+        assert!(pets.add(1, 0, &world(), BOUNDS.left).is_none());
         assert_eq!(pets.len(), MAX_PETS);
     }
 
     #[test]
     fn 마리마다_시드가_달라_다르게_움직인다() {
         let mut pets = Pets::new();
-        let a = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
-        let b = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
+        let a = pets.add(7, 0, &world(), BOUNDS.left).unwrap();
+        let b = pets.add(7, 0, &world(), BOUNDS.left).unwrap();
         // 같은 시각·같은 경계로 나란히 돌린다. 시드가 같으면 영원히 붙어 다닌다.
         let mut diverged = false;
         let mut t = 0;
         while t < 60_000 && !diverged {
             t += 100;
-            let sa = pets.get_mut(a).unwrap().step(t, BOUNDS);
-            let sb = pets.get_mut(b).unwrap().step(t, BOUNDS);
+            let sa = pets.get_mut(a).unwrap().step(t, &world());
+            let sb = pets.get_mut(b).unwrap().step(t, &world());
             diverged = sa.x != sb.x || sa.behavior != sb.behavior;
         }
         assert!(diverged, "시드가 같으면 한 마리가 복제된 것처럼 보인다");
@@ -1603,14 +1728,14 @@ mod tests {
     #[test]
     fn 새_펭귄은_지정한_x에서_시작한다() {
         let mut pets = Pets::new();
-        let id = pets.add(1, 0, BOUNDS, 640.0).unwrap();
+        let id = pets.add(1, 0, &world(), 640.0).unwrap();
         assert_eq!(pets.get(id).unwrap().snapshot().x, 640.0);
     }
 
     #[test]
     fn 시작_x는_영역_밖으로_나가지_않는다() {
         let mut pets = Pets::new();
-        let id = pets.add(1, 0, BOUNDS, BOUNDS.right + 5_000.0).unwrap();
+        let id = pets.add(1, 0, &world(), BOUNDS.right + 5_000.0).unwrap();
         assert_eq!(pets.get(id).unwrap().snapshot().x, BOUNDS.right);
     }
 
@@ -1645,15 +1770,15 @@ mod tests {
     fn 화면_폭을_읽지_못하면_기본_폭으로_상한을_잡는다() {
         // 모니터 조회에 실패하면 브릿지가 폭 0인 납작한 경계를 준다. 그대로
         // 비례식에 넣으면 상한이 0이 되어 모든 던지기가 낙하로 바뀐다.
-        let flat = Bounds {
+        let flat = World::single(Bounds {
             left: 0.0,
             right: 0.0,
             top: 0.0,
             floor_y: 0.0,
-        };
+        });
         let mut p = pet();
         p.drag_start(1_000);
-        p.drag_end(1_000, 900.0, -500.0, flat);
+        p.drag_end(1_000, 900.0, -500.0, &flat);
         assert_eq!(p.behavior(), Behavior::Thrown, "던지기가 조용히 죽으면 안 된다");
     }
 
@@ -1668,15 +1793,15 @@ mod tests {
     #[test]
     fn 던지기_문턱은_화면_폭이_달라져도_같다() {
         // 문턱은 "사용자가 튕겼는가"라는 손의 의도에 대한 것이라 세계와 무관하다 (KTD1)
-        let 넓은_세계 = Bounds {
+        let 넓은_세계 = World::single(Bounds {
             left: 0.0,
             right: 4_000.0,
             ..BOUNDS
-        };
-        for bounds in [BOUNDS, 넓은_세계] {
+        });
+        for w in [world(), 넓은_세계] {
             let mut p = pet();
             p.drag_start(1_000);
-            p.drag_end(1_100, 20.0, 5.0, bounds);
+            p.drag_end(1_100, 20.0, 5.0, &w);
             assert_eq!(p.behavior(), Behavior::Falling, "살짝 놓으면 어디서든 떨어진다");
         }
     }
@@ -1686,8 +1811,8 @@ mod tests {
         let mut p = pet();
         p.drag_start(1_000);
         // 비정상적으로 큰 속도가 들어와도 화면을 순간이동하지 않아야 한다
-        p.drag_end(1_000, 500_000.0, -500_000.0, BOUNDS);
-        let first = p.step(1_050, BOUNDS);
+        p.drag_end(1_000, 500_000.0, -500_000.0, &world());
+        let first = p.step(1_050, &world());
         assert!(first.x <= BOUNDS.right && first.x >= BOUNDS.left);
         assert!(first.y >= BOUNDS.top && first.y <= BOUNDS.floor_y);
     }
@@ -1702,8 +1827,98 @@ mod tests {
             top: 0.0,
             floor_y: 600.0,
         };
-        let s = p.step(1_000, narrow);
+        let s = p.step(1_000, &World::single(narrow));
         assert!(s.x <= narrow.right, "좁아진 영역 안으로 들어와야 한다");
         assert_eq!(s.y, narrow.floor_y, "바닥도 새 영역을 따른다");
+    }
+
+    // ── 세계(다중 화면 좌표계) ─────────────────────────────────────────
+
+    /// 왼쪽 화면과, 그 오른쪽에 떨어져 놓인 화면. 사이에 빈 공간이 있다.
+    fn 두_화면() -> World {
+        World::new(vec![
+            Screen {
+                id: 1,
+                bounds: Bounds { left: 0.0, right: 1_000.0, top: 0.0, floor_y: 800.0 },
+            },
+            Screen {
+                id: 2,
+                bounds: Bounds { left: 2_000.0, right: 3_000.0, top: 100.0, floor_y: 900.0 },
+            },
+        ])
+        .expect("화면이 둘이면 세계가 만들어진다")
+    }
+
+    #[test]
+    fn 빈_화면_목록으로는_세계를_만들_수_없다() {
+        assert!(World::new(vec![]).is_none(), "펭귄이 있을 자리가 없다");
+    }
+
+    #[test]
+    fn 기준점은_펭귄_발밑_중앙이다() {
+        let mut p = pet();
+        p.x = 300.0;
+        p.y = 400.0;
+        assert_eq!(p.anchor(), (300.0 + PET_SIZE / 2.0, 400.0 + PET_SIZE));
+    }
+
+    #[test]
+    fn 발밑이_속한_화면을_찾는다() {
+        let w = 두_화면();
+        // 왼쪽 화면 한복판에 선 펭귄
+        let left = (500.0 + PET_SIZE / 2.0, 800.0 + PET_SIZE);
+        assert_eq!(w.screen_at(left.0, left.1).map(|s| s.id), Some(1));
+        // 오른쪽 화면 한복판에 선 펭귄
+        let right = (2_500.0 + PET_SIZE / 2.0, 900.0 + PET_SIZE);
+        assert_eq!(w.screen_at(right.0, right.1).map(|s| s.id), Some(2));
+    }
+
+    #[test]
+    fn 화면_사이_빈_공간에는_화면이_없다() {
+        let w = 두_화면();
+        let gap = (1_500.0 + PET_SIZE / 2.0, 800.0 + PET_SIZE);
+        assert!(w.screen_at(gap.0, gap.1).is_none());
+    }
+
+    #[test]
+    fn 발밑이_어느_화면에도_없으면_가장_가까운_화면을_준다() {
+        let w = 두_화면();
+        // 왼쪽 화면 바로 오른쪽 — 1번이 가깝다
+        let near_left = (1_100.0 + PET_SIZE / 2.0, 800.0 + PET_SIZE);
+        assert_eq!(w.nearest(near_left.0, near_left.1).id, 1);
+        // 오른쪽 화면 바로 왼쪽 — 2번이 가깝다
+        let near_right = (1_900.0 + PET_SIZE / 2.0, 800.0 + PET_SIZE);
+        assert_eq!(w.nearest(near_right.0, near_right.1).id, 2);
+    }
+
+    #[test]
+    fn 세계_폭은_화면_전체를_덮는다() {
+        assert_eq!(두_화면().width(), 3_000.0);
+        assert_eq!(
+            World::single(BOUNDS).width(),
+            BOUNDS.right - BOUNDS.left,
+            "화면이 하나면 그 화면의 이동 폭과 같다"
+        );
+    }
+
+    #[test]
+    fn 화면이_하나면_기존_경계_판정과_같다() {
+        // 같은 시드·같은 타임스탬프열이면 스냅샷 수열이 완전히 같아야 한다.
+        // World로 갈아탄 것이 동작을 바꾸지 않았다는 증거다.
+        let mut p = Pet::new(42, 0, &World::single(BOUNDS));
+        let seq = drive(&mut p, 0, 60_000, 50, &World::single(BOUNDS));
+        assert!(seq.iter().all(|s| s.x >= BOUNDS.left && s.x <= BOUNDS.right));
+        assert!(seq.iter().all(|s| s.y >= BOUNDS.top && s.y <= BOUNDS.floor_y));
+        // 화면 하나짜리 세계와 그 화면의 Bounds는 같은 값을 준다
+        assert_eq!(World::single(BOUNDS).first().bounds, BOUNDS);
+    }
+
+    #[test]
+    fn 새_펭귄은_x가_속한_화면에서_시작한다() {
+        let w = 두_화면();
+        let mut pets = Pets::new();
+        let id = pets.add(7, 0, &w, 2_500.0).expect("추가된다");
+        let s = pets.get(id).expect("있다").snapshot();
+        assert_eq!(s.y, 900.0, "오른쪽 화면의 바닥에서 시작한다");
     }
 }

@@ -48,6 +48,31 @@ const SWING_MS: u64 = 360;
 /// 착지 후 약이 올라 한마디 할 확률(%).
 const SASSY_AFTER_LAND_PERCENT: u64 = 70;
 const LAND_MS: u64 = 300;
+/// 철푸덕은 착지보다 **길다** — 퍼진 상태를 한 박자 보여줘야 철푸덕이다.
+const SPLAT_MS: u64 = 850;
+/// 널브러짐은 철푸덕보다 **더** 길다. 배를 깔고 퍼진 것과 아예 뻗은 것은 다르다.
+const SPRAWL_MS: u64 = 1_700;
+/// 착지 강도가 커질수록 오래 누워 있어야 강도가 읽힌다. 뒤집히면 세게 박을수록
+/// 빨리 일어나는 꼴이 되므로 컴파일 타임에 막는다.
+const _: () = assert!(SPLAT_MS > LAND_MS);
+const _: () = assert!(SPRAWL_MS > SPLAT_MS);
+
+/// 이 속도(논리 px/초) 이상으로 바닥에 닿으면 철푸덕한다.
+///
+/// 중력이 900px/s²이므로 대략 **270px 넘게 떨어졌을 때**다. 제자리에서 놓거나
+/// 한 뼘 떨어진 것으로 배를 깔면 착지가 매번 요란해진다.
+const SPLAT_MIN_IMPACT: f64 = 700.0;
+/// 이 속도 이상이면 아예 **널브러진다**. 대략 550px 넘게 떨어졌거나 아래로
+/// 내리꽂았을 때다 — 화면 위쪽에서 떨어뜨리면 닿는 값이어야 의미가 있다.
+const SPRAWL_MIN_IMPACT: f64 = 1_000.0;
+const _: () = assert!(SPRAWL_MIN_IMPACT > SPLAT_MIN_IMPACT);
+
+/// 이 속도보다 느리게 닿으면 튀지 않고 그대로 선다. 없으면 0에 수렴할 때까지
+/// 영원히 잔진동한다.
+const BOUNCE_MIN_SPEED: f64 = 150.0;
+/// 바닥에서 튈 때 남는 속도 비율. 벽(`BOUNCE_DAMPING`)보다 많이 죽인다 —
+/// 바닥은 몇 번 통통거리다 서야지, 오래 튀면 공처럼 보인다.
+const FLOOR_BOUNCE_DAMPING: f64 = 0.45;
 /// 마지막 자극(클릭·드래그) 이후 이만큼 지나면 졸기로 넘어간다.
 /// 길게 잡는다 — 펭귄이 깨어서 돌아다니는 게 이 기능의 목적이고, 졸기는 양념이다.
 const SLEEP_AFTER_MS: u64 = 300_000;
@@ -168,14 +193,25 @@ pub enum Behavior {
     Falling,
     /// 던져져 포물선을 그리는 중 — 좌우 속도를 갖는다는 점이 Falling과 다르다 (R12)
     Thrown,
-    /// 착지 스쿼시
+    /// 착지 스쿼시 — 살짝 떨어졌을 때
     Land,
+    /// 철푸덕 — 세게 떨어져 배를 깔고 납작하게 퍼진다. 높이와 무관하게 착지가
+    /// 하나뿐이면 세게 던진 보람이 착지에서 사라진다.
+    Splat,
+    /// 널브러짐 — 아주 세게 박아 바닥에 아예 뻗는다. 한참 있다 겨우 일어난다.
+    Sprawl,
 }
 
 impl Behavior {
     /// 창을 실제로 옮겨야 하는 동작인가. 졸기는 아니다 (R10).
     pub fn moves_window(self) -> bool {
         !matches!(self, Behavior::Sleep)
+    }
+
+    /// 바닥에 닿은 직후의 동작인가. 세기에 따라 스쿼시(`Land`)와 철푸덕(`Splat`)으로
+    /// 갈리지만, "착지했다"를 묻는 쪽에서는 둘을 구분할 필요가 없다.
+    pub fn is_landing(self) -> bool {
+        matches!(self, Behavior::Land | Behavior::Splat | Behavior::Sprawl)
     }
 
     /// 스스로 고도를 만드는 동작인가 (진입하면 공중 상태가 된다).
@@ -357,6 +393,32 @@ impl Pets {
     }
 }
 
+/// 바닥에 닿았을 때 무엇을 하는가.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Landing {
+    /// 통통 — 반동 속도를 갖고 다시 떠오른다.
+    Bounce(f64),
+    /// 멈춰 선다 — 동작과 그 동작을 유지할 시간.
+    Settle(Behavior, u64),
+}
+
+/// 바닥에 닿는 순간의 낙하 속도로 착지를 고른다.
+///
+/// 네 단계다: 아주 세게 박으면 **널브러지고**, 세게면 **철푸덕**, 어중간하면
+/// **통통 튀고**, 거의 멈춘 채 닿으면 그냥 선다. 세기가 눈에 보여야
+/// 높이 던진 보람이 착지에 남는다.
+fn landing_of(impact_vy: f64) -> Landing {
+    if impact_vy >= SPRAWL_MIN_IMPACT {
+        Landing::Settle(Behavior::Sprawl, SPRAWL_MS)
+    } else if impact_vy >= SPLAT_MIN_IMPACT {
+        Landing::Settle(Behavior::Splat, SPLAT_MS)
+    } else if impact_vy >= BOUNCE_MIN_SPEED {
+        Landing::Bounce(-impact_vy * FLOOR_BOUNCE_DAMPING)
+    } else {
+        Landing::Settle(Behavior::Land, LAND_MS)
+    }
+}
+
 impl Pet {
     /// 시드는 0이면 안 된다 (xorshift가 0에 갇힌다) — 0이 들어오면 대체한다.
     pub fn new(seed: u64, start_ms: u64, bounds: Bounds) -> Self {
@@ -452,8 +514,14 @@ impl Pet {
                 self.y += self.vy * dt;
                 if self.y >= bounds.floor_y {
                     self.y = bounds.floor_y;
-                    self.vy = 0.0;
-                    self.enter(Behavior::Land, now_ms + LAND_MS);
+                    // 속도를 0으로 만들기 **전에** 착지 세기를 읽는다
+                    match landing_of(self.vy) {
+                        Landing::Bounce(vy) => self.vy = vy,
+                        Landing::Settle(behavior, hold) => {
+                            self.vy = 0.0;
+                            self.enter(behavior, now_ms + hold);
+                        }
+                    }
                 }
             }
             Behavior::Walk => {
@@ -504,7 +572,7 @@ impl Pet {
                     }
                 }
             }
-            Behavior::Land => {
+            Behavior::Land | Behavior::Splat | Behavior::Sprawl => {
                 if now_ms >= self.behavior_until_ms {
                     // 맞고 떨어졌으면 일어나서 약을 올린다
                     if self.range((0, 99)) < SASSY_AFTER_LAND_PERCENT {
@@ -553,9 +621,19 @@ impl Pet {
                 // 위로 던져도 첫 틱에 "착지"로 삼켜지며 위로 순간이동한다
                 if self.y >= bounds.floor_y && self.vy >= 0.0 {
                     self.y = bounds.floor_y;
-                    self.vx = 0.0;
-                    self.vy = 0.0;
-                    self.enter(Behavior::Land, now_ms + LAND_MS);
+                    match landing_of(self.vy) {
+                        Landing::Bounce(vy) => {
+                            self.vy = vy;
+                            // 통통 튀며 앞으로도 조금 밀린다 — 제자리에서만 튀면
+                            // 던진 방향이 착지에서 끊긴다
+                            self.vx *= FLOOR_BOUNCE_DAMPING;
+                        }
+                        Landing::Settle(behavior, hold) => {
+                            self.vx = 0.0;
+                            self.vy = 0.0;
+                            self.enter(behavior, now_ms + hold);
+                        }
+                    }
                 }
             }
             Behavior::Idle { .. } | Behavior::Sleep => {
@@ -671,7 +749,7 @@ impl Pet {
         // 착지(Land)는 바닥에 닿은 시점이라 확실히 지상이다.
         match behavior {
             Behavior::Sassy { .. } | Behavior::Dragged | Behavior::Swing => {}
-            Behavior::Land => self.air = false,
+            Behavior::Land | Behavior::Splat | Behavior::Sprawl => self.air = false,
             other => self.air = other.is_airborne(),
         }
         self.behavior = behavior;
@@ -955,7 +1033,7 @@ mod tests {
             t += 50;
             p.step(t, BOUNDS);
         }
-        assert_eq!(p.behavior(), Behavior::Land);
+        assert!(p.behavior().is_landing());
     }
 
     #[test]
@@ -1144,7 +1222,7 @@ mod tests {
             t += 50;
             p.step(t, BOUNDS);
         }
-        assert_eq!(p.behavior(), Behavior::Land, "바닥에 닿으면 착지한다");
+        assert!(p.behavior().is_landing(), "바닥에 닿으면 착지한다");
         assert_eq!(p.snapshot().y, BOUNDS.floor_y);
     }
 
@@ -1218,7 +1296,7 @@ mod tests {
             t += 50;
             ys.push(p.step(t, BOUNDS).y);
         }
-        assert_eq!(p.behavior(), Behavior::Land, "결국 착지해야 한다");
+        assert!(p.behavior().is_landing(), "결국 착지해야 한다");
         assert!(p.snapshot().x > start_x, "던진 방향으로 나아가야 한다");
         // 포물선 = 올라갔다 내려온다
         let peak = ys.iter().cloned().fold(f64::MAX, f64::min);
@@ -1291,6 +1369,152 @@ mod tests {
         let mut pets = Pets::new();
         pets.add(1, 0, BOUNDS, BOUNDS.left).expect("첫 마리는 들어간다");
         pets
+    }
+
+    // ---- 철푸덕 착지 ----
+
+    /// 지정한 높이에서 떨어뜨려 착지 동작을 본다.
+    fn 떨어뜨려_착지시킨다(drop_height: f64) -> Behavior {
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -drop_height);
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 0.0, 0.0, BOUNDS); // 살짝 놓는다 — 낙하만 시킨다
+        let mut t = 1_100;
+        while p.behavior() == Behavior::Falling && t < 20_000 {
+            t += 20;
+            p.step(t, BOUNDS);
+        }
+        p.behavior()
+    }
+
+    #[test]
+    fn 세게_떨어지면_철푸덕한다() {
+        // 350px ≈ 착지 794px/s — 철푸덕 구간(700~1000)
+        assert_eq!(떨어뜨려_착지시킨다(350.0), Behavior::Splat);
+    }
+
+    #[test]
+    fn 아주_세게_떨어지면_널브러진다() {
+        // 700px ≈ 착지 1122px/s — 널브러짐 구간(1000~)
+        assert_eq!(떨어뜨려_착지시킨다(700.0), Behavior::Sprawl);
+    }
+
+    #[test]
+    fn 살짝_떨어지면_그냥_선다() {
+        // 거의 멈춘 채 닿으면 튀지도 퍼지지도 않는다
+        assert_eq!(떨어뜨려_착지시킨다(5.0), Behavior::Land);
+    }
+
+    #[test]
+    fn 어중간하게_떨어지면_통통_튄다() {
+        // 바닥에 닿은 뒤 **다시 떠올라야** 통통이다
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -60.0);
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
+        let mut t = 1_100;
+        let mut 닿았다 = false;
+        let mut 다시_떠올랐다 = false;
+        while p.behavior() == Behavior::Falling && t < 20_000 {
+            t += 20;
+            let s = p.step(t, BOUNDS);
+            if s.y >= BOUNDS.floor_y {
+                닿았다 = true;
+            } else if 닿았다 {
+                다시_떠올랐다 = true;
+            }
+        }
+        assert!(닿았다 && 다시_떠올랐다, "바닥을 치고 다시 떠야 통통이다");
+    }
+
+    #[test]
+    fn 통통은_몇_번_만에_멈춘다() {
+        // 감쇠가 모자라면 공처럼 영원히 튄다
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -300.0);
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
+        let mut t = 1_100;
+        while p.behavior() == Behavior::Falling && t < 12_000 {
+            t += 20;
+            p.step(t, BOUNDS);
+        }
+        assert!(p.behavior().is_landing(), "12초 안에 서야 한다 — {:?}", p.behavior());
+    }
+
+    #[test]
+    fn 아래로_내리꽂으면_널브러진다() {
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -600.0);
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 200.0, 900.0, BOUNDS); // 아래로 세게
+        let mut t = 1_100;
+        while matches!(p.behavior(), Behavior::Thrown) && t < 20_000 {
+            t += 20;
+            p.step(t, BOUNDS);
+        }
+        assert_eq!(p.behavior(), Behavior::Sprawl);
+    }
+
+    #[test]
+    fn 던져서_세게_박아도_철푸덕한다() {
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -600.0);
+        p.step(1_050, BOUNDS);
+        // 살짝 아래로 — 낙하 중 가속을 더해 철푸덕 구간에 들어온다
+        p.drag_end(1_100, 300.0, 120.0, BOUNDS);
+        let mut t = 1_100;
+        while matches!(p.behavior(), Behavior::Thrown) && t < 20_000 {
+            t += 20;
+            p.step(t, BOUNDS);
+        }
+        assert!(
+            p.behavior().is_landing() && p.behavior() != Behavior::Land,
+            "세게 박았으면 그냥 서면 안 된다 — {:?}",
+            p.behavior()
+        );
+    }
+
+    #[test]
+    fn 철푸덕이_끝나면_평소_동작으로_돌아온다() {
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -350.0);
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
+        let mut t = 1_100;
+        while p.behavior() != Behavior::Splat && t < 20_000 {
+            t += 20;
+            p.step(t, BOUNDS);
+        }
+        let 철푸덕_시작 = t;
+        while p.behavior() == Behavior::Splat && t < 철푸덕_시작 + 10_000 {
+            t += 20;
+            p.step(t, BOUNDS);
+        }
+        assert_ne!(p.behavior(), Behavior::Splat, "영영 퍼져 있으면 안 된다");
+        assert!(t - 철푸덕_시작 >= SPLAT_MS, "너무 빨리 일어난다");
+    }
+
+    #[test]
+    fn 철푸덕_중에는_공중_상태가_아니다() {
+        // 착지는 바닥에 닿은 시점이라 확실히 지상이다
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_by(0.0, -350.0);
+        p.step(1_050, BOUNDS);
+        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
+        let mut t = 1_100;
+        while p.behavior() != Behavior::Splat && t < 20_000 {
+            t += 20;
+            p.step(t, BOUNDS);
+        }
+        assert!(!p.snapshot().air);
     }
 
     #[test]

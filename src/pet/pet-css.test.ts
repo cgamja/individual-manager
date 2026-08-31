@@ -41,6 +41,8 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "falling" },
   { kind: "thrown" },
   { kind: "land" },
+  { kind: "splat" },
+  { kind: "sprawl" },
   { kind: "idle", idle: "look_around" },
   { kind: "idle", idle: "stretch" },
   { kind: "idle", idle: "shake" },

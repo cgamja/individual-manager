@@ -67,6 +67,13 @@ function Shapes() {
         opacity="0.18"
       />
 
+      {/*
+        펭귄 본체 전체. **착지 포즈(철푸덕·널브러짐)는 이 덩어리를 통째로 누른다.**
+        부위마다 자기 축으로 변형하면 몸통만 납작해지고 머리와 날개는 제자리에 남아
+        공중에 떠 버린다 — 실제로 그렇게 만들었다가 다시 갈아엎었다.
+        그림자는 바닥에 있어야 하므로 이 밖에 둔다.
+      */}
+      <g className="pg-all">
       {/* 꼬리 — 진행 방향 반대쪽으로 뻗는다 */}
       <path className="pg-tail" d="M33 98 L16 111 L35 106 Z" fill={INK} />
 
@@ -130,6 +137,7 @@ function Shapes() {
           fill={BAT_WOOD}
         />
         <rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill={BAT_GRIP} />
+      </g>
       </g>
     </>
   );

@@ -53,6 +53,7 @@ describe("behaviorClass", () => {
       { kind: "ice_fishing", fishing: "catch" },
       { kind: "ice_fishing", fishing: "miss" },
       { kind: "ice_fishing", fishing: "pack" },
+      { kind: "slide" },
     ];
     const classes = all.map(behaviorClass);
     expect(new Set(classes).size).toBe(all.length);
@@ -98,6 +99,11 @@ describe("shouldRestart", () => {
     // 스냅샷은 동작이 그대로여도 날아온다(말풍선이 뜨고 진다). 매번 되감으면
     // 1.8초짜리 잡기가 중간에 처음으로 돌아갔다가 다음 동작으로 넘어가며 잘린다
     expect(shouldRestart("pg--fishing-catch", "pg--fishing-catch")).toBe(false);
+  });
+
+  it("슬라이딩은_한_번짜리다", () => {
+    // 되감지 않으면 두 번 연달아 미끄러질 때 두 번째가 누운 채로 시작한다
+    expect(isOneShot("pg--slide")).toBe(true);
   });
 
   it("반복_애니메이션은_되감지_않는다", () => {

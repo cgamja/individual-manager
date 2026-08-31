@@ -35,6 +35,7 @@ export type Behavior =
   | { kind: "splat" }
   | { kind: "sprawl" }
   | { kind: "tumble" }
+  | { kind: "slide" }
   | { kind: "ice_fishing"; fishing: FishingPhase };
 
 /** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
@@ -133,6 +134,8 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--splat" ||
   cls === "pg--sprawl" ||
   cls === "pg--tumble" ||
+  // 눕기 → 미끄러짐 → 일어서기가 한 벌로 재생되고 끝난다
+  cls === "pg--slide" ||
   cls.startsWith("pg--sassy-") ||
   // 드리우기만 빼고 낚시 국면은 전부 한 번짜리다 — 드리우기는 입질이 올
   // 때까지 찌가 계속 까딱거려야 하므로 되감으면 끊긴다

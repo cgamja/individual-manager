@@ -48,6 +48,7 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "splat" },
   { kind: "sprawl" },
   { kind: "tumble" },
+  { kind: "slide" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },
   { kind: "ice_fishing", fishing: "bite" },
@@ -155,6 +156,7 @@ describe("동작 길이 동기화", () => {
     ["pg--fishing-catch", "FISHING_CATCH_MS"],
     ["pg--fishing-miss", "FISHING_MISS_MS"],
     ["pg--fishing-pack", "FISHING_PACK_MS"],
+    ["pg--slide", "SLIDE_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
     const b = rustMs(konst);

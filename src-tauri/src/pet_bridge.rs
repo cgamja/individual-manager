@@ -29,6 +29,25 @@ const TICK_MS: u64 = 50;
 const SLEEP_TICK_MS: u64 = 500;
 /// 모니터 작업 영역을 다시 읽는 주기.
 const BOUNDS_REFRESH_MS: u64 = 2_000;
+/// 상태와 창이 어긋난 것을 보고 **정리하기까지 기다리는 시간**.
+///
+/// 펭귄을 추가할 때는 (1) 상태에 넣고 (2) 창을 만든다. 그 사이 몇 ms 동안은
+/// "상태엔 있는데 창이 없는" 정상적인 어긋남이 생긴다. 한 번 보고 바로 지우면
+/// **방금 부른 펭귄을 곧바로 지워 버린다** — 추가가 아무 일도 안 하는 것처럼 보인다.
+/// 삭제도 (1) 상태에서 빼고 (2) 창을 닫는 순서라 같은 창이 열린다.
+const RECONCILE_GRACE_MS: u64 = 1_000;
+
+/// 어긋남을 처음 본 시각들 중, 유예를 다 쓴 것들.
+///
+/// 순수 함수로 떼어 낸 이유는 이 판단이 틀리면 **정상 동작이 조용히 취소되기** 때문이다.
+/// 틱 스레드 안에 두면 눈으로만 잡힌다.
+fn due_for_cleanup(mismatch_since: &HashMap<PetId, u64>, now_ms: u64) -> Vec<PetId> {
+    mismatch_since
+        .iter()
+        .filter(|(_, since)| now_ms.saturating_sub(**since) >= RECONCILE_GRACE_MS)
+        .map(|(id, _)| *id)
+        .collect()
+}
 
 pub struct PetState {
     pub pets: Mutex<Pets>,
@@ -309,37 +328,64 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
         // 한 마리가 자는 동안 다른 마리는 걷는다.
         let mut bounds: HashMap<PetId, (Bounds, u64)> = HashMap::new();
         let mut last_look: HashMap<PetId, Look> = HashMap::new();
+        // 상태와 창이 어긋난 것을 **처음 본** 시각. 곧바로 정리하지 않는 이유는
+        // 추가·삭제가 두 단계라 정상적으로도 잠깐 어긋나기 때문이다.
+        let mut mismatch_since: HashMap<PetId, u64> = HashMap::new();
         loop {
             let ids = app.state::<PetState>().pets.lock().unwrap().ids();
+            let now = now_ms();
+
+            // 상태에 없는데 창만 남은 펭귄 — 삭제할 때 `close()`가 실패하면 아무도
+            // 움직이지 않는 **얼어붙은 펭귄**이 화면에 영영 남고, 상태에 없으니 다시
+            // 지울 수도 없다. 사용자가 겪은 "펭귄이 두 마리" 그 모양이다.
+            let mut orphan_windows: HashMap<PetId, WebviewWindow> = HashMap::new();
+            for (label, window) in app.webview_windows() {
+                if let Some(orphan) = pet_id_from_label(&label) {
+                    if !ids.contains(&orphan) {
+                        orphan_windows.insert(orphan, window);
+                    }
+                }
+            }
+
+            // 이번 틱에 어긋난 것들을 표시하고, 맞는 것들은 표시를 지운다
+            let mut mismatched: Vec<PetId> = orphan_windows.keys().copied().collect();
+            for id in &ids {
+                if pet_window(&app, *id).is_none() {
+                    mismatched.push(*id);
+                }
+            }
+            mismatch_since.retain(|id, _| mismatched.contains(id));
+            for id in &mismatched {
+                mismatch_since.entry(*id).or_insert(now);
+            }
+
+            // 유예를 다 쓴 것만 정리한다
+            for id in due_for_cleanup(&mismatch_since, now) {
+                if let Some(window) = orphan_windows.get(&id) {
+                    let _ = window.close();
+                } else {
+                    // 창이 사라졌다 — 사용자의 선택이 아니라 이미 없어진 것이므로
+                    // 마지막 한 마리 보호를 받지 않고 정리한다
+                    app.state::<PetState>().pets.lock().unwrap().forget(id);
+                }
+                mismatch_since.remove(&id);
+                bounds.remove(&id);
+                last_look.remove(&id);
+            }
+
             if ids.is_empty() {
                 // 설정에서 껐거나 아직 만들기 전 — 생길 때까지 느리게 돈다
                 std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
                 continue;
             }
 
-            let now = now_ms();
             // 한 마리라도 움직이면 빠른 주기를 유지한다. 자는 마리 때문에 걷는
             // 마리가 느려지면 안 된다.
             let mut any_moves = false;
 
-            // 상태에 없는데 창만 남은 펭귄을 닫는다. 삭제할 때 `close()`가 실패하면
-            // 아무도 움직이지 않는 **얼어붙은 펭귄**이 화면에 영영 남고, 상태에 없으니
-            // 다시 지울 수도 없다 — 사용자가 겪은 "펭귄이 두 마리" 그 모양이다.
-            for (label, window) in app.webview_windows() {
-                if let Some(orphan) = pet_id_from_label(&label) {
-                    if !ids.contains(&orphan) {
-                        let _ = window.close();
-                    }
-                }
-            }
-
             for id in ids {
                 let Some(window) = pet_window(&app, id) else {
-                    // 창이 사라졌다 — 사용자의 선택이 아니라 이미 없어진 것이므로
-                    // 마지막 한 마리 보호를 받지 않고 정리한다
-                    app.state::<PetState>().pets.lock().unwrap().forget(id);
-                    bounds.remove(&id);
-                    last_look.remove(&id);
+                    // 아직 만들어지는 중일 수 있다 — 위의 유예가 판단한다
                     continue;
                 };
 
@@ -691,6 +737,32 @@ mod tests {
                 "`{name}`이 lib.rs의 invoke_handler 목록에 없다"
             );
         }
+    }
+
+    #[test]
+    fn 방금_어긋난_것은_정리하지_않는다() {
+        // 펭귄 추가는 (1) 상태에 넣고 (2) 창을 만드는 두 단계다. 그 사이를 보고
+        // 바로 지우면 **방금 부른 펭귄이 조용히 사라진다** — 추가가 아무 일도
+        // 안 하는 것처럼 보인다. 실제로 한 번 이렇게 깨졌다.
+        let mut seen = HashMap::new();
+        seen.insert(2, 10_000);
+        assert!(due_for_cleanup(&seen, 10_050).is_empty(), "50ms만에 지우면 안 된다");
+        assert!(due_for_cleanup(&seen, 10_999).is_empty());
+    }
+
+    #[test]
+    fn 유예를_다_쓰면_정리한다() {
+        let mut seen = HashMap::new();
+        seen.insert(2, 10_000);
+        assert_eq!(due_for_cleanup(&seen, 11_000), vec![2]);
+        assert_eq!(due_for_cleanup(&seen, 30_000), vec![2]);
+    }
+
+    #[test]
+    fn 시계가_뒤로_가도_정리가_앞당겨지지_않는다() {
+        let mut seen = HashMap::new();
+        seen.insert(2, 10_000);
+        assert!(due_for_cleanup(&seen, 9_000).is_empty(), "음수 대신 0으로 본다");
     }
 
     #[test]

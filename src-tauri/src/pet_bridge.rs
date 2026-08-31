@@ -10,7 +10,7 @@ use std::time::Duration;
 use serde::Serialize;
 
 use tauri::{
-    AppHandle, Emitter, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
+    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 use tauri_plugin_store::StoreExt;
@@ -437,7 +437,16 @@ fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, notify: 
         let _ = window.set_position(LogicalPosition::new(wx, wy));
     }
     if notify {
-        let _ = window.emit(EVENT_PET_STATE, snapshot);
+        // **`emit`이 아니라 `emit_to`다.** `Emitter::emit`은 창에서 불러도 "모든
+        // 대상"에 보낸다 — 창 하나에 보내는 게 아니다. 한 마리였을 때는 차이가
+        // 없었지만 여러 마리가 되면 **모든 펭귄이 모든 펭귄의 스냅샷을 받는다**:
+        // 다 같이 동시에 떠들고, 남의 동작을 대신 재생하고, 틱마다 N배로 이벤트가
+        // 쏟아져 애니메이션이 미친 듯이 빨라진다.
+        let _ = window.emit_to(
+            EventTarget::webview_window(window.label()),
+            EVENT_PET_STATE,
+            snapshot,
+        );
     }
 }
 

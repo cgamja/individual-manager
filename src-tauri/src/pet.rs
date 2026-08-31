@@ -367,7 +367,7 @@ impl Pet {
     /// 쓴다 — 전부 같은 자리에서 시작하면 겹쳐서 한 마리로 보인다.
     pub fn new_at(seed: u64, start_ms: u64, bounds: Bounds, start_x: f64) -> Self {
         let x = start_x.clamp(bounds.left, bounds.right.max(bounds.left));
-        Pet {
+        let mut pet = Pet {
             x,
             y: bounds.floor_y,
             facing: Facing::Right,
@@ -388,7 +388,11 @@ impl Pet {
             target: (x, bounds.floor_y),
             last_y: bounds.floor_y,
             rng: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
-        }
+        };
+        // 첫 한마디까지의 간격도 **뽑는다.** 고정값으로 두면 같은 순간에 태어난
+        // 펭귄들이 다 같이 첫마디를 한다 — 여러 마리가 한목소리로 떠드는 꼴이다.
+        pet.next_taunt_ms = start_ms + pet.range(TAUNT_GAP_MS);
+        pet
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -1287,6 +1291,26 @@ mod tests {
         let mut pets = Pets::new();
         pets.add(1, 0, BOUNDS, BOUNDS.left).expect("첫 마리는 들어간다");
         pets
+    }
+
+    #[test]
+    fn 같은_순간에_태어나도_첫마디_시각이_다르다() {
+        // 시작할 때 저장된 마릿수만큼 한꺼번에 만든다. 첫 한마디까지가 고정값이면
+        // 앱을 켤 때마다 전부 한목소리로 떠든다.
+        let mut pets = Pets::new();
+        let a = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
+        let b = pets.add(7, 0, BOUNDS, BOUNDS.left).unwrap();
+        let first = |pets: &mut Pets, id| {
+            let mut t = 0;
+            while t < 60_000 {
+                t += 100;
+                if pets.get_mut(id).unwrap().step(t, BOUNDS).speech.is_some() {
+                    return t;
+                }
+            }
+            panic!("60초 안에 한마디도 안 했다");
+        };
+        assert_ne!(first(&mut pets, a), first(&mut pets, b));
     }
 
     #[test]

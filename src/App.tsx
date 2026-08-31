@@ -1,80 +1,57 @@
 import { useCallback, useEffect, useState } from "react";
-import type { UnlistenFn } from "@tauri-apps/api/event";
 import { PetCountCard } from "./components/PetCountCard";
 import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
-import { TimerCard } from "./components/TimerCard";
-import { ensureNotificationPermission } from "./lib/notification";
-import { addPet, getPetSummary, removePet, setPetEnabled, type PetSummary } from "./lib/pet";
+import {
+  addPet,
+  getPetSummary,
+  removePet,
+  setPetEnabled,
+  type PetSummary,
+} from "./lib/pet";
 import {
   DEFAULT_PET_SETTINGS,
-  DEFAULT_SETTINGS,
   loadPetSettings,
-  loadSettings,
   loadTaunts,
   savePetSettings,
-  saveSettings,
   saveTaunts,
 } from "./lib/settings";
-import {
-  getTimerState,
-  onTick,
-  pauseTimer,
-  resetTimer,
-  resumeTimer,
-  setTimerConfig,
-  startTimer,
-  type Phase,
-  type TimerConfig,
-  type TimerSnapshot,
-} from "./lib/timer";
 import "./App.css";
 
 /**
- * 팝오버 — v2.0에서 앱이 직접 소유하는 것은 타이머와 설정뿐이다.
- * 서비스 조회·기록은 Claude Code가, 깊은 작업은 Chrome으로 연 원래 웹 UI가 맡는다
- * (PRINCIPLE 1·2).
+ * 설정 창 — 펭귄을 우클릭하면 그 옆에서 열린다 (PRD §5.5).
+ *
+ * v3.0에서 타이머·알림·런처를 전부 걷어내, 앱이 소유하는 화면은 **펭귄과 이 창**뿐이다.
+ * 여기 있는 것은 마릿수·대사·on/off 셋이 전부다.
  */
 function App() {
-  const [snapshot, setSnapshot] = useState<TimerSnapshot>({ state: "idle" });
-  const [config, setConfig] = useState<TimerConfig>(DEFAULT_SETTINGS);
-  const [notifGranted, setNotifGranted] = useState(true);
   const [saveFailed, setSaveFailed] = useState(false);
   const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
-  /** 마릿수·상한·우클릭 대상. 팝오버가 보일 때마다 다시 읽는다 — 펭귄은
-   * 이 창 밖에서도(다른 펭귄의 우클릭으로) 늘고 준다. */
-  const [petSummary, setPetSummary] = useState<PetSummary>({ count: 1, max: 8, focused: null });
+  const [soundEnabled, setSoundEnabledState] = useState(DEFAULT_PET_SETTINGS.sound);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
+  /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
+  const [petSummary, setPetSummary] = useState<PetSummary>({ count: 1, max: 8, focused: null });
 
   useEffect(() => {
-    let unlistenTick: UnlistenFn | undefined;
     let cancelled = false;
 
     (async () => {
       const savedPet = await loadPetSettings().catch(() => DEFAULT_PET_SETTINGS);
-      if (!cancelled) setPetEnabledState(savedPet.enabled);
-      const summary = await getPetSummary().catch(() => null);
-      if (!cancelled && summary) setPetSummary(summary);
+      if (!cancelled) {
+        setPetEnabledState(savedPet.enabled);
+        setSoundEnabledState(savedPet.sound);
+      }
       const savedTaunts = await loadTaunts().catch(() => []);
       if (!cancelled) setTaunts(savedTaunts);
-      // 저장된 설정을 Rust 코어에 반영한 뒤 상태를 동기화한다
-      const saved = await loadSettings().catch(() => DEFAULT_SETTINGS);
-      const applied = await setTimerConfig(saved).catch(() => DEFAULT_SETTINGS);
-      if (cancelled) return;
-      setConfig(applied);
-      setSnapshot(await getTimerState());
-      unlistenTick = await onTick((s) => setSnapshot(s));
-      // 알림 권한: 거부돼도 앱은 계속 동작하고 카드 내 표시로 대체한다
-      const granted = await ensureNotificationPermission();
-      if (!cancelled) setNotifGranted(granted);
+      const summary = await getPetSummary().catch(() => null);
+      if (!cancelled && summary) setPetSummary(summary);
     })();
 
-    // 팝오버가 다시 보일 때 즉시 재동기화 (틱 대기 없이, 주기 폴링 없음).
-    // 마릿수와 **우클릭 대상**도 함께 읽는다 — 다른 펭귄을 우클릭해서 열 때마다
-    // 삭제 대상이 바뀌므로, 여기서 안 읽으면 엉뚱한 펭귄이 지워진 것처럼 보인다.
+    // 창이 다시 보일 때 재동기화 (주기 폴링 없음). **우클릭 대상**도 함께 읽는다 —
+    // 다른 펭귄을 우클릭해서 열 때마다 삭제 대상이 바뀌므로, 여기서 안 읽으면
+    // 엉뚱한 펭귄이 지워진 것처럼 보인다.
     const onVisibility = () => {
       if (!document.hidden) {
-        getTimerState().then(setSnapshot).catch(() => {});
         getPetSummary()
           .then(setPetSummary)
           .catch(() => {});
@@ -84,41 +61,8 @@ function App() {
 
     return () => {
       cancelled = true;
-      unlistenTick?.();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
-
-  const handleStart = useCallback((phase: Phase) => {
-    startTimer(phase).then(setSnapshot).catch(() => {});
-  }, []);
-  const handlePause = useCallback(() => {
-    pauseTimer().then(setSnapshot).catch(() => {});
-  }, []);
-  const handleResume = useCallback(() => {
-    resumeTimer().then(setSnapshot).catch(() => {});
-  }, []);
-  const handleReset = useCallback(() => {
-    resetTimer().then(setSnapshot).catch(() => {});
-  }, []);
-
-  const handleConfigChange = useCallback(async (next: TimerConfig) => {
-    let applied: TimerConfig;
-    try {
-      applied = await setTimerConfig(next);
-    } catch {
-      // 검증 실패(0분 등)는 무시 — 입력단에서 이미 걸러진다
-      return;
-    }
-    setConfig(applied);
-    try {
-      await saveSettings(applied);
-      setSaveFailed(false);
-    } catch (err) {
-      // 저장 실패는 Rust 코어 상태와 별개 — 사용자에게 알리고 이번 실행에서만 유지됨을 알린다
-      console.error("설정 저장 실패:", err);
-      setSaveFailed(true);
-    }
   }, []);
 
   /** 펭귄 on/off — Rust가 창을 만들거나 닫고, 저장은 여기서 한다.
@@ -128,7 +72,6 @@ function App() {
     try {
       await setPetEnabled(next);
     } catch (err) {
-      // 창을 못 만들거나 못 닫았다 — 표시만 되돌린다
       console.error("펭귄 표시 변경 실패:", err);
       setPetEnabledState(!next);
       return;
@@ -142,17 +85,30 @@ function App() {
       await setPetEnabled(!next).catch(() => {});
       setPetEnabledState(!next);
     }
+    await getPetSummary()
+      .then(setPetSummary)
+      .catch(() => {});
   }, []);
 
-  /** 마릿수 요약을 다시 읽는다. 실패해도 화면을 망가뜨리지 않는다. */
+  /** 소리 on/off — 저장만 한다. 낼 소리는 F3에서 붙는다.
+   * 저장에 실패하면 표시를 되돌린다 — 켜졌다고 보이는데 안 켜진 상태를 만들지 않게. */
+  const handleSoundEnabledChange = useCallback(async (next: boolean) => {
+    setSoundEnabledState(next);
+    try {
+      await savePetSettings({ sound: next });
+    } catch (err) {
+      console.error("소리 설정 저장 실패:", err);
+      setSoundEnabledState(!next);
+    }
+  }, []);
+
+  /** 펭귄 추가·삭제 — 결과를 낙관적으로 그리지 않고 **다시 읽는다.** 상한이나
+   * 마지막 한 마리에 걸려 거부될 수 있고, 그때 화면만 늘어나면 거짓말이 된다. */
   const refreshPets = useCallback(async () => {
     const summary = await getPetSummary().catch(() => null);
     if (summary) setPetSummary(summary);
   }, []);
 
-  /** 펭귄 추가·삭제 — Rust가 창을 만들고 닫고 마릿수를 저장한다.
-   * 결과를 낙관적으로 그리지 않고 **다시 읽는다** — 상한이나 마지막 한 마리에
-   * 걸려 거부될 수 있고, 그때 화면만 늘어나면 거짓말이 된다. */
   const handlePetAdd = useCallback(async () => {
     await addPet().catch((err) => console.error("펭귄 추가 실패:", err));
     await refreshPets();
@@ -182,20 +138,6 @@ function App() {
 
   return (
     <main className="popover">
-      <TimerCard
-        snapshot={snapshot}
-        onStart={handleStart}
-        onPause={handlePause}
-        onResume={handleResume}
-        onReset={handleReset}
-      />
-      <SettingsCard
-        config={config}
-        disabled={snapshot.state !== "idle"}
-        onChange={handleConfigChange}
-        petEnabled={petEnabled}
-        onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
-      />
       <PetCountCard
         count={petSummary.count}
         max={petSummary.max}
@@ -204,11 +146,12 @@ function App() {
         onRemove={() => void handlePetRemove()}
       />
       <TauntCard lines={taunts} onChange={(next) => void handleTauntsChange(next)} />
-      {!notifGranted && (
-        <p className="notif-hint" role="status">
-          알림 권한이 꺼져 있어요 — 세션 종료는 이 카드에서 확인돼요
-        </p>
-      )}
+      <SettingsCard
+        petEnabled={petEnabled}
+        onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
+        soundEnabled={soundEnabled}
+        onSoundEnabledChange={(next) => void handleSoundEnabledChange(next)}
+      />
       {saveFailed && (
         <p className="notif-hint" role="status">
           설정 저장에 실패했어요 — 변경은 이번 실행에만 적용돼요

@@ -40,16 +40,18 @@
 > 타이머를 안고 가면 이후 모든 리팩터링이 두 배가 된다. 제거가 가장 확실한 작업이라 먼저 한다.
 > 끝나면 앱에 남는 것은 펭귄 창 + 설정 창 둘뿐이다.
 
-- [ ] 뽀모도로 타이머 제거 — `pomodoro.rs`·`timer_bridge.rs`, `TimerCard`, `lib/timer.ts`와
-      각 테스트, `lib.rs`의 `timer_*` 커맨드 7개 등록, 저장소의 타이머 설정 키
-- [ ] 알림 제거 — `lib/notification.ts`, `tauri-plugin-notification`
-      (Cargo.toml · package.json · `lib.rs` 플러그인 등록 · capabilities 권한 **네 곳 모두**)
-- [ ] 팝오버를 설정 창으로 정리 — 펭귄 on/off + 대사 편집만 남기고, 카드형 레이아웃을
-      설정 하나짜리 화면에 맞게 줄인다 (PRD §5.5)
-- [ ] 소리 on/off 설정 추가 — **기본 꺼짐** (PRD Q6 확정). 음원은 F3에서 붙이고
-      여기서는 설정 값과 저장만 만든다
-- [ ] `feat/m4-launcher-fan-01` 브랜치 처리 — 머지하지 않고 버린다. 원격 브랜치 삭제는
-      **사용자 확인 후**에만 (CONVENTIONS: 브랜치 삭제는 사용자 확인 대상)
+- [x] 뽀모도로 타이머 제거 — `pomodoro.rs`·`timer_bridge.rs`, `TimerCard`, `lib/timer.ts`,
+      커맨드 7개, 저장소 키, 타이머 CSS까지. `now_ms()`는 `pet_bridge`로, `TRAY_ID`는
+      `lib.rs`로 옮겼다 — 펭귄과 트레이가 타이머 모듈에 얹혀 있었다 (2026-08-31)
+- [x] 알림 제거 — `lib/notification.ts`와 `tauri-plugin-notification`을 네 곳 모두에서
+      뺐다 (Cargo.toml · package.json · `lib.rs` · capabilities). 앱은 이제 알림을
+      하나도 보내지 않는다 (2026-08-31)
+- [x] 팝오버를 설정 창으로 정리 — 마릿수·대사·on/off 셋만 남았다. `SettingsCard`에서
+      시간 설정을 걷어내 펭귄 토글만 남겼다 (2026-08-31)
+- [x] 소리 on/off 설정 추가 — **기본 꺼짐** (PRD Q6). 낼 소리는 F3에서 붙이고 지금은
+      값과 저장만 있다. 켰는데 조용하면 고장으로 읽히므로 "아직 낼 소리가 없어요"를
+      옆에 적었다. 겸사겸사 `savePetSettings`가 같은 키의 마릿수를 덮어쓰던 것도 고쳤다 (2026-08-31)
+- [x] `feat/m4-launcher-fan-01` 브랜치 폐기 — 머지하지 않고 원격 브랜치를 삭제했다 (2026-08-31)
 
 ## F2 — 세계 넓히기 (확장 모니터까지)
 

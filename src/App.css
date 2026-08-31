@@ -37,30 +37,9 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
 }
 
-.timer-card {
-  text-align: center;
-}
 
-.timer-phase {
-  margin: 0 0 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #6e6e73;
-}
 
-.timer-time {
-  margin: 0 0 12px;
-  font-size: 44px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 1px;
-}
 
-.timer-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-}
 
 button {
   font: inherit;
@@ -135,8 +114,6 @@ button:active {
     background: rgba(40, 40, 44, 0.96);
     border-color: rgba(255, 255, 255, 0.1);
   }
-
-  .timer-phase,
   .settings-title {
     color: #a1a1a6;
   }

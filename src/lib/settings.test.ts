@@ -2,12 +2,9 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_TAUNTS } from "./pet";
 import {
-  DEFAULT_SETTINGS,
   loadPetSettings,
-  loadSettings,
   savePetSettings,
   loadTaunts,
-  saveSettings,
   saveTaunts,
 } from "./settings";
 
@@ -37,42 +34,50 @@ function mockStore(initial: Record<string, unknown> = {}) {
   return data;
 }
 
-describe("설정 저장소", () => {
-  it("저장된_값이_없으면_기본값_25_5를_반환한다", async () => {
-    mockStore();
-    expect(await loadSettings()).toEqual(DEFAULT_SETTINGS);
-  });
-
-  // Covers AE4: 설정 저장 후 다시 로드하면 같은 값이 유지된다
-  it("저장_후_같은_값을_다시_로드한다", async () => {
-    mockStore();
-    await saveSettings({ focus_minutes: 50, break_minutes: 10 });
-    expect(await loadSettings()).toEqual({ focus_minutes: 50, break_minutes: 10 });
-  });
-});
-
 describe("펭귄 설정", () => {
   it("저장된_값이_없으면_켜짐이_기본이다", async () => {
     mockStore();
-    await expect(loadPetSettings()).resolves.toEqual({ enabled: true });
+    await expect(loadPetSettings()).resolves.toEqual({ enabled: true, sound: false });
   });
 
   it("저장된_값을_그대로_읽는다", async () => {
     mockStore({ pet: { enabled: false } });
-    await expect(loadPetSettings()).resolves.toEqual({ enabled: false });
+    await expect(loadPetSettings()).resolves.toEqual({ enabled: false, sound: false });
   });
 
   it("깨진_값은_켜짐으로_수렴한다", async () => {
     // 펭귄이 원인 모르게 사라지는 것보다 켜져 있는 편이 낫다
     mockStore({ pet: { enabled: "yes" } });
-    await expect(loadPetSettings()).resolves.toEqual({ enabled: true });
+    await expect(loadPetSettings()).resolves.toEqual({ enabled: true, sound: false });
   });
 
   it("Rust가_읽는_키에_저장한다", async () => {
     // 키가 어긋나면 앱을 다시 켰을 때 설정이 무시된다
     const data = mockStore();
     await savePetSettings({ enabled: false });
-    expect(data.get("pet")).toEqual({ enabled: false });
+    expect(data.get("pet")).toMatchObject({ enabled: false });
+  });
+
+  it("같은_키에_있는_마릿수를_덮어쓰지_않는다", async () => {
+    // Rust가 같은 `pet` 객체에 count를 쓴다. 통째로 덮어쓰면 켜고 끄는 것만으로
+    // 마릿수가 1로 돌아간다
+    const data = mockStore();
+    data.set("pet", { enabled: true, count: 3 });
+    await savePetSettings({ enabled: false });
+    expect(data.get("pet")).toEqual({ enabled: false, count: 3 });
+  });
+
+  it("소리는_기본이_꺼짐이다", async () => {
+    // 상주 앱이 예고 없이 소리를 내면 회의 중에 사고가 난다 (PRD Q6)
+    mockStore();
+    expect((await loadPetSettings()).sound).toBe(false);
+  });
+
+  it("한_항목이_깨져도_나머지는_살린다", async () => {
+    const data = mockStore();
+    data.set("pet", { enabled: false, sound: "네" });
+    const loaded = await loadPetSettings();
+    expect(loaded).toEqual({ enabled: false, sound: false });
   });
 });
 

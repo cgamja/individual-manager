@@ -290,42 +290,78 @@ pub struct World {
 impl World {
     /// 화면 목록에서 세계를 만든다. 비어 있으면 `None`.
     pub fn new(screens: Vec<Screen>) -> Option<Self> {
-        todo!("U1")
+        if screens.is_empty() {
+            None
+        } else {
+            Some(World { screens })
+        }
     }
 
     /// 화면 하나짜리 세계. 모니터를 못 읽었을 때와 테스트에서 쓴다.
     pub fn single(bounds: Bounds) -> Self {
-        todo!("U1")
-    }
-
-    pub fn screens(&self) -> &[Screen] {
-        todo!("U1")
+        World {
+            screens: vec![Screen { id: 0, bounds }],
+        }
     }
 
     /// 목록의 첫 화면. 비어 있지 않다는 불변식 덕에 항상 있다.
     pub fn first(&self) -> Screen {
-        todo!("U1")
+        self.screens[0]
     }
 
     /// 기준점이 놓인 화면. 어느 화면에도 없으면 `None`.
     pub fn screen_at(&self, ax: f64, ay: f64) -> Option<Screen> {
-        todo!("U1")
+        self.screens
+            .iter()
+            .copied()
+            .find(|s| s.anchor_distance(ax, ay) == 0.0)
     }
 
     /// 기준점에서 가장 가까운 화면. 세계가 비어 있지 않으므로 항상 있다.
     pub fn nearest(&self, ax: f64, ay: f64) -> Screen {
-        todo!("U1")
+        let mut best = self.screens[0];
+        let mut best_d = best.anchor_distance(ax, ay);
+        for s in &self.screens[1..] {
+            let d = s.anchor_distance(ax, ay);
+            if d < best_d {
+                best = *s;
+                best_d = d;
+            }
+        }
+        best
     }
 
     /// 펭귄 x좌표가 놓일 화면. 새 펭귄을 어디에 만들지 정할 때 쓴다.
+    /// 세로는 아직 정해지지 않았으므로 가로만 본다.
     pub fn screen_for_x(&self, x: f64) -> Screen {
-        todo!("U1")
+        let ax = x + PET_SIZE / 2.0;
+        let mut best = self.screens[0];
+        let mut best_d = f64::INFINITY;
+        for s in &self.screens {
+            let (x0, x1, _, _) = s.anchor_area();
+            let d = (x0 - ax).max(ax - x1).max(0.0);
+            if d < best_d {
+                best = *s;
+                best_d = d;
+            }
+        }
+        best
     }
 
     /// 세계 전체의 가로 폭 — 던지기 상한이 여기에 비례한다 (KTD7).
     /// 화면이 하나면 그 화면의 이동 폭과 같다.
     pub fn width(&self) -> f64 {
-        todo!("U1")
+        let left = self
+            .screens
+            .iter()
+            .map(|s| s.bounds.left)
+            .fold(f64::INFINITY, f64::min);
+        let right = self
+            .screens
+            .iter()
+            .map(|s| s.bounds.right)
+            .fold(f64::NEG_INFINITY, f64::max);
+        (right - left).max(0.0)
     }
 }
 

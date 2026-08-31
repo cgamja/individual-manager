@@ -15,7 +15,7 @@ use tauri::{
 };
 use tauri_plugin_store::StoreExt;
 
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Screen, Snapshot, Vertical, World, MAX_PETS};
+use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, World, MAX_PETS};
 
 /// 지금(epoch ms). 코어(`pet.rs`)는 시간을 주입받는 순수 모듈이라 시계를 갖지 않는다 —
 /// 시계를 읽는 곳은 브릿지 하나뿐이어야 테스트가 시간을 마음대로 돌릴 수 있다.

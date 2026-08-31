@@ -15,9 +15,16 @@ const GRAVITY: f64 = 900.0;
 /// 벽·천장에 부딪혔을 때 남는 속도 비율. 1.0이면 영원히 튕긴다.
 const BOUNCE_DAMPING: f64 = 0.5;
 /// 던진 것으로 볼 최소 속도 (논리 px/초). 이보다 느리면 그냥 떨어뜨린 것이다.
+/// **세계 크기와 무관하게 고정한다** — 이 문턱은 "사용자가 튕겼는가"라는 손의
+/// 의도에 대한 것이고, 화면이 넓다고 같은 손짓이 떨어뜨림으로 바뀌면 이상하다 (KTD1).
 const THROW_MIN_SPEED: f64 = 260.0;
-/// 던지기 속도 상한 — 손이 미끄러져도 펭귄이 순간이동하지 않게 한다.
-const THROW_MAX_SPEED: f64 = 2_600.0;
+/// 던지기 속도 상한 — 초당 **세계 폭의 몇 배**인가. 절대 px/s로 두면 좁은 화면에서
+/// 눈 깜짝할 새 가로지르고 넓은 화면에서는 답답하다. 취향 상수라 여기서만 고친다.
+const THROW_MAX_WORLDS_PER_SEC: f64 = 0.9;
+/// 세계 폭을 못 구했을 때 쓸 기준 폭. 모니터 조회에 실패하면 브릿지가 폭 0인 납작한
+/// 경계를 주는데, 그대로 비례식에 넣으면 상한이 0이 되어 **모든 던지기가 조용히
+/// 낙하로 바뀐다**. 그런 죽음을 만들지 않으려고 둔다.
+const FALLBACK_WORLD_WIDTH: f64 = 1_440.0;
 /// 헤엄 목적지에 도착했다고 볼 거리.
 const ARRIVE_EPSILON: f64 = 6.0;
 /// 한 step이 정산하는 최대 시간. 시스템 슬립 등으로 틱이 밀렸을 때
@@ -236,13 +243,27 @@ pub struct Pet {
     rng: u64,
 }
 
-/// 던지기 속도를 방향은 유지한 채 상한으로 자른다.
-fn clamp_throw(vx: f64, vy: f64) -> (f64, f64) {
+/// 이 세계에서 허용하는 던지기 최고 속도 (논리 px/초).
+///
+/// 폭이 유효하지 않으면 기준 폭으로 대체하고, 계산된 상한이 던지기 문턱보다 낮으면
+/// 문턱까지 끌어올린다 — 그러지 않으면 좁은 세계에서 아무리 세게 던져도 던져지지 않는다.
+fn throw_max_speed(world_width: f64) -> f64 {
+    let width = if world_width > 0.0 {
+        world_width
+    } else {
+        FALLBACK_WORLD_WIDTH
+    };
+    (width * THROW_MAX_WORLDS_PER_SEC).max(THROW_MIN_SPEED)
+}
+
+/// 던지기 속도를 방향은 유지한 채 세계 폭이 정한 상한으로 자른다.
+fn clamp_throw(vx: f64, vy: f64, world_width: f64) -> (f64, f64) {
+    let max = throw_max_speed(world_width);
     let speed = (vx * vx + vy * vy).sqrt();
-    if speed <= THROW_MAX_SPEED || speed == 0.0 {
+    if speed <= max || speed == 0.0 {
         return (vx, vy);
     }
-    let k = THROW_MAX_SPEED / speed;
+    let k = max / speed;
     (vx * k, vy * k)
 }
 
@@ -512,9 +533,12 @@ impl Pet {
 
     /// 드래그 놓기 (R6, R12). 놓는 순간의 속도(논리 px/초)를 받아, 세게 던졌으면
     /// 그 속도로 포물선을 그리고 살짝 놓았으면 제자리에서 떨어진다.
-    pub fn drag_end(&mut self, now_ms: u64, vx: f64, vy: f64) {
+    ///
+    /// 경계를 받는 이유는 **속도 상한이 세계 폭에 비례**하기 때문이다 — 좁은 화면에서
+    /// 눈 깜짝할 새 가로지르지 않게, 넓어지면 같은 손짓이 더 멀리 가게.
+    pub fn drag_end(&mut self, now_ms: u64, vx: f64, vy: f64, bounds: Bounds) {
         self.last_stimulus_ms = now_ms;
-        let (vx, vy) = clamp_throw(vx, vy);
+        let (vx, vy) = clamp_throw(vx, vy, bounds.right - bounds.left);
         if (vx * vx + vy * vy).sqrt() >= THROW_MIN_SPEED {
             self.vx = vx;
             self.vy = vy;
@@ -823,7 +847,7 @@ mod tests {
         p.drag_start(1_000);
         p.drag_by(0.0, -300.0);
         p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 0.0, 0.0);
+        p.drag_end(1_100, 0.0, 0.0, BOUNDS);
         assert_eq!(p.behavior(), Behavior::Falling);
         let mut t = 1_100;
         while p.behavior() == Behavior::Falling && t < 8_000 {
@@ -884,7 +908,7 @@ mod tests {
         p.drag_start(1_000);
         p.drag_by(0.0, -300.0);
         p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 600.0, -400.0);
+        p.drag_end(1_100, 600.0, -400.0, BOUNDS);
         assert_eq!(p.behavior(), Behavior::Thrown);
 
         // 아직 공중일 때 때린다
@@ -1000,7 +1024,7 @@ mod tests {
         // 들고 있는 동안에는 clamp하지 않는다 — 사용자가 끄는 대로 간다
         assert_eq!(p.step(1_100, BOUNDS).x, BOUNDS.left + 5_000.0);
 
-        p.drag_end(1_200, 0.0, 0.0);
+        p.drag_end(1_200, 0.0, 0.0, BOUNDS);
         let s = p.step(1_300, BOUNDS);
         assert_eq!(s.x, BOUNDS.right, "놓으면 영역 안으로 정산된다");
     }
@@ -1011,7 +1035,7 @@ mod tests {
         p.drag_start(1_000);
         p.drag_by(0.0, -400.0);
         p.step(1_100, BOUNDS);
-        p.drag_end(1_200, 0.0, 0.0);
+        p.drag_end(1_200, 0.0, 0.0, BOUNDS);
         assert_eq!(p.behavior(), Behavior::Falling);
 
         let mut t = 1_200;
@@ -1083,7 +1107,7 @@ mod tests {
         p.drag_by(0.0, -300.0);
         p.step(1_050, BOUNDS);
         // 오른쪽 위로 세게 던진다
-        p.drag_end(1_100, 700.0, -400.0);
+        p.drag_end(1_100, 700.0, -400.0, BOUNDS);
         assert_eq!(p.behavior(), Behavior::Thrown);
 
         let start_x = p.snapshot().x;
@@ -1106,7 +1130,7 @@ mod tests {
         let throw = |vx: f64| {
             let mut p = pet();
             p.drag_start(1_000);
-            p.drag_end(1_000, vx, -200.0);
+            p.drag_end(1_000, vx, -200.0, BOUNDS);
             let start = p.snapshot().x;
             let mut t = 1_000;
             while p.behavior() == Behavior::Thrown && t < 12_000 {
@@ -1125,7 +1149,7 @@ mod tests {
         p.drag_by(0.0, -300.0);
         p.step(1_050, BOUNDS);
         let x = p.snapshot().x;
-        p.drag_end(1_100, 20.0, 5.0);
+        p.drag_end(1_100, 20.0, 5.0, BOUNDS);
         assert_eq!(p.behavior(), Behavior::Falling);
 
         let mut t = 1_100;
@@ -1143,7 +1167,7 @@ mod tests {
         p.drag_start(1_000);
         p.drag_by(0.0, 90.0); // 바닥보다 90px 아래로 끌어내림
         p.step(1_050, BOUNDS);
-        p.drag_end(1_100, 700.0, -400.0); // 오른쪽 위로 세게
+        p.drag_end(1_100, 700.0, -400.0, BOUNDS); // 오른쪽 위로 세게
         assert_eq!(p.behavior(), Behavior::Thrown);
 
         let first = p.step(1_150, BOUNDS);
@@ -1155,12 +1179,84 @@ mod tests {
         assert!(first.y > BOUNDS.floor_y - 1.0, "위로 순간이동하면 안 된다");
     }
 
+    /// 폭 1440 화면의 상한. KTD2의 비율(0.9)이 바뀌면 이 값도 함께 움직인다.
+    fn 상한(width: f64) -> f64 {
+        throw_max_speed(width)
+    }
+
+    #[test]
+    fn 좁은_화면에서는_던지기_상한이_더_낮다() {
+        let 좁은_곳 = 상한(1_440.0);
+        let 넓은_곳 = 상한(2_880.0);
+        assert!(
+            (넓은_곳 - 좁은_곳 * 2.0).abs() < 1.0,
+            "상한은 세계 폭에 비례해야 한다 — 좁은 곳 {좁은_곳}, 넓은 곳 {넓은_곳}"
+        );
+    }
+
+    #[test]
+    fn 상한_이하의_던지기는_속도가_그대로다() {
+        let (vx, vy) = clamp_throw(400.0, -300.0, 1_440.0);
+        assert!((vx - 400.0).abs() < f64::EPSILON);
+        assert!((vy + 300.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn 상한은_방향을_유지한_채_속도만_줄인다() {
+        let (vx, vy) = clamp_throw(30_000.0, -40_000.0, 1_440.0);
+        let speed = (vx * vx + vy * vy).sqrt();
+        assert!((speed - 상한(1_440.0)).abs() < 1.0, "상한까지 잘려야 한다");
+        // 원래 비 3:-4가 보존된다
+        assert!((vx / speed - 0.6).abs() < 1e-6);
+        assert!((vy / speed + 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn 화면_폭을_읽지_못하면_기본_폭으로_상한을_잡는다() {
+        // 모니터 조회에 실패하면 브릿지가 폭 0인 납작한 경계를 준다. 그대로
+        // 비례식에 넣으면 상한이 0이 되어 모든 던지기가 낙하로 바뀐다.
+        let flat = Bounds {
+            left: 0.0,
+            right: 0.0,
+            top: 0.0,
+            floor_y: 0.0,
+        };
+        let mut p = pet();
+        p.drag_start(1_000);
+        p.drag_end(1_000, 900.0, -500.0, flat);
+        assert_eq!(p.behavior(), Behavior::Thrown, "던지기가 조용히 죽으면 안 된다");
+    }
+
+    #[test]
+    fn 세계가_너무_좁아도_던지기_문턱_아래로_내려가지_않는다() {
+        assert!(
+            상한(100.0) >= THROW_MIN_SPEED,
+            "상한이 최소 속도보다 낮으면 아무리 세게 던져도 던져지지 않는다"
+        );
+    }
+
+    #[test]
+    fn 던지기_문턱은_화면_폭이_달라져도_같다() {
+        // 문턱은 "사용자가 튕겼는가"라는 손의 의도에 대한 것이라 세계와 무관하다 (KTD1)
+        let 넓은_세계 = Bounds {
+            left: 0.0,
+            right: 4_000.0,
+            ..BOUNDS
+        };
+        for bounds in [BOUNDS, 넓은_세계] {
+            let mut p = pet();
+            p.drag_start(1_000);
+            p.drag_end(1_100, 20.0, 5.0, bounds);
+            assert_eq!(p.behavior(), Behavior::Falling, "살짝 놓으면 어디서든 떨어진다");
+        }
+    }
+
     #[test]
     fn 던지기_속도는_상한을_넘지_않는다() {
         let mut p = pet();
         p.drag_start(1_000);
         // 비정상적으로 큰 속도가 들어와도 화면을 순간이동하지 않아야 한다
-        p.drag_end(1_000, 500_000.0, -500_000.0);
+        p.drag_end(1_000, 500_000.0, -500_000.0, BOUNDS);
         let first = p.step(1_050, BOUNDS);
         assert!(first.x <= BOUNDS.right && first.x >= BOUNDS.left);
         assert!(first.y >= BOUNDS.top && first.y <= BOUNDS.floor_y);

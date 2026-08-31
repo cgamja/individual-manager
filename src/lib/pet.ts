@@ -186,6 +186,13 @@ export const removePet = (): Promise<void> => invoke("pet_remove");
  */
 export const fishPet = (): Promise<void> => invoke("pet_fish");
 
+/**
+ * 우클릭해서 연 그 펭귄을 미끄러뜨린다.
+ *
+ * 낚시와 달리 **바닥에서만** 된다 — 공중에서 배를 깔면 그냥 헤엄이다.
+ */
+export const slidePet = (): Promise<void> => invoke("pet_slide");
+
 /** 빠따 — 왼쪽 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로). */
 export const whackPet = (): Promise<void> => invoke("pet_whack");
 

@@ -733,6 +733,23 @@ pub fn pet_fish(window: WebviewWindow, state: State<'_, PetState>, app: AppHandl
     Ok(())
 }
 
+/// 설정 창의 "슬라이딩". 대상 규칙은 [`pet_fish`]와 같다.
+#[tauri::command]
+pub fn pet_slide(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let id = target_pet(&window, &state).ok_or("미끄러뜨릴 펭귄을 우클릭해서 열어 주세요")?;
+    let started = state
+        .pets
+        .lock()
+        .unwrap()
+        .get_mut(id)
+        .is_some_and(|pet| pet.start_slide(now_ms()));
+    if !started {
+        return Err("바닥에 내려놓고 눌러 주세요".into());
+    }
+    flush(&app, id);
+    Ok(())
+}
+
 /// 우클릭한 펭귄을 삭제한다. **마지막 한 마리는 거부한다** (PRD §5.5).
 #[tauri::command]
 pub fn pet_remove(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {

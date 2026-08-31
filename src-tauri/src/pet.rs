@@ -1029,6 +1029,23 @@ impl Pet {
         true
     }
 
+    /// 사용자가 시켜서 미끄러진다 (설정 창의 "슬라이딩").
+    ///
+    /// **낚시와 달리 바닥에서만 먹는다.** 낚시는 허공에 앉는 게 더 웃겼지만
+    /// 미끄러지는 것은 **바닥과 닿아야** 성립한다 — 공중에서 배를 깔면 그냥
+    /// 헤엄이다. 들려 있을 때도 거절한다.
+    ///
+    /// 걸을 폭이 없는 화면에서는 미끄러질 자리도 없다 — 그 판정은 세계를 아는
+    /// 쪽(`step`)이 하므로 여기서는 보지 않고, 진입해도 첫 틱에 정리된다.
+    pub fn start_slide(&mut self, now_ms: u64) -> bool {
+        if self.air || self.behavior == Behavior::Dragged {
+            return false;
+        }
+        self.last_stimulus_ms = now_ms;
+        self.enter_slide(now_ms);
+        true
+    }
+
     /// 킹받는 한마디를 띄운다. 문구는 웹뷰가 고른다.
     pub fn say(&mut self, now_ms: u64) {
         self.speech_seq += 1;
@@ -1789,6 +1806,30 @@ mod tests {
                 fishing: FishingPhase::Dig
             }
         );
+    }
+
+    #[test]
+    fn 시키면_바로_미끄러진다() {
+        let mut p = pet();
+        p.x = 400.0;
+        assert!(p.start_slide(1_000));
+        assert_eq!(p.behavior(), Behavior::Slide);
+        let 뒤 = p.step(1_200, &world());
+        assert_ne!(뒤.x, 400.0, "시켰는데 제자리다");
+    }
+
+    #[test]
+    fn 공중이거나_들려_있으면_시켜도_미끄러지지_않는다() {
+        // 미끄러지는 것은 바닥과 닿아야 성립한다 — 공중에서 배를 깔면 그냥 헤엄이다
+        let mut 헤엄 = pet();
+        헤엄.air = true;
+        assert!(!헤엄.start_slide(1_000));
+        assert_ne!(헤엄.behavior(), Behavior::Slide);
+
+        let mut 들림 = pet();
+        들림.drag_start(1_000);
+        assert!(!들림.start_slide(1_100));
+        assert_eq!(들림.behavior(), Behavior::Dragged);
     }
 
     #[test]

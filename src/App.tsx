@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { MotionCard } from "./components/MotionCard";
+import { MotionCard, type Motion } from "./components/MotionCard";
 import { PetCountCard } from "./components/PetCountCard";
 import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
@@ -9,6 +9,7 @@ import {
   getPetSummary,
   removePet,
   setPetEnabled,
+  slidePet,
   type PetSummary,
 } from "./lib/pet";
 import {
@@ -27,6 +28,21 @@ import "./App.css";
  * 여기 있는 것은 마릿수·대사·on/off 셋과, 동작을 지금 시켜보는 버튼이다 —
  * 얼음낚시처럼 십 분에 한 번 나오는 동작은 기다려서는 확인할 수 없다.
  */
+/** 시켜볼 수 있는 동작들. 설명은 **끝나는 조건**을 적는다 — 모르고 건드리면
+ * 버튼이 안 먹은 것처럼 보인다. */
+const MOTIONS: readonly Motion[] = [
+  {
+    name: "얼음낚시",
+    note: "30~60초 동안 앉아 있어요. 던지거나 때리면 그 자리에서 그만둬요. 헤엄치는 중에 시키면 그 높이에서 허공에 드리워요.",
+    run: fishPet,
+  },
+  {
+    name: "슬라이딩",
+    note: "2.4초 동안 미끄러지고 일어서요. 바닥에 있을 때만 돼요 — 공중에서 배를 깔면 그냥 헤엄이에요.",
+    run: slidePet,
+  },
+];
+
 function App() {
   const [saveFailed, setSaveFailed] = useState(false);
   const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
@@ -152,7 +168,7 @@ function App() {
         onAdd={() => void handlePetAdd()}
         onRemove={() => void handlePetRemove()}
       />
-      <MotionCard focused={petSummary.focused} onFish={fishPet} />
+      <MotionCard focused={petSummary.focused} motions={MOTIONS} />
       <TauntCard lines={taunts} onChange={(next) => void handleTauntsChange(next)} />
       <SettingsCard
         petEnabled={petEnabled}

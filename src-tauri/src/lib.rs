@@ -80,9 +80,31 @@ pub(crate) fn toggle_popover(app: &AppHandle) {
     toggle_popover_at(app, None);
 }
 
+/// 두 번째 실행이 들어왔을 때 이미 떠 있는 인스턴스가 하는 일.
+///
+/// **토글이 아니라 열기다.** 사용자가 앱을 다시 실행한 것은 "띄워 달라"는 뜻인데,
+/// 마침 팝오버가 열려 있었다는 이유로 닫아 버리면 정반대로 동작한다.
+fn greet_second_launch(app: &AppHandle) {
+    let Some(window) = main_window(app) else {
+        return;
+    };
+    if window.is_visible().unwrap_or(false) {
+        let _ = window.set_focus();
+        return;
+    }
+    show_popover(app, &window);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 단일 인스턴스 가드는 **다른 플러그인보다 먼저** 등록한다 (플러그인 문서).
+        // 두 번째 실행은 여기서 걸려 스스로 물러나고, 그 대신 이미 떠 있는 인스턴스가
+        // 팝오버를 열어 "나 여기 있다"를 알린다 — 아무 반응이 없으면 실행에 실패한
+        // 것으로 오해한다. Rust에서만 쓰므로 capabilities 등록은 필요 없다.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            greet_second_launch(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_store::Builder::new().build())

@@ -28,6 +28,7 @@ export type Behavior =
   | { kind: "sleep" }
   | { kind: "sassy"; sassy: SassyKind }
   | { kind: "swing" }
+  | { kind: "squawk" }
   | { kind: "dragged" }
   | { kind: "falling" }
   | { kind: "thrown" }
@@ -136,6 +137,9 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--tumble" ||
   // 눕기 → 미끄러짐 → 일어서기가 한 벌로 재생되고 끝난다
   cls === "pg--slide" ||
+  // 부풀렸다 가라앉는 한 판이다. 코어가 연타 중의 클릭을 흡수하므로
+  // 같은 클래스가 연달아 오지 않는다 — `shouldRestart`의 전제가 유지된다
+  cls === "pg--squawk" ||
   cls.startsWith("pg--sassy-") ||
   // 드리우기만 빼고 낚시 국면은 전부 한 번짜리다 — 드리우기는 입질이 올
   // 때까지 찌가 계속 까딱거려야 하므로 되감으면 끊긴다

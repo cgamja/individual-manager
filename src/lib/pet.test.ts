@@ -54,6 +54,7 @@ describe("behaviorClass", () => {
       { kind: "ice_fishing", fishing: "miss" },
       { kind: "ice_fishing", fishing: "pack" },
       { kind: "slide" },
+      { kind: "squawk" },
     ];
     const classes = all.map(behaviorClass);
     expect(new Set(classes).size).toBe(all.length);
@@ -104,6 +105,12 @@ describe("shouldRestart", () => {
   it("슬라이딩은_한_번짜리다", () => {
     // 되감지 않으면 두 번 연달아 미끄러질 때 두 번째가 누운 채로 시작한다
     expect(isOneShot("pg--slide")).toBe(true);
+  });
+
+  it("빽빽거리기는_한_번짜리다", () => {
+    // 코어가 연타 중의 클릭을 흡수하므로 연달아 오지는 않지만, 한 판이
+    // 재생되고 끝나는 동작이라 되감기 대상이다
+    expect(isOneShot("pg--squawk")).toBe(true);
   });
 
   it("반복_애니메이션은_되감지_않는다", () => {

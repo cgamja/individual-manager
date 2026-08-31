@@ -137,8 +137,9 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--tumble" ||
   // 눕기 → 미끄러짐 → 일어서기가 한 벌로 재생되고 끝난다
   cls === "pg--slide" ||
-  // 부풀렸다 가라앉는 한 판이다. 코어가 연타 중의 클릭을 흡수하므로
-  // 같은 클래스가 연달아 오지 않는다 — `shouldRestart`의 전제가 유지된다
+  // 부풀렸다 가라앉는 한 판이다. 연타로 다시 터져도 클릭 한 번은 반드시
+  // `pg--dragged`를 거치므로(프론트가 모든 pointerdown에서 `drag_start`를
+  // 부른다) 같은 클래스가 연달아 오지 않는다 — 아래 전제가 유지된다
   cls === "pg--squawk" ||
   cls.startsWith("pg--sassy-") ||
   // 드리우기만 빼고 낚시 국면은 전부 한 번짜리다 — 드리우기는 입질이 올

@@ -29,7 +29,8 @@ export type Behavior =
   | { kind: "falling" }
   | { kind: "thrown" }
   | { kind: "land" }
-  | { kind: "splat" };
+  | { kind: "splat" }
+  | { kind: "sprawl" };
 
 /** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
 export interface Speech {
@@ -123,6 +124,7 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--turn" ||
   cls === "pg--land" ||
   cls === "pg--splat" ||
+  cls === "pg--sprawl" ||
   cls.startsWith("pg--sassy-");
 
 /** 자기 창의 펭귄 상태. 펫 창이 아닌 곳에서 부르면 `null`이다. */

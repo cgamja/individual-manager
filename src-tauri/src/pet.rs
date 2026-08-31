@@ -108,6 +108,32 @@ const WALK_AGAIN_PERCENT: u64 = 72;
 /// 동작이 끝났을 때 공중으로 떠오를 확률(%).
 const SWIM_PERCENT: u64 = 30;
 
+/// 걷기·유휴가 끝났을 때 얼음낚시를 시작할 확률 (천분율).
+///
+/// **백분율이 아니라 천분율인 이유**: 한 판이 평균 4초쯤이라 십 분에 한 번은
+/// 대략 0.7%다. `range((0, 99))`로는 최소가 1%라 이 등급을 표현할 수 없다.
+/// 자주 나오면 "가끔 보여서 반가운" 동작이 아니라 기본 동작이 된다.
+const ICE_FISHING_PERMILLE: u64 = 7;
+
+/// 구멍을 뚫는 시간.
+const FISHING_DIG_MS: u64 = 1_400;
+/// 드리우고 입질을 기다리는 시간. 이 앱에서 가장 긴 정적 구간이다.
+const FISHING_WAIT_MS: (u64, u64) = (4_000, 9_000);
+/// 찌가 까딱해서 홱 채는 시간.
+const FISHING_BITE_MS: u64 = 700;
+/// 잡은 물고기를 들어 자랑하는 시간.
+const FISHING_CATCH_MS: u64 = 1_800;
+/// 꽝을 보고 시무룩해 있는 시간.
+const FISHING_MISS_MS: u64 = 1_300;
+/// 한 판의 예산. 이 시간이 지나면 다음 드리우기 대신 일어난다.
+const FISHING_SESSION_MS: (u64, u64) = (30_000, 60_000);
+/// 채서 물고기가 딸려 나올 확률. 나머지는 꽝이다.
+const FISHING_CATCH_PERCENT: u64 = 40;
+
+// 예산이 첫 드리우기보다 짧으면 구멍만 뚫고 끝나는 판이 생긴다
+const _: () = assert!(FISHING_SESSION_MS.0 > FISHING_DIG_MS + FISHING_WAIT_MS.1);
+const _: () = assert!(FISHING_SESSION_MS.1 >= FISHING_SESSION_MS.0);
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Facing {
@@ -181,6 +207,25 @@ pub enum SassyKind {
     ButtWiggle,
 }
 
+/// 얼음낚시 한 판이 거쳐 가는 국면.
+///
+/// 국면을 코어가 갖는 이유는 **잡았나 꽝인가가 "무슨 동작"이기 때문**이다
+/// (PRINCIPLE 4). 웹뷰가 뽑으면 같은 시드가 같은 결과를 내지 않는다.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FishingPhase {
+    /// 얼음에 구멍을 뚫는다
+    Dig,
+    /// 드리우고 기다린다 — 이 국면만 길고 반복이다
+    Wait,
+    /// 찌가 까딱한다. 홱 챈다
+    Bite,
+    /// 물고기가 딸려 나왔다. 자랑하고 그 판을 접는다
+    Catch,
+    /// 꽝. 시무룩하게 다시 드리운다
+    Miss,
+}
+
 const SASSY_KINDS: [SassyKind; 5] = [
     SassyKind::TurnAway,
     SassyKind::HeadFlick,
@@ -225,6 +270,9 @@ pub enum Behavior {
     /// 굴러떨어지기 — 벽에 박고 반동으로 데굴 굴러 나자빠진다.
     /// 착지 4단계와 달리 **바닥이 아니라 벽**에서 생긴다.
     Tumble,
+    /// 얼음낚시 — 바닥에 앉아 구멍을 뚫고 드리운다. 30~60초로 이 앱에서
+    /// 가장 긴 동작이고, **안에서 갈래가 갈리는 첫 동작**이다 (잡음/꽝).
+    IceFishing { fishing: FishingPhase },
 }
 
 impl Behavior {
@@ -440,6 +488,9 @@ pub struct Pet {
     target: (f64, f64),
     /// 직전 step의 y — 세로 방향(오름/내림)을 이걸로 판정한다.
     last_y: f64,
+    /// 지금 하는 얼음낚시 한 판이 끝나는 시각. **절대 시각 하나로 갖는다** —
+    /// 국면마다 남은 시간을 빼 나가면 국면이 늘 때마다 계산이 갈라진다.
+    fishing_until_ms: u64,
     rng: u64,
 }
 
@@ -611,6 +662,7 @@ impl Pet {
             air: false,
             target: (x, bounds.floor_y),
             last_y: bounds.floor_y,
+            fishing_until_ms: 0,
             rng: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
         };
         // 첫 한마디까지의 간격도 **뽑는다.** 고정값으로 두면 같은 순간에 태어난
@@ -825,6 +877,33 @@ impl Pet {
                     }
                 }
             }
+            Behavior::IceFishing { fishing } => {
+                // 위치를 건드리지 않는다 — 앉은 자리에서 한다 (R5).
+                // **국면 도중에 자르지 않는다**: 예산 확인은 드리우기로
+                // 들어가는 순간에만 한다. 중간에 끊으면 낚싯대를 든 채
+                // 사라지거나 채는 동작이 반쯤에서 잘린다.
+                if now_ms >= self.behavior_until_ms {
+                    match fishing {
+                        FishingPhase::Dig => self.enter_fishing_wait(now_ms),
+                        FishingPhase::Wait => self.enter_fishing(
+                            FishingPhase::Bite,
+                            now_ms + FISHING_BITE_MS,
+                        ),
+                        FishingPhase::Bite => {
+                            let (phase, hold) =
+                                if self.range((0, 99)) < FISHING_CATCH_PERCENT {
+                                    (FishingPhase::Catch, FISHING_CATCH_MS)
+                                } else {
+                                    (FishingPhase::Miss, FISHING_MISS_MS)
+                                };
+                            self.enter_fishing(phase, now_ms + hold);
+                        }
+                        FishingPhase::Miss => self.enter_fishing_wait(now_ms),
+                        // 잡았으면 그 판은 끝이다
+                        FishingPhase::Catch => self.enter_idle(now_ms),
+                    }
+                }
+            }
             Behavior::Idle { .. } | Behavior::Sleep => {
                 if now_ms >= self.behavior_until_ms {
                     self.pick_next(now_ms, bounds);
@@ -961,6 +1040,35 @@ impl Pet {
         self.enter(Behavior::Swim, now_ms + budget_ms);
     }
 
+    /// 얼음낚시 한 판을 시작한다. 구멍 뚫기부터다.
+    ///
+    /// 예산을 **여기서 한 번만** 뽑아 절대 시각으로 들고 있는다 — 국면이
+    /// 몇 바퀴를 돌든 한 판의 길이는 이 값 하나가 정한다.
+    fn enter_ice_fishing(&mut self, now_ms: u64) {
+        self.fishing_until_ms = now_ms + self.range(FISHING_SESSION_MS);
+        self.enter_fishing(FishingPhase::Dig, now_ms + FISHING_DIG_MS);
+    }
+
+    /// 드리우기로 들어가거나, 예산이 다 됐으면 일어난다.
+    ///
+    /// **구멍을 다 뚫었을 때와 꽝을 봤을 때가 이 함수를 공유한다.** 예산을 보는
+    /// 코드가 두 벌이 되면 한쪽만 고쳐지고 조용히 갈라진다 (`hit_wall`과 같은 이유).
+    ///
+    /// 나가는 길이 `get_up`이 아니라 `enter_idle`인 것은 의도다 — 넘어졌다
+    /// 일어난 뒤와 달리, 30초 얌전히 앉아 있다가 갑자기 약을 올리는 건 결이 다르다.
+    fn enter_fishing_wait(&mut self, now_ms: u64) {
+        if now_ms >= self.fishing_until_ms {
+            self.enter_idle(now_ms);
+            return;
+        }
+        let until = now_ms + self.range(FISHING_WAIT_MS);
+        self.enter_fishing(FishingPhase::Wait, until);
+    }
+
+    fn enter_fishing(&mut self, fishing: FishingPhase, until_ms: u64) {
+        self.enter(Behavior::IceFishing { fishing }, until_ms);
+    }
+
     fn enter(&mut self, behavior: Behavior, until_ms: u64) {
         // 반응·드래그는 고도를 그대로 물려받고, 나머지는 동작이 곧 고도를 정한다.
         // 착지(Land)는 바닥에 닿은 시점이라 확실히 지상이다.
@@ -1004,6 +1112,16 @@ impl Pet {
             self.last_idle = Some(IdleKind::Stretch);
             let until = now_ms + self.range(IDLE_MS);
             self.enter(Behavior::Idle { idle: IdleKind::Stretch }, until);
+            return;
+        }
+        // 아주 드물게 낚시를 한다 — 십 분에 한 번쯤 (MOTIONS "빈도 설계").
+        // 짧은 동작만 빠르게 갈아 끼우면 펭귄이 안절부절못하는 것처럼 보인다.
+        //
+        // **졸기 뒤, 헤엄 앞**에 둔다: 졸기가 우선이어야 하고, 헤엄 뒤에 두면
+        // 헤엄 확률 30%에 한 번 더 깎여 체감 빈도가 계산과 어긋난다.
+        // 바닥 전용이다 — 공중에는 앉을 자리가 없다.
+        if !self.air && self.range((0, 999)) < ICE_FISHING_PERMILLE {
+            self.enter_ice_fishing(now_ms);
             return;
         }
         // 가끔 공중으로 떠서 화면 위쪽까지 돌아다닌다 (R11).
@@ -1295,6 +1413,242 @@ mod tests {
                 .map(|s| s.behavior)
                 .collect();
             assert!(!seen.contains(&Behavior::Tumble), "시드 {seed}");
+        }
+    }
+
+    // ── 얼음낚시 ──────────────────────────────────────────────────
+    //
+    // 이 앱에서 가장 긴 동작이고, **안에서 갈래가 갈리는 첫 동작**이다
+    // (잡음/꽝). 그래서 "무슨 국면을 거쳤는가"를 통째로 뽑아 놓고 규칙을 건다 —
+    // 국면마다 펭귄을 따로 만들면 갈래가 늘 때마다 준비 코드가 갈라진다.
+
+    /// 얼음낚시 한 판을 처음부터 끝까지 돌린다.
+    ///
+    /// 거쳐 간 국면(연속 중복은 접는다), 끝난 뒤의 동작, 끝난 시각을 돌려준다.
+    fn 낚시_한_판(seed: u64) -> (Vec<FishingPhase>, Behavior, u64) {
+        let w = world();
+        let mut p = Pet::new(seed, 0, &w);
+        p.enter_ice_fishing(0);
+        let mut 국면 = Vec::new();
+        let mut t = 0;
+        loop {
+            match p.step(t, &w).behavior {
+                Behavior::IceFishing { fishing } => {
+                    if 국면.last() != Some(&fishing) {
+                        국면.push(fishing);
+                    }
+                }
+                other => return (국면, other, t),
+            }
+            t += 50;
+            assert!(t < 300_000, "시드 {seed}: 낚시가 끝나지 않는다");
+        }
+    }
+
+    /// 30분치를 돌려 스냅샷을 모은다. 얼음낚시는 십 분에 한 번쯤이라
+    /// 짧게 돌리면 한 번도 안 나온다.
+    fn 삼십분(seed: u64) -> Vec<Snapshot> {
+        let w = world();
+        let mut p = Pet::new(seed, 0, &w);
+        drive(&mut p, 100, 30 * 60_000, 100, &w)
+    }
+
+    #[test]
+    fn 가끔_얼음낚시를_한다() {
+        let 나온_시드: Vec<u64> = (1u64..7)
+            .filter(|s| {
+                삼십분(*s)
+                    .iter()
+                    .any(|s| matches!(s.behavior, Behavior::IceFishing { .. }))
+            })
+            .collect();
+        assert!(
+            !나온_시드.is_empty(),
+            "30분을 돌려도 얼음낚시가 한 번도 안 나온다"
+        );
+    }
+
+    #[test]
+    fn 얼음낚시는_드물다() {
+        // 자주 나오면 "가끔 보여서 반가운" 동작이 아니라 기본 동작이 된다
+        for seed in 1u64..7 {
+            let 전체 = 삼십분(seed);
+            let 낚시 = 전체
+                .iter()
+                .filter(|s| matches!(s.behavior, Behavior::IceFishing { .. }))
+                .count();
+            assert!(
+                낚시 * 100 < 전체.len() * 30,
+                "시드 {seed}: 30분 중 {낚시}/{} 이 낚시다",
+                전체.len()
+            );
+        }
+    }
+
+    #[test]
+    fn 얼음낚시는_구멍_뚫기부터_시작한다() {
+        let (국면, _, _) = 낚시_한_판(42);
+        assert_eq!(국면.first(), Some(&FishingPhase::Dig));
+    }
+
+    #[test]
+    fn 구멍을_뚫고_나면_드리운다() {
+        let (국면, _, _) = 낚시_한_판(42);
+        assert_eq!(국면.get(1), Some(&FishingPhase::Wait), "{국면:?}");
+    }
+
+    #[test]
+    fn 입질_뒤에는_잡거나_꽝이다() {
+        for seed in 1u64..40 {
+            let (국면, _, _) = 낚시_한_판(seed);
+            for (i, phase) in 국면.iter().enumerate() {
+                if *phase != FishingPhase::Bite {
+                    continue;
+                }
+                let 다음 = 국면.get(i + 1);
+                assert!(
+                    matches!(
+                        다음,
+                        Some(FishingPhase::Catch) | Some(FishingPhase::Miss)
+                    ),
+                    "시드 {seed}: 입질 뒤가 {다음:?}다 — {국면:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn 꽝이면_다시_드리운다() {
+        let mut 봤다 = false;
+        for seed in 1u64..40 {
+            let (국면, _, _) = 낚시_한_판(seed);
+            for (i, phase) in 국면.iter().enumerate() {
+                if *phase != FishingPhase::Miss {
+                    continue;
+                }
+                let Some(다음) = 국면.get(i + 1) else {
+                    // 예산이 다 됐으면 꽝이 마지막일 수 있다
+                    continue;
+                };
+                봤다 = true;
+                assert_eq!(*다음, FishingPhase::Wait, "시드 {seed}: {국면:?}");
+            }
+        }
+        assert!(봤다, "꽝 뒤에 다시 드리우는 판이 하나도 없다");
+    }
+
+    #[test]
+    fn 물고기를_잡으면_그_판이_끝난다() {
+        let mut 봤다 = false;
+        for seed in 1u64..40 {
+            let (국면, _, _) = 낚시_한_판(seed);
+            if let Some(i) = 국면.iter().position(|p| *p == FishingPhase::Catch) {
+                봤다 = true;
+                assert_eq!(
+                    i,
+                    국면.len() - 1,
+                    "시드 {seed}: 잡고 나서도 계속한다 — {국면:?}"
+                );
+            }
+        }
+        assert!(봤다, "물고기를 잡는 판이 하나도 없다");
+    }
+
+    #[test]
+    fn 얼음낚시_한_판은_예산_안에_끝난다() {
+        // 국면 도중에 자르지 않으므로 상한은 예산 + 마지막 한 바퀴다.
+        // 무한히 도는 판을 잡는 게 이 테스트의 목적이다.
+        let 상한 = FISHING_SESSION_MS.1
+            + FISHING_WAIT_MS.1
+            + FISHING_BITE_MS
+            + FISHING_MISS_MS
+            + FISHING_CATCH_MS;
+        for seed in 1u64..40 {
+            let (국면, _, 끝) = 낚시_한_판(seed);
+            assert!(
+                끝 >= FISHING_DIG_MS + FISHING_WAIT_MS.0,
+                "시드 {seed}: {끝}ms 만에 끝났다 — {국면:?}"
+            );
+            assert!(끝 <= 상한, "시드 {seed}: {끝}ms 나 걸렸다 — {국면:?}");
+        }
+    }
+
+    #[test]
+    fn 얼음낚시_중에는_위치가_변하지_않는다() {
+        let w = world();
+        let mut p = Pet::new(42, 0, &w);
+        p.x = 400.0;
+        p.enter_ice_fishing(0);
+        let (시작_x, 시작_y) = (p.x, p.y);
+        let mut t = 0;
+        while let Behavior::IceFishing { .. } = p.step(t, &w).behavior {
+            assert_eq!((p.x, p.y), (시작_x, 시작_y), "{t}ms 에서 움직였다");
+            t += 50;
+        }
+    }
+
+    #[test]
+    fn 얼음낚시가_끝나면_유휴로_간다() {
+        // 넘어졌다 일어난 뒤(get_up)와 출구를 공유하지 않는다 — 30초 얌전히
+        // 앉아 있다 갑자기 약을 올리는 건 결이 다르다
+        for seed in 1u64..40 {
+            let (국면, 뒤, _) = 낚시_한_판(seed);
+            assert!(
+                matches!(뒤, Behavior::Idle { .. }),
+                "시드 {seed}: 낚시 뒤가 {뒤:?}다 — {국면:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn 얼음낚시_중에_클릭하면_방망이를_휘두른다() {
+        let mut p = pet();
+        p.enter_ice_fishing(0);
+        p.whack(300, &world());
+        assert_eq!(p.behavior(), Behavior::Swing);
+    }
+
+    #[test]
+    fn 얼음낚시_중에_들어_올릴_수_있다() {
+        let mut p = pet();
+        p.enter_ice_fishing(0);
+        p.drag_start(300);
+        assert_eq!(p.behavior(), Behavior::Dragged);
+    }
+
+    #[test]
+    fn 얼음낚시는_지상_동작이다() {
+        let 낚시 = Behavior::IceFishing {
+            fishing: FishingPhase::Wait,
+        };
+        assert!(!낚시.is_airborne());
+        assert!(!낚시.is_landing(), "바닥에 닿아서 생긴 게 아니다");
+        // 창은 제자리지만 틱은 빠르게 유지해야 한다 — 느려지면 0.7초짜리
+        // 입질 국면이 최대 0.5초 늦게 도착한다
+        assert!(낚시.moves_window(), "틱이 느려지면 국면이 늦게 도착한다");
+
+        let mut p = pet();
+        p.enter_ice_fishing(0);
+        let s = p.step(50, &world());
+        assert!(!s.air);
+        assert_eq!(s.y, BOUNDS.floor_y, "바닥에 앉는다");
+    }
+
+    #[test]
+    fn 공중에서는_얼음낚시를_시작하지_않는다() {
+        // 앉을 자리가 없다. 지금은 pick_next가 지상에서만 불리지만,
+        // 그 전제가 깨져도 낚시가 공중에서 시작되면 안 된다
+        for seed in 1u64..200 {
+            let mut p = Pet::new(seed, 0, &world());
+            p.air = true;
+            for i in 0..40u64 {
+                p.pick_next(i * 100, BOUNDS);
+                assert!(
+                    !matches!(p.behavior, Behavior::IceFishing { .. }),
+                    "시드 {seed}: 공중에서 낚시를 시작했다"
+                );
+                p.air = true;
+            }
         }
     }
 
@@ -2171,9 +2525,10 @@ mod tests {
         // 심지어 기준점 계산이 망가져도 통과한다. 화면이 하나뿐이면 어떤 기준점이든
         // 결국 같은 화면으로 떨어지기 때문이다. 그래서 **수열을 통째로 못박는다.**
         //
-        // 값은 벽 굴림(`hit_wall`)이 들어오면서 한 번 다시 떴다. 벽에 닿을 때마다
-        // 난수를 하나 더 뽑으므로 그 뒤가 통째로 밀린다 — 의도한 변경이라
-        // 재기준화했다. 이 배열이 **또** 흔들리면 그건 의도하지 않은 변경이다.
+        // 값은 **확률 갈래가 하나 늘 때마다** 다시 뜬다. 갈래는 난수를 하나 더
+        // 뽑고, 그러면 그 뒤가 통째로 밀린다. 지금까지 두 번 재기준화했다 —
+        // 벽 굴림(`hit_wall`), 그리고 얼음낚시(`pick_next`). 둘 다 의도한 변경이다.
+        // **동작을 늘리지 않았는데 이 배열이 흔들리면 그건 의도하지 않은 변경이다.**
         let w = world();
         let mut p = Pet::new(42, 0, &w);
         let seq = drive(&mut p, 0, 60_000, 50, &w);
@@ -2182,18 +2537,18 @@ mod tests {
         // (인덱스, 동작, x, y)
         let golden = [
             (0_usize, "Turn", 0.0, 800.0),
-            (97, "Swim", 220.8, 716.0),
-            (194, "Swim", 568.8, 414.0),
-            (291, "Idle { idle: ShiftFeet }", 619.1, 800.0),
-            (388, "Walk", 774.5, 800.0),
-            (485, "Swim", 546.5, 462.6),
-            (582, "Sassy { sassy: ButtWiggle }", 395.1, 800.0),
-            (679, "Swim", 316.1, 546.0),
-            (776, "Falling", 190.6, 205.3),
-            (873, "Idle { idle: ShiftFeet }", 190.6, 800.0),
-            (970, "Swim", 336.1, 403.1),
-            (1067, "Sprawl", 439.1, 800.0),
-            (1164, "Walk", 476.9, 800.0),
+            (97, "Idle { idle: Shake }", 123.9, 800.0),
+            (194, "Swim", 350.4, 590.2),
+            (291, "Swim", 688.4, 277.1),
+            (388, "Sassy { sassy: WingFlick }", 806.9, 800.0),
+            (485, "Swim", 602.7, 652.8),
+            (582, "Walk", 535.1, 800.0),
+            (679, "Walk", 331.4, 800.0),
+            (776, "Walk", 247.4, 800.0),
+            (873, "Swim", 347.7, 593.4),
+            (970, "Swim", 652.5, 247.8),
+            (1067, "Sassy { sassy: WingFlick }", 765.6, 800.0),
+            (1164, "Idle { idle: LookAround }", 765.6, 800.0),
         ];
         for (i, behavior, x, y) in golden {
             let s = seq[i];
@@ -2274,4 +2629,5 @@ mod tests {
         assert_eq!(s.y, 900.0, "오른쪽 화면의 바닥에서 시작한다");
     }
 }
+
 

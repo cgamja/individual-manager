@@ -1031,3 +1031,225 @@ body,
   animation: pg-swing-wing 0.35s cubic-bezier(0.22, 0, 0.1, 1) forwards;
 }
 
+
+/* ── 얼음낚시 — 30~60초, 이 앱에서 가장 긴 동작 ──────────────────
+ *
+ * 국면 다섯(구멍 뚫기·드리우기·입질·잡음·꽝)이 각자 다른 그림이다. 어느
+ * 국면인지는 코어가 정하고(`pg--fishing-*`), 여기서는 자세만 만든다.
+ *
+ * **도구는 `display`로 감춘다.** `opacity: 0`으로 감추면 후광 규칙
+ * (`.pg-halo :is(path, circle, ellipse, rect) { opacity: 1 }`)이 더 구체적이라
+ * 후광 한 벌이 낚시를 안 할 때도 화면에 남는다. 실제로 밟을 뻔한 함정이다.
+ *
+ * **낚싯대는 창을 넘지 않는다.** `.penguin`이 `overflow: visible`이고
+ * viewBox(100×130)가 140×140 무대에 `meet`으로 들어가 좌우에 각각 약 16px,
+ * 그 바깥에 `--pg-pad-x`(52px)가 또 있다. 낚싯대 끝(x≈101)은 viewBox를 1단위
+ * 넘을 뿐이라 여백을 늘릴 이유가 없다 — 여백은 클릭을 먹는다 (PRD §5.1).
+ */
+
+.pg-hole,
+.pg-rod,
+.pg-line,
+.pg-float,
+.pg-fish {
+  display: none;
+}
+
+/* 구멍은 뚫는 순간부터 판이 끝날 때까지 있다 */
+.pg--fishing-dig .pg-hole,
+.pg--fishing-wait .pg-hole,
+.pg--fishing-bite .pg-hole,
+.pg--fishing-catch .pg-hole,
+.pg--fishing-miss .pg-hole {
+  display: inline;
+}
+
+/* 낚싯대는 구멍을 다 뚫은 다음에 꺼낸다 */
+.pg--fishing-wait :is(.pg-rod, .pg-line, .pg-float),
+.pg--fishing-bite :is(.pg-rod, .pg-line, .pg-float),
+.pg--fishing-catch :is(.pg-rod, .pg-line),
+.pg--fishing-miss :is(.pg-rod, .pg-line, .pg-float) {
+  display: inline;
+}
+
+/* 물고기는 잡았을 때만 */
+.pg--fishing-catch .pg-fish {
+  display: inline;
+}
+
+/* 앉은 자세. 축이 발밑(50,120)이라 누르면 바닥으로 내려앉는다.
+ * 국면마다 이 자세를 시작·끝점으로 삼아 서 있는 모습으로 튀지 않게 한다 —
+ * 그래서 한 번짜리 국면에는 `forwards`가 붙는다. */
+
+@keyframes pg-fish-dig {
+  0% {
+    transform: translateY(0) rotate(0deg) scaleX(1) scaleY(1);
+  }
+  20% {
+    transform: translateY(0) rotate(5deg) scaleX(1.1) scaleY(0.8);
+  }
+  35%,
+  65%,
+  95% {
+    transform: translateY(0) rotate(8deg) scaleX(1.12) scaleY(0.76);
+  }
+  50%,
+  80% {
+    transform: translateY(0) rotate(4deg) scaleX(1.09) scaleY(0.82);
+  }
+  100% {
+    transform: translateY(0) rotate(5deg) scaleX(1.1) scaleY(0.8);
+  }
+}
+
+/* 구멍을 쪼는 건 머리다 — 몸까지 같이 움직이면 절을 하는 것처럼 보인다 */
+@keyframes pg-fish-peck {
+  0%,
+  20%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35%,
+  65%,
+  95% {
+    transform: rotate(16deg);
+  }
+  50%,
+  80% {
+    transform: rotate(4deg);
+  }
+}
+
+/* 드리우기 — 거의 안 움직인다. 이 정적 구간이 이 동작의 목적이다 */
+@keyframes pg-fish-wait {
+  0%,
+  100% {
+    transform: translateY(0) rotate(5deg) scaleX(1.1) scaleY(0.8);
+  }
+  50% {
+    transform: translateY(0) rotate(4.4deg) scaleX(1.098) scaleY(0.808);
+  }
+}
+
+/* 찌만 까딱거린다 — 여기가 움직여야 "기다리는 중"으로 읽힌다 */
+@keyframes pg-fish-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(1.4px);
+  }
+}
+
+/* 입질 — 홱 챈다 */
+@keyframes pg-fish-yank {
+  0% {
+    transform: translateY(0) rotate(5deg) scaleX(1.1) scaleY(0.8);
+  }
+  25% {
+    transform: translateY(-5px) rotate(-8deg) scaleX(1) scaleY(0.98);
+  }
+  55% {
+    transform: translateY(-1px) rotate(2deg) scaleX(1.05) scaleY(0.88);
+  }
+  100% {
+    transform: translateY(0) rotate(5deg) scaleX(1.1) scaleY(0.8);
+  }
+}
+
+/* 잡았다 — 일어서서 좌우로 우쭐댄다 */
+@keyframes pg-fish-show {
+  0% {
+    transform: translateY(0) rotate(5deg) scaleX(1.1) scaleY(0.8);
+  }
+  20% {
+    transform: translateY(-6px) rotate(0deg) scaleX(1) scaleY(1.02);
+  }
+  40% {
+    transform: translateY(-6px) rotate(-5deg) scaleX(1) scaleY(1.02);
+  }
+  60% {
+    transform: translateY(-6px) rotate(5deg) scaleX(1) scaleY(1.02);
+  }
+  100% {
+    transform: translateY(-3px) rotate(0deg) scaleX(1) scaleY(1);
+  }
+}
+
+/* 물고기가 구멍에서 딸려 올라온다 */
+@keyframes pg-fish-rise {
+  0% {
+    transform: translateY(18px) scale(0.5);
+    opacity: 0;
+  }
+  30% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-3px) scale(1);
+    opacity: 1;
+  }
+}
+
+/* 꽝 — 납작하게 처졌다가 되돌아온다. 되돌아와야 다시 드리울 수 있다 */
+@keyframes pg-fish-slump {
+  0% {
+    transform: translateY(0) rotate(5deg) scaleX(1.1) scaleY(0.8);
+  }
+  30%,
+  70% {
+    transform: translateY(0) rotate(9deg) scaleX(1.16) scaleY(0.7);
+  }
+  100% {
+    transform: translateY(0) rotate(5deg) scaleX(1.1) scaleY(0.8);
+  }
+}
+
+/* 길이는 코어의 FISHING_*_MS와 같아야 한다 — 어긋나면 자세가 튄다.
+ * `pet-css.test.ts`의 "동작 길이 동기화"가 대조한다. */
+.pg--fishing-dig .pg-all {
+  animation: pg-fish-dig 1.4s ease-in-out forwards;
+}
+.pg--fishing-dig .pg-head {
+  animation: pg-fish-peck 1.4s ease-in-out;
+}
+
+.pg--fishing-wait .pg-all {
+  animation: pg-fish-wait 3.4s ease-in-out infinite;
+}
+.pg--fishing-wait .pg-float {
+  animation: pg-fish-bob 1.6s ease-in-out infinite;
+}
+
+.pg--fishing-bite .pg-all {
+  animation: pg-fish-yank 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.pg--fishing-catch .pg-all {
+  animation: pg-fish-show 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.pg--fishing-catch .pg-fish {
+  transform-origin: 88px 107px;
+  animation: pg-fish-rise 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+/* 줄 끝(90,116)을 물고기가 걸린 자리(90,107)까지 줄인다 — 축은 낚싯대 끝이다 */
+.pg--fishing-catch .pg-line {
+  transform-origin: 98px 95px;
+  animation: pg-fish-reel 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pg-fish-reel {
+  0% {
+    transform: scaleY(1);
+  }
+  30%,
+  100% {
+    transform: scaleY(0.57);
+  }
+}
+
+.pg--fishing-miss .pg-all {
+  animation: pg-fish-slump 1.3s ease-in-out forwards;
+}

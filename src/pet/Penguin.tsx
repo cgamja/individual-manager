@@ -20,6 +20,12 @@ const FOOT = "#e3a892";
 const BAT_WOOD = "#a1712f";
 /** 방망이 손잡이. */
 const BAT_GRIP = "#26262b";
+/** 얼음 구멍 속 — 물빛. */
+const HOLE = "#2f4a63";
+/** 찌 — 눈에 띄어야 "지금 저기를 보고 있다"가 읽힌다. */
+const FLOAT = "#d94f3d";
+/** 잡은 물고기. */
+const FISH = "#8fb3c9";
 
 type PenguinProps = React.ComponentPropsWithoutRef<"svg">;
 
@@ -66,6 +72,13 @@ function Shapes() {
         fill={INK}
         opacity="0.18"
       />
+
+      {/*
+        얼음 구멍 — 낚시할 때만 보인다. **본체(`pg-all`) 밖**이다:
+        앉을 때 몸을 누르는 변형에 구멍까지 딸려 들어가면 바닥에 뚫린 구멍이
+        아니라 펭귄에 붙은 무늬가 된다. 그림자와 같은 층에 둔 이유가 그것이다.
+      */}
+      <ellipse className="pg-hole" cx="88" cy="121" rx="12" ry="3.8" fill={HOLE} />
 
       {/*
         펭귄 본체 전체. **착지 포즈(철푸덕·널브러짐)는 이 덩어리를 통째로 누른다.**
@@ -137,6 +150,44 @@ function Shapes() {
           fill={BAT_WOOD}
         />
         <rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill={BAT_GRIP} />
+      </g>
+
+      {/*
+       * 낚시 도구 — 낚싯대·낚싯줄·찌·물고기. 평소엔 숨어 있다.
+       *
+       * **본체 안**이다: 쥐고 있는 것이므로 앉는 변형·채는 동작을 몸과 함께
+       * 받아야 한다. 밖에 두면 몸만 앉고 낚싯대는 공중에 남는다 —
+       * 착지 포즈가 `pg-all`을 통째로 누르는 것과 같은 이유다.
+       *
+       * 낚싯대 손잡이 끝을 날개 끝(약 67,84)에 두어 팔의 연장선으로 그린다.
+       * 방망이와 같은 규칙이다.
+       */}
+      <path
+        className="pg-rod"
+        d="M70 87 L98 95"
+        stroke={BAT_WOOD}
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        className="pg-line"
+        d="M98 95 L90 116"
+        stroke={INK}
+        strokeWidth="0.9"
+        fill="none"
+        opacity="0.55"
+      />
+      <circle className="pg-float" cx="90" cy="117" r="2.8" fill={FLOAT} />
+      {/*
+        잡은 물고기는 **낚싯줄 끝에 걸려 있어야 한다.** 구멍 위 허공에 띄우면
+        물고기가 저 혼자 떠 있는 그림이 된다 — 그래서 잡았을 때는 줄을
+        `scaleY`로 줄여 끝(약 90,107)을 물고기 자리로 끌어올린다.
+      */}
+      <g className="pg-fish">
+        <ellipse cx="85" cy="107" rx="7" ry="3.6" fill={FISH} />
+        <path d="M92 107 L97 103.5 L97 110.5 Z" fill={FISH} />
+        <circle cx="81" cy="106" r="0.9" fill={INK} />
       </g>
       </g>
     </>

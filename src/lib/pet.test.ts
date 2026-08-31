@@ -46,9 +46,20 @@ describe("behaviorClass", () => {
       { kind: "idle", idle: "stretch" },
       { kind: "idle", idle: "shake" },
       { kind: "idle", idle: "shift_feet" },
+      { kind: "ice_fishing", fishing: "dig" },
+      { kind: "ice_fishing", fishing: "wait" },
+      { kind: "ice_fishing", fishing: "bite" },
+      { kind: "ice_fishing", fishing: "catch" },
+      { kind: "ice_fishing", fishing: "miss" },
     ];
     const classes = all.map(behaviorClass);
     expect(new Set(classes).size).toBe(all.length);
+  });
+
+  it("얼음낚시도_국면까지_내려간다", () => {
+    // 국면을 클래스에 안 실으면 30초 내내 한 그림으로 굳는다
+    expect(behaviorClass({ kind: "ice_fishing", fishing: "dig" })).toBe("pg--fishing-dig");
+    expect(behaviorClass({ kind: "ice_fishing", fishing: "catch" })).toBe("pg--fishing-catch");
   });
 
   it("싸가지_반응도_종류까지_내려간다", () => {
@@ -171,6 +182,14 @@ describe("isOneShot", () => {
     expect(isOneShot("pg--walk")).toBe(false);
     expect(isOneShot("pg--swim")).toBe(false);
     expect(isOneShot("pg--sleep")).toBe(false);
+  });
+
+  it("드리우기만_반복이고_나머지_낚시_국면은_한_번짜리다", () => {
+    // 드리우기는 입질이 올 때까지 찌가 계속 까딱거린다 — 되감으면 끊긴다
+    expect(isOneShot("pg--fishing-wait")).toBe(false);
+    for (const fishing of ["dig", "bite", "catch", "miss"] as const) {
+      expect(isOneShot(behaviorClass({ kind: "ice_fishing", fishing }))).toBe(true);
+    }
   });
 
   it("모든_싸가지_반응이_한_번짜리로_잡힌다", () => {

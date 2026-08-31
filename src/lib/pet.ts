@@ -9,6 +9,9 @@ export type Vertical = "up" | "down" | "level";
 
 export type IdleKind = "look_around" | "stretch" | "shake" | "shift_feet";
 
+/** 얼음낚시 한 판이 거쳐 가는 국면. 어느 국면인지는 코어가 정한다. */
+export type FishingPhase = "dig" | "wait" | "bite" | "catch" | "miss";
+
 /** 클릭했을 때의 반응 — 놀라지 않고 싸가지 없게 군다. */
 export type SassyKind =
   | "turn_away"
@@ -31,7 +34,8 @@ export type Behavior =
   | { kind: "land" }
   | { kind: "splat" }
   | { kind: "sprawl" }
-  | { kind: "tumble" };
+  | { kind: "tumble" }
+  | { kind: "ice_fishing"; fishing: FishingPhase };
 
 /** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
 export interface Speech {
@@ -117,6 +121,8 @@ const kebab = (s: string): string => s.replace(/_/g, "-");
 export const behaviorClass = (behavior: Behavior): string => {
   if (behavior.kind === "idle") return `pg--idle-${kebab(behavior.idle)}`;
   if (behavior.kind === "sassy") return `pg--sassy-${kebab(behavior.sassy)}`;
+  // 국면을 클래스에 싣지 않으면 30초 내내 한 그림으로 굳는다
+  if (behavior.kind === "ice_fishing") return `pg--fishing-${kebab(behavior.fishing)}`;
   return `pg--${kebab(behavior.kind)}`;
 };
 
@@ -127,7 +133,10 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--splat" ||
   cls === "pg--sprawl" ||
   cls === "pg--tumble" ||
-  cls.startsWith("pg--sassy-");
+  cls.startsWith("pg--sassy-") ||
+  // 드리우기만 빼고 낚시 국면은 전부 한 번짜리다 — 드리우기는 입질이 올
+  // 때까지 찌가 계속 까딱거려야 하므로 되감으면 끊긴다
+  (cls.startsWith("pg--fishing-") && cls !== "pg--fishing-wait");
 
 /** 자기 창의 펭귄 상태. 펫 창이 아닌 곳에서 부르면 `null`이다. */
 export const getPetState = (): Promise<PetSnapshot | null> => invoke("pet_get_state");

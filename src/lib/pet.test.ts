@@ -5,6 +5,7 @@ import {
   tauntFor,
   behaviorClass,
   isOneShot,
+  shouldRestart,
   throwVelocity,
   verticalClass,
   type Behavior,
@@ -46,9 +47,21 @@ describe("behaviorClass", () => {
       { kind: "idle", idle: "stretch" },
       { kind: "idle", idle: "shake" },
       { kind: "idle", idle: "shift_feet" },
+      { kind: "ice_fishing", fishing: "dig" },
+      { kind: "ice_fishing", fishing: "wait" },
+      { kind: "ice_fishing", fishing: "bite" },
+      { kind: "ice_fishing", fishing: "catch" },
+      { kind: "ice_fishing", fishing: "miss" },
+      { kind: "ice_fishing", fishing: "pack" },
     ];
     const classes = all.map(behaviorClass);
     expect(new Set(classes).size).toBe(all.length);
+  });
+
+  it("얼음낚시도_국면까지_내려간다", () => {
+    // 국면을 클래스에 안 실으면 30초 내내 한 그림으로 굳는다
+    expect(behaviorClass({ kind: "ice_fishing", fishing: "dig" })).toBe("pg--fishing-dig");
+    expect(behaviorClass({ kind: "ice_fishing", fishing: "catch" })).toBe("pg--fishing-catch");
   });
 
   it("싸가지_반응도_종류까지_내려간다", () => {
@@ -71,6 +84,31 @@ describe("behaviorClass", () => {
       const cls = behaviorClass(b);
       expect(cls, `${JSON.stringify(b)} → ${cls}`).not.toContain("_");
       expect(cls).toMatch(/^pg--[a-z-]+$/);
+    }
+  });
+});
+
+describe("shouldRestart", () => {
+  it("동작이_바뀌면_되감는다", () => {
+    expect(shouldRestart("pg--fishing-bite", "pg--fishing-catch")).toBe(true);
+    expect(shouldRestart(null, "pg--fishing-catch")).toBe(true);
+  });
+
+  it("말풍선_때문에_온_스냅샷은_애니메이션을_건드리지_않는다", () => {
+    // 스냅샷은 동작이 그대로여도 날아온다(말풍선이 뜨고 진다). 매번 되감으면
+    // 1.8초짜리 잡기가 중간에 처음으로 돌아갔다가 다음 동작으로 넘어가며 잘린다
+    expect(shouldRestart("pg--fishing-catch", "pg--fishing-catch")).toBe(false);
+  });
+
+  it("반복_애니메이션은_되감지_않는다", () => {
+    expect(shouldRestart(null, "pg--walk")).toBe(false);
+    expect(shouldRestart(null, "pg--fishing-wait")).toBe(false);
+  });
+
+  it("한_번짜리_낚시_국면은_모두_되감는다", () => {
+    for (const fishing of ["dig", "bite", "catch", "miss", "pack"] as const) {
+      const cls = behaviorClass({ kind: "ice_fishing", fishing });
+      expect(shouldRestart("pg--fishing-wait", cls), cls).toBe(true);
     }
   });
 });
@@ -171,6 +209,14 @@ describe("isOneShot", () => {
     expect(isOneShot("pg--walk")).toBe(false);
     expect(isOneShot("pg--swim")).toBe(false);
     expect(isOneShot("pg--sleep")).toBe(false);
+  });
+
+  it("드리우기만_반복이고_나머지_낚시_국면은_한_번짜리다", () => {
+    // 드리우기는 입질이 올 때까지 찌가 계속 까딱거린다 — 되감으면 끊긴다
+    expect(isOneShot("pg--fishing-wait")).toBe(false);
+    for (const fishing of ["dig", "bite", "catch", "miss", "pack"] as const) {
+      expect(isOneShot(behaviorClass({ kind: "ice_fishing", fishing }))).toBe(true);
+    }
   });
 
   it("모든_싸가지_반응이_한_번짜리로_잡힌다", () => {

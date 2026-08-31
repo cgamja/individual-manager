@@ -5,7 +5,7 @@ import { loadTaunts } from "../lib/settings";
 import {
   DRAG_THRESHOLD_PX,
   behaviorClass,
-  isOneShot,
+  shouldRestart,
   throwVelocity,
   verticalClass,
   dragPetBy,
@@ -63,6 +63,8 @@ export function PetApp() {
   const startPromiseRef = useRef<Promise<void> | null>(null);
   /** 한 번짜리 애니메이션을 되감기 위한 remount 카운터. */
   const [restartKey, setRestartKey] = useState(0);
+  /** 직전 스냅샷의 동작 클래스 — 되감기 판정의 근거 (`shouldRestart` 참고). */
+  const lastClassRef = useRef<string | null>(null);
   /** 눈동자가 커서를 향해 밀리는 양 (SVG 좌표, R7). */
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
   /** 사용자가 팝오버에서 고칠 수 있으므로 저장소가 원천이다. */
@@ -82,9 +84,9 @@ export function PetApp() {
         // 새 대사가 나올 때마다 목록을 다시 읽는다. 팝오버는 다른 웹뷰라
         // 여기서 직접 알 방법이 없고, 몇 초에 한 번이라 비용도 미미하다
         if (next.speech) loadTaunts().then(setTaunts).catch(() => {});
-        if (isOneShot(behaviorClass(next.behavior))) {
-          setRestartKey((k) => k + 1);
-        }
+        const cls = behaviorClass(next.behavior);
+        if (shouldRestart(lastClassRef.current, cls)) setRestartKey((k) => k + 1);
+        lastClassRef.current = cls;
       });
     })();
     return () => {

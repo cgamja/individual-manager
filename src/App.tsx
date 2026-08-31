@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { MotionCard } from "./components/MotionCard";
 import { PetCountCard } from "./components/PetCountCard";
 import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
 import {
   addPet,
+  fishPet,
   getPetSummary,
   removePet,
   setPetEnabled,
@@ -22,7 +24,8 @@ import "./App.css";
  * 설정 창 — 펭귄을 우클릭하면 그 옆에서 열린다 (PRD §5.5).
  *
  * v3.0에서 타이머·알림·런처를 전부 걷어내, 앱이 소유하는 화면은 **펭귄과 이 창**뿐이다.
- * 여기 있는 것은 마릿수·대사·on/off 셋이 전부다.
+ * 여기 있는 것은 마릿수·대사·on/off 셋과, 동작을 지금 시켜보는 버튼이다 —
+ * 얼음낚시처럼 십 분에 한 번 나오는 동작은 기다려서는 확인할 수 없다.
  */
 function App() {
   const [saveFailed, setSaveFailed] = useState(false);
@@ -52,6 +55,10 @@ function App() {
     // 엉뚱한 펭귄이 지워진 것처럼 보인다.
     const onVisibility = () => {
       if (!document.hidden) {
+        // **맨 위로 되돌린다.** 이 창은 닫을 때 파괴되지 않고 숨겨질 뿐이라
+        // 스크롤 위치가 그대로 남는다. 대사를 편집하러 한 번 내려가면 그다음부터
+        // 계속 내려간 채로 열려서, 맨 위 카드(펭귄 추가·삭제)가 사라진 것처럼 보인다.
+        window.scrollTo(0, 0);
         getPetSummary()
           .then(setPetSummary)
           .catch(() => {});
@@ -145,6 +152,7 @@ function App() {
         onAdd={() => void handlePetAdd()}
         onRemove={() => void handlePetRemove()}
       />
+      <MotionCard focused={petSummary.focused} onFish={fishPet} />
       <TauntCard lines={taunts} onChange={(next) => void handleTauntsChange(next)} />
       <SettingsCard
         petEnabled={petEnabled}

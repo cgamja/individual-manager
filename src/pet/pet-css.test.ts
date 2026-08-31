@@ -48,6 +48,12 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "splat" },
   { kind: "sprawl" },
   { kind: "tumble" },
+  { kind: "ice_fishing", fishing: "dig" },
+  { kind: "ice_fishing", fishing: "wait" },
+  { kind: "ice_fishing", fishing: "bite" },
+  { kind: "ice_fishing", fishing: "catch" },
+  { kind: "ice_fishing", fishing: "miss" },
+  { kind: "ice_fishing", fishing: "pack" },
   { kind: "idle", idle: "look_around" },
   { kind: "idle", idle: "stretch" },
   { kind: "idle", idle: "shake" },
@@ -138,6 +144,22 @@ describe("동작 길이 동기화", () => {
     const b = rustMs("TUMBLE_MS");
     expect(a, "CSS에서 .pg--tumble .pg-all의 길이를 못 찾았다").not.toBeNull();
     expect(b, "Rust에서 TUMBLE_MS를 못 찾았다").not.toBeNull();
+    expect(a).toBe(b);
+  });
+
+  // 드리우기(wait)는 입질을 기다리는 무한 반복이라 대조 대상이 아니다 —
+  // 길이가 코어의 4~9초 추첨값이지 고정 상수가 아니다.
+  it.each([
+    ["pg--fishing-dig", "FISHING_DIG_MS"],
+    ["pg--fishing-bite", "FISHING_BITE_MS"],
+    ["pg--fishing-catch", "FISHING_CATCH_MS"],
+    ["pg--fishing-miss", "FISHING_MISS_MS"],
+    ["pg--fishing-pack", "FISHING_PACK_MS"],
+  ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
+    const a = cssDurationMs(cls);
+    const b = rustMs(konst);
+    expect(a, `CSS에서 .${cls} .pg-all의 길이를 못 찾았다`).not.toBeNull();
+    expect(b, `Rust에서 ${konst}를 못 찾았다`).not.toBeNull();
     expect(a).toBe(b);
   });
 });

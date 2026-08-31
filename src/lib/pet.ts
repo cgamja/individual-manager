@@ -120,7 +120,24 @@ export const behaviorClass = (behavior: Behavior): string => {
 export const isOneShot = (cls: string): boolean =>
   cls === "pg--turn" || cls === "pg--land" || cls.startsWith("pg--sassy-");
 
-export const getPetState = (): Promise<PetSnapshot> => invoke("pet_get_state");
+/** 자기 창의 펭귄 상태. 펫 창이 아닌 곳에서 부르면 `null`이다. */
+export const getPetState = (): Promise<PetSnapshot | null> => invoke("pet_get_state");
+
+/** 팝오버가 버튼 상태를 정하는 데 쓰는 요약. */
+export interface PetSummary {
+  count: number;
+  max: number;
+  /** 마지막으로 우클릭된 펭귄 — "이 펭귄 삭제"의 대상. */
+  focused: number | null;
+}
+
+export const getPetSummary = (): Promise<PetSummary> => invoke("pet_summary");
+
+/** 펭귄 한 마리를 부른 펭귄 옆에 추가한다. 상한에 걸리면 reject된다. */
+export const addPet = (): Promise<number> => invoke("pet_add");
+
+/** 우클릭한 펭귄을 삭제한다. 마지막 한 마리면 reject된다. */
+export const removePet = (): Promise<void> => invoke("pet_remove");
 
 /** 빠따 — 왼쪽 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로). */
 export const whackPet = (): Promise<void> => invoke("pet_whack");

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import { PetCountCard } from "./components/PetCountCard";
 import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
 import { TimerCard } from "./components/TimerCard";
 import { ensureNotificationPermission } from "./lib/notification";
-import { setPetEnabled } from "./lib/pet";
+import { addPet, getPetSummary, removePet, setPetEnabled, type PetSummary } from "./lib/pet";
 import {
   DEFAULT_PET_SETTINGS,
   DEFAULT_SETTINGS,
@@ -40,6 +41,9 @@ function App() {
   const [notifGranted, setNotifGranted] = useState(true);
   const [saveFailed, setSaveFailed] = useState(false);
   const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
+  /** 마릿수·상한·우클릭 대상. 팝오버가 보일 때마다 다시 읽는다 — 펭귄은
+   * 이 창 밖에서도(다른 펭귄의 우클릭으로) 늘고 준다. */
+  const [petSummary, setPetSummary] = useState<PetSummary>({ count: 1, max: 8, focused: null });
   const [taunts, setTaunts] = useState<readonly string[]>([]);
 
   useEffect(() => {
@@ -49,6 +53,8 @@ function App() {
     (async () => {
       const savedPet = await loadPetSettings().catch(() => DEFAULT_PET_SETTINGS);
       if (!cancelled) setPetEnabledState(savedPet.enabled);
+      const summary = await getPetSummary().catch(() => null);
+      if (!cancelled && summary) setPetSummary(summary);
       const savedTaunts = await loadTaunts().catch(() => []);
       if (!cancelled) setTaunts(savedTaunts);
       // 저장된 설정을 Rust 코어에 반영한 뒤 상태를 동기화한다
@@ -63,10 +69,15 @@ function App() {
       if (!cancelled) setNotifGranted(granted);
     })();
 
-    // 팝오버가 다시 보일 때 즉시 재동기화 (틱 대기 없이, 주기 폴링 없음)
+    // 팝오버가 다시 보일 때 즉시 재동기화 (틱 대기 없이, 주기 폴링 없음).
+    // 마릿수와 **우클릭 대상**도 함께 읽는다 — 다른 펭귄을 우클릭해서 열 때마다
+    // 삭제 대상이 바뀌므로, 여기서 안 읽으면 엉뚱한 펭귄이 지워진 것처럼 보인다.
     const onVisibility = () => {
       if (!document.hidden) {
         getTimerState().then(setSnapshot).catch(() => {});
+        getPetSummary()
+          .then(setPetSummary)
+          .catch(() => {});
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -133,6 +144,25 @@ function App() {
     }
   }, []);
 
+  /** 마릿수 요약을 다시 읽는다. 실패해도 화면을 망가뜨리지 않는다. */
+  const refreshPets = useCallback(async () => {
+    const summary = await getPetSummary().catch(() => null);
+    if (summary) setPetSummary(summary);
+  }, []);
+
+  /** 펭귄 추가·삭제 — Rust가 창을 만들고 닫고 마릿수를 저장한다.
+   * 결과를 낙관적으로 그리지 않고 **다시 읽는다** — 상한이나 마지막 한 마리에
+   * 걸려 거부될 수 있고, 그때 화면만 늘어나면 거짓말이 된다. */
+  const handlePetAdd = useCallback(async () => {
+    await addPet().catch((err) => console.error("펭귄 추가 실패:", err));
+    await refreshPets();
+  }, [refreshPets]);
+
+  const handlePetRemove = useCallback(async () => {
+    await removePet().catch((err) => console.error("펭귄 삭제 실패:", err));
+    await refreshPets();
+  }, [refreshPets]);
+
   /** 대사 편집 — 화면을 먼저 바꾸고 저장한다. 실패하면 되돌린다. */
   const handleTauntsChange = useCallback(
     async (next: string[]) => {
@@ -165,6 +195,13 @@ function App() {
         onChange={handleConfigChange}
         petEnabled={petEnabled}
         onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
+      />
+      <PetCountCard
+        count={petSummary.count}
+        max={petSummary.max}
+        focused={petSummary.focused}
+        onAdd={() => void handlePetAdd()}
+        onRemove={() => void handlePetRemove()}
       />
       <TauntCard lines={taunts} onChange={(next) => void handleTauntsChange(next)} />
       {!notifGranted && (

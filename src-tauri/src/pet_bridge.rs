@@ -421,25 +421,53 @@ fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
             .show()?;
     }
 
-    raise_pets_above_field(app);
+    sink_field_below_pets(app);
     Ok(())
 }
 
-/// 펭귄 창을 판 위로 올린다.
+/// 판을 펭귄보다 **한 레벨 아래**로 내린다.
 ///
-/// **`set_always_on_top(true)`를 다시 부르는 것만으로는 안 된다** — 이미 참이라
-/// 창 레벨이 안 바뀌고, 그러면 순서도 그대로다. 판이 펭귄 위에 남으면 클릭이
-/// 전부 판으로 빨려 들어가 **펭귄이 안 날아간다** (실제로 겪었다).
-/// 껐다 켜야 레벨이 다시 설정되면서 그 창이 맨 앞으로 온다.
-fn raise_pets_above_field(app: &AppHandle) {
-    let ids = app.state::<PetState>().pets.lock().unwrap().ids();
-    for id in ids {
-        if let Some(window) = pet_window(app, id) {
-            let _ = window.set_always_on_top(false);
-            let _ = window.set_always_on_top(true);
+/// **순서가 아니라 레벨이어야 한다.** 같은 레벨 안에서 창 순서는 클릭할 때마다
+/// 바뀐다 — Esc를 누르려고 판을 한 번 클릭하는 순간 판이 다시 펭귄 위로 올라온다.
+/// 그래서 만들 때 한 번 올려 두는 방식(`orderFrontRegardless`, `set_always_on_top`
+/// 껐다 켜기)은 **둘 다 실패했다.** 레벨은 클릭으로 안 바뀌므로 한 번 정하면 유지된다.
+///
+/// 값은 `NSFloatingWindowLevel`(3) **바로 아래**인 2다. 펭귄(3)보다는 아래여서
+/// 클릭이 펭귄에게 가고, 보통 창(0)보다는 위여서 다른 앱 위에서도 방망이가 보인다.
+/// 메뉴바(24)는 여전히 훨씬 위라 트레이 아이콘은 그대로 눌린다 — 나가는 문이다.
+#[cfg(target_os = "macos")]
+fn sink_field_below_pets(app: &AppHandle) {
+    use objc2_app_kit::NSWindow;
+
+    let labels: Vec<String> = app
+        .webview_windows()
+        .keys()
+        .filter(|label| label.starts_with(FIELD_LABEL_PREFIX))
+        .cloned()
+        .collect();
+    for label in labels {
+        let Some(window) = app.get_webview_window(&label) else {
+            continue;
+        };
+        let Ok(ptr) = window.ns_window() else { continue };
+        if ptr.is_null() {
+            continue;
+        }
+        // SAFETY: `ns_window()`가 준 포인터는 살아 있는 NSWindow다. 방금
+        // 찾은 창이라 이 스코프 동안 닫히지 않는다.
+        unsafe {
+            let ns = &*(ptr as *const NSWindow);
+            ns.setLevel(FIELD_WINDOW_LEVEL);
         }
     }
 }
+
+/// 판의 창 레벨. `NSFloatingWindowLevel`(3, 펭귄이 쓰는 값) 바로 아래.
+#[cfg(target_os = "macos")]
+const FIELD_WINDOW_LEVEL: isize = 2;
+
+#[cfg(not(target_os = "macos"))]
+fn sink_field_below_pets(_app: &AppHandle) {}
 
 /// 핀볼 덮개 창을 닫는다.
 ///
@@ -977,7 +1005,12 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
     // 라벨이 어긋나면 조용히 아무 데도 안 간다. 받는 쪽은 여전히 창에 묶인
     // 리스너다 (전역 `listen`은 대상과 무관하게 전부 받는다 —
     // `docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`).
-    let _ = app.emit(EVENT_PET_SETTINGS, serde_json::json!({ "pinball": on }));
+    let sent = app.emit(EVENT_PET_SETTINGS, serde_json::json!({ "pinball": on }));
+    eprintln!(
+        "[penguin] 핀볼 {on} — 설정 알림 {}, 창 목록 {:?}",
+        if sent.is_ok() { "보냄" } else { "실패" },
+        app.webview_windows().keys().collect::<Vec<_>>()
+    );
     Ok(())
 }
 

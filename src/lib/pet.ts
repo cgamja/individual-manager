@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { type UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 export type Facing = "left" | "right";
@@ -309,13 +309,17 @@ export const onPetState = (cb: (snapshot: PetSnapshot) => void): Promise<Unliste
 /**
  * 설정이 이 창 밖에서 바뀌면 알려 준다 — 지금은 핀볼 판의 Esc가 유일한 경우다.
  *
- * **전역 `listen`이 아니라 창에 묶인 리스너여야 한다.** 전역은 대상을 `Any`로
- * 등록해서 `emit_to`와 무관하게 모든 창이 받는다
+ * **여기서는 창에 묶인 리스너가 아니라 전역 `listen`이다.** `pet://state`와
+ * 반대 방향의 선택이라 헷갈리기 쉬운데, 이유가 정확히 반대다: 그쪽은 마리마다
+ * 다른 값을 보내므로 창에 묶어야 하고, 이건 **설정 창 하나만 듣는 앱 전역
+ * 값**이라 대상을 좁힐수록 조용히 안 오는 경로만 늘어난다. 창에 묶어 봤다가
+ * 이벤트가 도착하지 않아 바꿨다 — Rust가 보냈다는 것은 로그로 확인했다.
+ *
+ * 전역 리스너는 대상을 `Any`로 등록해 **emit 대상과 무관하게 전부 받는다**
  * (`docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`).
+ * 여기서는 그게 결함이 아니라 원하는 성질이다.
  */
 export const onPetSettings = (
   cb: (settings: { pinball: boolean }) => void,
 ): Promise<UnlistenFn> =>
-  getCurrentWebviewWindow().listen<{ pinball: boolean }>(EVENT_PET_SETTINGS, (event) =>
-    cb(event.payload),
-  );
+  listen<{ pinball: boolean }>(EVENT_PET_SETTINGS, (event) => cb(event.payload));

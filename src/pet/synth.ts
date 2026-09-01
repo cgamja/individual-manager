@@ -166,7 +166,7 @@ export const playSquawk = (
 };
 
 /**
- * 첨벙 — 물고기를 꺼내는 물소리. 부딪힘 + 물 꼬리 두 겹. ≈400ms.
+ * 첨벙 — 물고기를 꺼내는 물소리. 꾸르륵대는 노이즈 한 겹. ≈400ms.
  *
  * 처음엔 사인 "퐁"이었는데 물이 아니라 알림음으로 들렸다(사용자 피드백,
  * 2026-09-01) — 물소리의 정체는 음이 아니라 **노이즈**다. 퍽과 같은 노이즈
@@ -180,23 +180,9 @@ export const playCatch = (
   const r = ratio(semitones);
   const t0 = ctx.currentTime;
 
-  // 1) 부딪히는 "촤" — 수면이 깨지는 순간. 고역 버스트가 짧고 세게
-  const impact = ctx.createBufferSource();
-  impact.buffer = noiseBuffer(ctx, 0.09);
-  const ihp = ctx.createBiquadFilter();
-  ihp.type = "bandpass";
-  ihp.Q.value = 0.7;
-  ihp.frequency.value = 3800 * r;
-  const ig = ctx.createGain();
-  envelope(ig, t0, 1.3, 0.004, 0.07);
-  impact.connect(ihp);
-  ihp.connect(ig);
-  ig.connect(out);
-  impact.start(t0);
-  impact.stop(t0 + 0.09);
-
-  // 2) 물이 갈라지는 "촤아" — 노이즈 꼬리. 필터를 LFO로 흔들어 꾸르륵대는
-  // 물의 질감을 만든다 (고정 필터면 그냥 바람 소리다)
+  // 물이 갈라지는 "촤아" — 필터를 LFO로 흔들어 꾸르륵대는 물의 질감을
+  // 만든다 (고정 필터면 그냥 바람 소리다). 고역 부딪힘("촤")도 앞에 얹어
+  // 봤지만 뺐다 — 이 한 겹이 제일 물답게 들렸다 (2026-09-01 사용자 피드백)
   const body = ctx.createBufferSource();
   body.buffer = noiseBuffer(ctx, 0.4);
   const bp = ctx.createBiquadFilter();
@@ -222,7 +208,7 @@ export const playCatch = (
   wob.stop(t0 + 0.4);
 
   // 물방울("뽁뽁뽁")도 얹어 봤지만 뺐다 — 물이 아니라 효과음 장식으로
-  // 들렸다 (2026-09-01 사용자 피드백). 첨벙은 부딪힘 + 물 꼬리 두 겹이면 된다
+  // 들렸다 (2026-09-01 사용자 피드백). 첨벙은 이 한 겹이면 된다
 };
 
 /** 광란 — 빽을 짧게 줄여 여섯 발, 음높이를 계단식으로 올리며. ≈700ms. */

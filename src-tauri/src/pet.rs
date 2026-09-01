@@ -21,10 +21,13 @@ const SWIM_SPEED: f64 = 95.0;
 /// 내려앉는 속도 (논리 px/초). **헤엄보다 빠르다** — 중력이 돕는 방향이라
 /// 같은 속도로 내려오면 미끄러지듯 느리다.
 ///
-/// **값의 근거는 공중에 떠 있는 시간이다.** 자유낙하를 내려앉기로 바꾸면서
-/// 헤엄의 화면 점유가 27.8% → 42.2%로 뛰었다(화면 꼭대기에서 바닥까지 8.4초).
-/// 착지를 고치려던 변경이 "펭귄이 절반쯤 공중에 떠 있는 앱"을 만들면 안 된다 —
-/// 이 값이면 3.8초로 줄어 점유가 원래대로 돌아온다.
+/// **값의 근거는 공중에 떠 있는 시간이다.** 자유낙하를 내려앉기로 바꾸면 화면
+/// 꼭대기에서 바닥까지 8.4초가 걸려 헤엄 점유가 27.8% → 42.5%로 뛴다. 착지를
+/// 고치려던 변경이 "펭귄이 절반쯤 공중에 떠 있는 앱"을 만들면 안 된다.
+///
+/// **원래대로 돌아오지는 않는다** — 이 값으로 37.1%다(실측, `빈도_측정`).
+/// 1.3초짜리 낙하가 3.8초짜리 동작이 됐으니 그만큼은 늘어야 하는 몫이다.
+/// 공중 체류 전체로 보면 32.6%(헤엄 27.8% + 낙하 4.8%) → 37.1%다.
 const SWIM_DESCENT_SPEED: f64 = 210.0;
 const _: () = assert!(SWIM_DESCENT_SPEED > SWIM_SPEED);
 /// 낙하 가속도 (논리 px/초²).
@@ -640,6 +643,12 @@ pub struct Pet {
     target: (f64, f64),
     /// 직전 step의 y — 세로 방향(오름/내림)을 이걸로 판정한다.
     last_y: f64,
+    /// 지금 헤엄이 **내려앉는 구간인가.**
+    ///
+    /// 목적지 y로 추론하면 안 된다 — `enter_swim`이 우연히 바닥 근처를 목적지로
+    /// 뽑은 보통 헤엄까지 내려앉는 속도로 날아간다(실측 0.53%). 상태로 들고 있으면
+    /// "예산이 끝나 집으로 돌린 순간"과 정확히 일치한다.
+    swim_descending: bool,
     /// 이번 슬라이딩의 출발 속도 (논리 px/초). 진입할 때 한 번 뽑는다 —
     /// 길이는 고정이고 이 값이 거리를 정한다.
     slide_speed: f64,
@@ -827,6 +836,7 @@ impl Pet {
             target: (x, bounds.floor_y),
             last_y: bounds.floor_y,
             slide_speed: 0.0,
+            swim_descending: false,
             freakout_until_ms: 0,
             fishing_until_ms: 0,
             rng: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
@@ -1048,6 +1058,7 @@ impl Pet {
                         // 전부 여기서 나왔고 그중 78%가 철푸덕·널브러짐이었다.
                         // 날개를 저어 내려오는 것이 `MOTIONS.md`가 적어 둔 "내려앉음"이다.
                         self.target = (self.x, bounds.floor_y);
+                        self.swim_descending = true;
                         // **상한도 미룬다.** 안 미루면 다음 틱에 또 이 분기로 들어와
                         // 목적지만 다시 찍고 영영 안 움직인다 (발작에서 겪었다).
                         let 남은 = (bounds.floor_y - self.y).max(0.0);
@@ -1055,8 +1066,7 @@ impl Pet {
                             now_ms + ((남은 / SWIM_DESCENT_SPEED) * 2_000.0) as u64 + 1_000;
                     }
                 } else {
-                    // 목적지가 바닥이면 내려앉는 중이다 — 그때만 빠르다
-                    let speed = if ty >= bounds.floor_y - ARRIVE_EPSILON {
+                    let speed = if self.swim_descending {
                         SWIM_DESCENT_SPEED
                     } else {
                         SWIM_SPEED
@@ -1402,6 +1412,7 @@ impl Pet {
 
     /// 헤엄 목적지를 영역 안에서 무작위로 고른다 (R11).
     fn enter_swim(&mut self, now_ms: u64, bounds: Bounds) {
+        self.swim_descending = false;
         let width = (bounds.right - bounds.left).max(0.0);
         let height = (bounds.floor_y - bounds.top).max(0.0);
         let tx = bounds.left + self.fraction() * width;
@@ -1969,6 +1980,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn 목적지가_바닥_근처여도_내려앉는_속도를_쓰지_않는다() {
+        // **"내려오는 중인가"를 목적지 y로 추론하면 안 된다** — `enter_swim`이
+        // 우연히 바닥 6px 안쪽을 목적지로 뽑은 **보통 헤엄**(실측 0.53%, 시간당
+        // 한 번쯤)이 통째로 2.2배 속도로 날아간다.
+        let w = world();
+        let mut p = pet();
+        // 먼저 한 틱 진행시켜 last_step_ms를 맞춘다 — 안 그러면 dt가 상한
+        // (MAX_STEP_MS)으로 잡혀 한 틱 이동량이 다섯 배가 된다
+        p.step(1_000, &w);
+        p.enter_swim(1_000, BOUNDS);
+        // 바닥 바로 위에서 가로로만 이동하게 둔다
+        p.x = 0.0;
+        p.y = BOUNDS.floor_y - 3.0;
+        p.target = (BOUNDS.right, BOUNDS.floor_y - 3.0);
+        let 이동 = p.step(1_050, &w).x;
+        assert!(
+            이동 <= SWIM_SPEED * 0.05 + 0.01,
+            "보통 헤엄인데 한 틱에 {이동:.2}px 움직였다 (헤엄 한 틱은 {:.2}px)",
+            SWIM_SPEED * 0.05
+        );
     }
 
     #[test]
@@ -3996,7 +4030,6 @@ mod tests {
         for seed in 시드들 {
             let mut p = Pet::new(seed, 0, &w);
             let mut 직전 = String::new();
-            let mut 직전전 = String::new();
             let mut t = 0u64;
             while t < 시간 {
                 t += 50;
@@ -4013,9 +4046,12 @@ mod tests {
                 if 이름 != 직전 {
                     *진입.entry(이름.clone()).or_default() += 1;
                     if matches!(s.behavior, Behavior::Splat | Behavior::Sprawl | Behavior::Land) {
-                        *출처.entry(format!("{} ← {}", 이름, 직전전)).or_default() += 1;
+                        // **`직전`이다.** 예전에는 원인과 착지 사이에 `Falling`이
+                        // 끼어 있어 `직전전`이 맞았는데, 그게 사라져 지금은
+                        // `직전`이 원인이다 — 안 고치면 `Land ← Idle`처럼 찍혀
+                        // 다음 감사가 엉뚱한 결론을 낸다.
+                        *출처.entry(format!("{이름} ← {직전}")).or_default() += 1;
                     }
-                    직전전 = 직전.clone();
                     직전 = 이름;
                 }
             }
@@ -4065,14 +4101,14 @@ mod tests {
             (0_usize, "Turn", 0.0, 800.0),
             (97, "Slide", 408.5, 800.0),
             (194, "Swim", 459.2, 701.3),
-            // 873과 970이 둘 다 헤엄인데 y가 563 → 763이다 — 날개를 저어
-            // **내려오는 구간**이다. 예전에는 이 자리가 `Falling`이었다.
+            // 예전에는 이 자리가 `Falling`이었다 — 헤엄이 끝나면 떨어졌다
             (291, "Swim", 394.8, 280.5),
             (388, "Idle { idle: ShiftFeet }", 394.8, 800.0),
             (485, "Walk", 235.2, 800.0),
             (582, "Idle { idle: LookAround }", 144.9, 800.0),
             (679, "Walk", 42.0, 800.0),
             (776, "Idle { idle: ShiftFeet }", 128.1, 800.0),
+            // 이 둘이 같은 헤엄인데 y가 563 → 763이다 — 날개를 저어 내려오는 구간
             (873, "Swim", 137.3, 562.7),
             (970, "Swim", 147.2, 762.6),
             (1067, "Idle { idle: Stretch }", 147.2, 800.0),

@@ -32,7 +32,6 @@ serde_json = "1.0.151"
 # `orderFrontRegardless`는 앱을 활성화하지 않고 그 창만 맨 앞으로 보낸다
 # (`orderFront:`는 앱이 비활성이면 무시된다 — Accessory 앱이라 그 경우가 기본이다).
 [target."cfg(target_os = \"macos\")".dependencies]
-objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder"] }
 
 # v2.0에서 걷어낸 것 (앱이 서비스 API를 직접 부르지 않는다 — PRINCIPLE 1):

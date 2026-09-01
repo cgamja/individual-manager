@@ -330,6 +330,11 @@ pub fn field_label(index: usize) -> String {
     format!("{FIELD_LABEL_PREFIX}{index}")
 }
 
+/// 화면 하나를 재서 넘기는 값 — (좌상단 물리 좌표, 물리 크기, 배율).
+///
+/// `tauri::Monitor`를 테스트에서 만들 수 없어서 판정에 필요한 셋만 떼어 낸다.
+pub type ScreenSpec = ((i32, i32), (u32, u32), f64);
+
 /// 화면 하나가 논리 좌표로 차지하는 사각형. 크기가 0이면 `None`이다 —
 /// `primary_monitor()`는 화면이 하나도 없어도 `Some`을 주면서 크기 0인 핸들을
 /// 내놓는다 ([`bounds_of_work_area`]와 같은 이유).
@@ -364,7 +369,7 @@ fn screen_rect(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<(f64, f6
 /// `Some`을 주면서 크기 0인 핸들을 내놓는다.
 ///
 /// 순수 함수로 뺀 이유는 `tauri::Monitor`를 테스트에서 만들 수 없기 때문이다.
-pub fn field_rects_of(screens: &[((i32, i32), (u32, u32), f64)]) -> Vec<(f64, f64, f64, f64)> {
+pub fn field_rects_of(screens: &[ScreenSpec]) -> Vec<(f64, f64, f64, f64)> {
     screens
         .iter()
         .filter_map(|(pos, size, scale)| screen_rect(*pos, *size, *scale))
@@ -379,7 +384,7 @@ pub fn field_rects_of(screens: &[((i32, i32), (u32, u32), f64)]) -> Vec<(f64, f6
 fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
     // **연결된 화면을 전부 모은다.** 한 화면만 덮으면 다른 화면에서 방망이가
     // 아예 안 나온다 — 커서는 펭귄과 달리 화면 경계를 넘어 다닌다.
-    let screens: Vec<_> = app
+    let screens: Vec<ScreenSpec> = app
         .available_monitors()
         .unwrap_or_default()
         .iter()
@@ -411,6 +416,8 @@ fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
             .decorations(false)
             .shadow(false)
             .resizable(false)
+            // 여기서 켜는 것은 **창 종류**(떠 있는 창)이고, 정확한 레벨은 바로
+            // 아래 `sink_field_below_pets`가 다시 정한다 — 그쪽이 최종 값이다
             .always_on_top(true)
             .skip_taskbar(true)
             .visible_on_all_workspaces(true)
@@ -1005,12 +1012,7 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
     // 라벨이 어긋나면 조용히 아무 데도 안 간다. 받는 쪽은 여전히 창에 묶인
     // 리스너다 (전역 `listen`은 대상과 무관하게 전부 받는다 —
     // `docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`).
-    let sent = app.emit(EVENT_PET_SETTINGS, serde_json::json!({ "pinball": on }));
-    eprintln!(
-        "[penguin] 핀볼 {on} — 설정 알림 {}, 창 목록 {:?}",
-        if sent.is_ok() { "보냄" } else { "실패" },
-        app.webview_windows().keys().collect::<Vec<_>>()
-    );
+    let _ = app.emit(EVENT_PET_SETTINGS, serde_json::json!({ "pinball": on }));
     Ok(())
 }
 

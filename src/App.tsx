@@ -6,6 +6,7 @@ import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
 import {
   addPet,
+  emitPetSound,
   fishPet,
   getPetSummary,
   onPetSettings,
@@ -159,8 +160,9 @@ function App() {
       .catch(() => {});
   }, []);
 
-  /** 소리 on/off — 저장만 한다. 낼 소리는 F3에서 붙는다.
-   * 저장에 실패하면 표시를 되돌린다 — 켜졌다고 보이는데 안 켜진 상태를 만들지 않게. */
+  /** 소리 on/off — 저장하고, 성공하면 떠 있는 펭귄 전부에 방송한다 (R2).
+   * 저장에 실패하면 표시를 되돌리고 방송도 안 한다 — "저장은 실패했는데
+   * 소리는 켜진" 상태를 만들지 않게. */
   const handleSoundEnabledChange = useCallback(async (next: boolean) => {
     setSoundEnabledState(next);
     try {
@@ -168,7 +170,10 @@ function App() {
     } catch (err) {
       console.error("소리 설정 저장 실패:", err);
       setSoundEnabledState(!next);
+      return;
     }
+    // 방송 실패는 표시를 되돌리지 않는다 — 저장은 이미 됐고, 다음 실행이 맞춘다
+    await emitPetSound(next).catch((err) => console.error("소리 설정 방송 실패:", err));
   }, []);
 
   /** 핀볼 on/off — **거는 것과 저장하는 것 둘 다 한다.** 거는 쪽은 지금 떠 있는

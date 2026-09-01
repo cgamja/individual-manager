@@ -137,6 +137,16 @@ const BOUNCE_MIN_SPEED: f64 = 150.0;
 /// 바닥에서 튈 때 남는 속도 비율. 벽(`BOUNCE_DAMPING`)보다 많이 죽인다 —
 /// 바닥은 몇 번 통통거리다 서야지, 오래 튀면 공처럼 보인다.
 const FLOOR_BOUNCE_DAMPING: f64 = 0.45;
+/// **핀볼 모드**에서 벽·천장·바닥이 전부 쓰는 반사 계수. 위 둘을 한 값으로
+/// 대체한다 — 핀볼에서 벽은 범퍼고, 취향 조정이 한 곳에 있어야 한다.
+///
+/// **값의 근거는 랠리 길이다.** 500px 높이에서 떨어지면 착지 속도가 949px/s이고,
+/// `BOUNCE_MIN_SPEED` 아래로 죽기까지 이 값으로 **22번** 튄다 (0.9면 17번,
+/// 0.95면 35번). **1.0으로 두면 안 된다** — 영원히 튀어서 펭귄이 다시는 걷지
+/// 않고 20Hz 틱이 영영 안 쉰다.
+const PINBALL_DAMPING: f64 = 0.92;
+const _: () = assert!(PINBALL_DAMPING < 1.0);
+const _: () = assert!(PINBALL_DAMPING > BOUNCE_DAMPING);
 /// 마지막 자극(클릭·드래그) 이후 이만큼 지나면 졸기로 넘어간다.
 /// 길게 잡는다 — 펭귄이 깨어서 돌아다니는 게 이 기능의 목적이고, 졸기는 양념이다.
 const SLEEP_AFTER_MS: u64 = 300_000;
@@ -664,6 +674,14 @@ pub struct Pet {
     /// 이번 슬라이딩의 출발 속도 (논리 px/초). 진입할 때 한 번 뽑는다 —
     /// 길이는 고정이고 이 값이 거리를 정한다.
     slide_speed: f64,
+    /// **핀볼 모드인가.** 켜면 착지 등급 판정을 우회하고 벽·천장·바닥이 전부
+    /// 반사면이 된다 (`landing`, `PINBALL_DAMPING`).
+    ///
+    /// **`step`의 인자가 아니라 필드다.** 인자로 받으면 모든 모션 테스트의
+    /// 호출부를 건드리는 대공사가 된다(`World` 교체 때 겪었고 그 후유증이
+    /// `TODO.md`에 아직 열려 있다). 시드·`slide_speed`처럼 이미 있는 부류라
+    /// 결정성도 그대로다.
+    pinball: bool,
     /// 지금 하는 발작 한 판이 끝나는 시각.
     ///
     /// **빽빽거리기의 `squawk_until_ms`와 달리 무효화가 필요 없다.** 그쪽은
@@ -848,6 +866,8 @@ impl Pet {
             target: (x, bounds.floor_y),
             last_y: bounds.floor_y,
             slide_speed: 0.0,
+            // 저장된 설정은 브릿지가 만든 직후에 건다 — 기본은 꺼짐이다
+            pinball: false,
             swim_descending: false,
             freakout_until_ms: 0,
             fishing_until_ms: 0,
@@ -890,6 +910,57 @@ impl Pet {
 
     pub fn behavior(&self) -> Behavior {
         self.behavior
+    }
+
+    /// 핀볼 모드를 켜고 끈다. 앱 전역 설정이라 브릿지가 전 마리에 건다.
+    pub fn set_pinball(&mut self, on: bool) {
+        self.pinball = on;
+    }
+
+    pub fn pinball(&self) -> bool {
+        self.pinball
+    }
+
+    /// 바닥에 닿는 순간의 착지를 고른다.
+    ///
+    /// **`landing_of`를 지우지 않고 앞에서 가로챈다.** 핀볼은 착지 4단계를
+    /// 지우는 모드가 아니라 **가려두는** 모드라, 끄면 문자 그대로 원래 함수가
+    /// 돌아와야 한다.
+    ///
+    /// 핀볼에서는 철푸덕·널브러짐이 있던 속도 구간을 **통통이 흡수한다** —
+    /// 새 분기가 아니라 문턱 둘이 사라지는 것이다. 아래 문턱
+    /// (`BOUNCE_MIN_SPEED`)은 남긴다: 없애면 영원히 잔진동하며 다시는 걷지 않는다.
+    ///
+    /// **호출처 둘(`Falling`·`Thrown`)이 이 한 곳을 공유한다.** 벽 판정을
+    /// `hit_wall` 한 곳에 모은 것과 같은 이유다 — 판정이 두 벌이 되면 한쪽만
+    /// 고쳐지고 조용히 갈라진다.
+    fn landing(&self, impact_vy: f64) -> Landing {
+        if !self.pinball {
+            return landing_of(impact_vy);
+        }
+        if impact_vy >= BOUNCE_MIN_SPEED {
+            Landing::Bounce(-impact_vy * PINBALL_DAMPING)
+        } else {
+            Landing::Settle(Behavior::Land, LAND_MS)
+        }
+    }
+
+    /// 벽·천장에서 튈 때 남는 속도 비율. 핀볼에서 벽은 범퍼다.
+    fn wall_damping(&self) -> f64 {
+        if self.pinball {
+            PINBALL_DAMPING
+        } else {
+            BOUNCE_DAMPING
+        }
+    }
+
+    /// 바닥에서 통통 튈 때 **가로** 속도에 남는 비율. 세로는 `landing`이 정한다.
+    fn floor_vx_damping(&self) -> f64 {
+        if self.pinball {
+            PINBALL_DAMPING
+        } else {
+            FLOOR_BOUNCE_DAMPING
+        }
     }
 
     /// 판정의 기준점 — **발밑 중앙**이다 (PRD §5.2).
@@ -938,7 +1009,7 @@ impl Pet {
                 if self.y >= bounds.floor_y {
                     self.y = bounds.floor_y;
                     // 속도를 0으로 만들기 **전에** 착지 세기를 읽는다
-                    match landing_of(self.vy) {
+                    match self.landing(self.vy) {
                         Landing::Bounce(vy) => self.vy = vy,
                         Landing::Settle(behavior, hold) => {
                             self.vy = 0.0;
@@ -1113,10 +1184,10 @@ impl Pet {
                 if (self.x <= bounds.left && self.vx < 0.0)
                     || (self.x >= bounds.right && self.vx > 0.0)
                 {
-                    self.vx = -self.vx * BOUNCE_DAMPING;
+                    self.vx = -self.vx * self.wall_damping();
                 }
                 if self.y <= bounds.top && self.vy < 0.0 {
-                    self.vy = -self.vy * BOUNCE_DAMPING;
+                    self.vy = -self.vy * self.wall_damping();
                 }
                 if self.vx.abs() > 1.0 {
                     self.facing = if self.vx > 0.0 { Facing::Right } else { Facing::Left };
@@ -1126,12 +1197,12 @@ impl Pet {
                 // 위로 던져도 첫 틱에 "착지"로 삼켜지며 위로 순간이동한다
                 if self.y >= bounds.floor_y && self.vy >= 0.0 {
                     self.y = bounds.floor_y;
-                    match landing_of(self.vy) {
+                    match self.landing(self.vy) {
                         Landing::Bounce(vy) => {
                             self.vy = vy;
                             // 통통 튀며 앞으로도 조금 밀린다 — 제자리에서만 튀면
                             // 던진 방향이 착지에서 끊긴다
-                            self.vx *= FLOOR_BOUNCE_DAMPING;
+                            self.vx *= self.floor_vx_damping();
                         }
                         Landing::Settle(behavior, hold) => {
                             self.vx = 0.0;
@@ -1993,6 +2064,133 @@ mod tests {
             }
         }
         (낙하, 내려앉음)
+    }
+
+    /// 핀볼 모드를 켠 펭귄. 켜는 것은 설정이지만 코어에서는 필드 하나다.
+    fn 핀볼_펫() -> Pet {
+        let mut p = pet();
+        p.set_pinball(true);
+        p
+    }
+
+    /// 지정한 높이에서 떨어뜨리고, 바닥에 닿은 횟수와 마지막 동작을 센다.
+    fn 떨어뜨려_세기(p: &mut Pet, 높이: f64, 한계_ms: u64) -> (u32, Behavior) {
+        let w = world();
+        p.step(0, &w);
+        p.y = BOUNDS.floor_y - 높이;
+        p.vy = 0.0;
+        p.enter(Behavior::Falling, 0);
+        let (mut 바닥_접촉, mut 떠_있었나) = (0, true);
+        let mut t = 0;
+        while t < 한계_ms {
+            t += 50;
+            let s = p.step(t, &w);
+            let 바닥에 = s.y >= BOUNDS.floor_y - 0.01;
+            if 바닥에 && 떠_있었나 {
+                바닥_접촉 += 1;
+            }
+            떠_있었나 = !바닥에;
+        }
+        (바닥_접촉, p.behavior())
+    }
+
+    #[test]
+    fn 핀볼이면_세게_떨어져도_널브러지지_않는다() {
+        // **착지 등급 판정을 통째로 우회한다** — 철푸덕·널브러짐이 있던 속도
+        // 구간을 통통이 흡수한다. 지우는 게 아니라 가려두는 것이다.
+        let w = world();
+        let mut p = 핀볼_펫();
+        p.step(0, &w);
+        // 널브러짐 문턱(1000px/s)을 확실히 넘는 높이
+        p.y = BOUNDS.floor_y - 700.0;
+        p.enter(Behavior::Falling, 0);
+        let mut t = 0;
+        while t < 30_000 {
+            t += 50;
+            let s = p.step(t, &w);
+            assert!(
+                !matches!(s.behavior, Behavior::Splat | Behavior::Sprawl),
+                "핀볼인데 {:?}가 나왔다",
+                s.behavior
+            );
+        }
+    }
+
+    #[test]
+    fn 핀볼을_끄면_착지_네_갈래가_그대로다() {
+        // **모드를 끄면 원래대로 돌아온다**(R4). 위 테스트와 같은 높이인데
+        // 결과가 달라야 한다 — 아니면 가려두는 게 아니라 지운 것이다.
+        let w = world();
+        let mut p = pet();
+        p.step(0, &w);
+        p.y = BOUNDS.floor_y - 700.0;
+        p.enter(Behavior::Falling, 0);
+        let mut 널브러졌나 = false;
+        let mut t = 0;
+        while t < 30_000 {
+            t += 50;
+            if p.step(t, &w).behavior == Behavior::Sprawl {
+                널브러졌나 = true;
+            }
+        }
+        assert!(널브러졌나, "핀볼을 껐는데도 널브러지지 않았다");
+    }
+
+    #[test]
+    fn 핀볼이면_바닥에서_한참_튄다() {
+        // 감쇠가 거의 없어야 "계속 튕긴다"로 읽힌다. **횟수를 못박지 않는다** —
+        // `PINBALL_DAMPING`은 취향 상수라 조정될 값이다. 평소보다 훨씬 오래
+        // 튄다는 것만 본다.
+        let (핀볼_접촉, _) = 떨어뜨려_세기(&mut 핀볼_펫(), 500.0, 60_000);
+        let (평소_접촉, _) = 떨어뜨려_세기(&mut pet(), 500.0, 60_000);
+        assert!(
+            핀볼_접촉 >= 10,
+            "핀볼인데 {핀볼_접촉}번밖에 안 튀었다"
+        );
+        assert!(
+            핀볼_접촉 > 평소_접촉 * 2,
+            "핀볼({핀볼_접촉})이 평소({평소_접촉})보다 확연히 오래 튀어야 한다"
+        );
+    }
+
+    #[test]
+    fn 핀볼이라도_결국_선다() {
+        // **아래 문턱(`BOUNCE_MIN_SPEED`)을 남긴 이유다.** 없애면 영원히
+        // 잔진동하며 다시는 걷지 않고, 20Hz 틱도 영영 안 쉰다.
+        let (_, 마지막) = 떨어뜨려_세기(&mut 핀볼_펫(), 500.0, 120_000);
+        assert!(
+            !matches!(마지막, Behavior::Falling | Behavior::Thrown),
+            "2분이 지나도 안 멈춘다 ({마지막:?})"
+        );
+    }
+
+    #[test]
+    fn 핀볼이면_벽에서도_거의_안_죽는다() {
+        // 핀볼에서 벽은 범퍼다 — 바닥과 같은 계수를 쓴다.
+        let w = world();
+        let 남은_속도 = |핀볼: bool| {
+            let mut p = pet();
+            p.set_pinball(핀볼);
+            p.step(0, &w);
+            p.x = BOUNDS.right - 1.0;
+            p.y = BOUNDS.floor_y - 400.0;
+            p.vx = 600.0;
+            p.vy = 0.0;
+            p.enter(Behavior::Thrown, 0);
+            let mut t = 0;
+            // 벽에 닿아 되튈 때까지
+            while t < 3_000 && p.vx > 0.0 {
+                t += 50;
+                p.step(t, &w);
+            }
+            p.vx.abs()
+        };
+        let 핀볼 = 남은_속도(true);
+        let 평소 = 남은_속도(false);
+        assert!(
+            핀볼 > 평소 * 1.5,
+            "핀볼({핀볼:.0})이 평소({평소:.0})보다 훨씬 덜 죽어야 한다"
+        );
     }
 
     #[test]

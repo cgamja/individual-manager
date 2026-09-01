@@ -28,6 +28,12 @@ pub fn now_ms() -> u64 {
 
 /// 웹뷰가 구독하는 상태 이벤트.
 pub const EVENT_PET_STATE: &str = "pet://state";
+/// 설정이 **이 창 밖에서** 바뀌었음을 설정 창에 알린다.
+///
+/// 핀볼 판에서 Esc를 누르면 저장소가 바뀌는데, 설정 창이 **열려 있는 채로**
+/// 그 일이 벌어지면 `visibilitychange`가 안 뜬다 — 체크는 켜진 채로 남고
+/// 사용자는 껐다 켜야 실제로 켜지는 꼴을 본다.
+pub const EVENT_PET_SETTINGS: &str = "pet://settings";
 
 /// 위치·동작 갱신 주기. 스프라이트 프레임은 CSS가 담당하므로 이 주기는
 /// "얼마나 부드럽게 이동하느냐"만 정한다. set_position은 매 호출이 IPC라
@@ -214,6 +220,14 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
             return Err(err);
         }
     }
+    // **저장된 핀볼이 켜짐이면 판도 깐다.** 플래그만 걸고 판을 안 만들면 다시
+    // 켠 앱은 "모드는 켜져 있는데 커서가 안 바뀌는" 상태가 된다 — 사용자가
+    // 보기에 그냥 고장이다.
+    if pet_pinball(app) {
+        if let Err(err) = create_field_window(app) {
+            eprintln!("[penguin] 시작 시 핀볼 판을 못 깔았다: {err}");
+        }
+    }
     Ok(())
 }
 
@@ -311,18 +325,15 @@ pub fn create_pet_window(app: &AppHandle, id: PetId, at: (f64, f64)) -> tauri::R
 /// 조용히 reject된다** (`docs/solutions/best-practices/tauri-command-registration-silent-failure.md`).
 pub const FIELD_LABEL: &str = "pinball-field";
 
-/// 덮개가 덮을 사각형(논리 좌표, 좌상단과 크기).
+/// 화면 하나가 논리 좌표로 차지하는 사각형. 크기가 0이면 `None`이다 —
+/// `primary_monitor()`는 화면이 하나도 없어도 `Some`을 주면서 크기 0인 핸들을
+/// 내놓는다 ([`bounds_of_work_area`]와 같은 이유).
 ///
-/// **작업 영역이 아니라 모니터 전체다.** 작업 영역을 쓰면 메뉴바 높이만큼 띠가
+/// **작업 영역이 아니라 화면 전체다.** 작업 영역을 쓰면 메뉴바 높이만큼 띠가
 /// 남아 거기서만 커서가 화살표로 돌아온다. 메뉴바는 창 레벨이 더 높아
 /// (`NSMainMenuWindowLevel` 24 > `NSFloatingWindowLevel` 3) 덮개에 가려지지
 /// 않으므로, 전체를 덮어도 **트레이 아이콘은 그대로 눌린다** — 그게 나가는 문이다.
-///
-/// 크기가 0이면 `None`이다. `primary_monitor()`가 화면 없이도 `Some`을 주면서
-/// 크기 0인 핸들을 내놓기 때문이다 ([`bounds_of_work_area`]와 같은 이유).
-///
-/// 순수 함수로 뺀 이유도 같다 — `tauri::Monitor`는 테스트에서 만들 수 없다.
-pub fn field_rect_of(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<(f64, f64, f64, f64)> {
+fn screen_rect(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<(f64, f64, f64, f64)> {
     if size.0 == 0 || size.1 == 0 || scale <= 0.0 {
         return None;
     }
@@ -334,6 +345,34 @@ pub fn field_rect_of(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<(f
     ))
 }
 
+/// 덮개가 덮을 사각형 — **연결된 모든 화면의 합집합**이다.
+///
+/// **펭귄의 세계는 화면 하나지만**(PRD §5.2) **커서는 화면을 넘나든다.** 판을
+/// 한 화면만 덮게 만들었더니 다른 화면에서는 방망이가 아예 안 나왔다 — 실제로
+/// 겪었다. "마우스를 비활성화한다"는 요청은 화면 하나가 아니라 **데스크톱
+/// 전체**에 대한 것이므로 합집합이 맞다.
+///
+/// 화면마다 배율이 다를 수 있으므로 **각자의 배율로 논리 좌표를 낸 뒤에** 합친다.
+/// 크기가 0인 화면은 건너뛴다. 쓸 만한 화면이 하나도 없으면 `None`이다.
+///
+/// 순수 함수로 뺀 이유는 `tauri::Monitor`를 테스트에서 만들 수 없기 때문이다.
+pub fn field_rect_of(screens: &[((i32, i32), (u32, u32), f64)]) -> Option<(f64, f64, f64, f64)> {
+    let rects: Vec<_> = screens
+        .iter()
+        .filter_map(|(pos, size, scale)| screen_rect(*pos, *size, *scale))
+        .collect();
+    let first = rects.first()?;
+    let (mut left, mut top) = (first.0, first.1);
+    let (mut right, mut bottom) = (first.0 + first.2, first.1 + first.3);
+    for (x, y, w, h) in rects.iter().skip(1) {
+        left = left.min(*x);
+        top = top.min(*y);
+        right = right.max(x + w);
+        bottom = bottom.max(y + h);
+    }
+    Some((left, top, right - left, bottom - top))
+}
+
 /// 핀볼 덮개 창을 만든다. 이미 있으면 그대로 둔다.
 ///
 /// **펭귄 창과 같은 레벨이므로 순서를 명시적으로 정한다** — 만든 직후에 살아 있는
@@ -343,19 +382,24 @@ fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
     if app.get_webview_window(FIELD_LABEL).is_some() {
         return Ok(());
     }
-    let monitor = any_pet_window(app)
-        .and_then(|w| w.current_monitor().ok().flatten())
-        .or_else(|| app.primary_monitor().ok().flatten())
-        .ok_or_else(|| tauri::Error::WindowNotFound)?;
-    let (x, y, w, h) = field_rect_of(
-        (monitor.position().x, monitor.position().y),
-        (monitor.size().width, monitor.size().height),
-        monitor.scale_factor(),
-    )
-    .ok_or_else(|| tauri::Error::WindowNotFound)?;
+    // **연결된 화면을 전부 모은다.** 한 화면만 덮으면 다른 화면에서 방망이가
+    // 아예 안 나온다 — 커서는 펭귄과 달리 화면 경계를 넘어 다닌다.
+    let screens: Vec<_> = app
+        .available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| {
+            (
+                (m.position().x, m.position().y),
+                (m.size().width, m.size().height),
+                m.scale_factor(),
+            )
+        })
+        .collect();
+    let (x, y, w, h) = field_rect_of(&screens).ok_or(tauri::Error::WindowNotFound)?;
 
     // 설정은 펭귄 창을 그대로 따른다 — 투명·무장식·항상 위·첫 클릭 수용.
-    // **다른 점은 크기(화면 전체)와, 그리는 게 없다는 것뿐이다.**
+    // **다른 점은 크기(모든 화면)와, 그리는 게 없다는 것뿐이다.**
     WebviewWindowBuilder::new(app, FIELD_LABEL, WebviewUrl::App("field.html".into()))
         .title("Pinball Field")
         .inner_size(w, h)
@@ -903,6 +947,11 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
     for id in ids {
         flush(&app, id);
     }
+    // 설정 창이 **열려 있는 채로** 판에서 Esc를 누를 수 있다. 그때는
+    // `visibilitychange`가 안 뜨므로 여기서 직접 알린다.
+    // **`emit`이 아니라 `emit_to`다** — 전역 `listen`은 대상을 `Any`로 등록해서
+    // 모든 창이 받는다 (`docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`).
+    let _ = app.emit_to("main", EVENT_PET_SETTINGS, serde_json::json!({ "pinball": on }));
     Ok(())
 }
 
@@ -1117,24 +1166,43 @@ mod tests {
     }
 
     #[test]
-    fn 덮개는_모니터_전체를_배율로_나눈다() {
+    fn 덮개는_화면_전체를_배율로_나눈다() {
         // **작업 영역이 아니라 전체다.** 작업 영역을 쓰면 메뉴바 높이만큼 띠가
         // 남아 거기서만 커서가 화살표로 돌아온다.
-        let (x, y, w, h) = field_rect_of((0, 0), (2_880, 1_800), 2.0).expect("멀쩡한 모니터");
+        let (x, y, w, h) = field_rect_of(&[((0, 0), (2_880, 1_800), 2.0)]).expect("멀쩡한 화면");
         assert_eq!((x, y, w, h), (0.0, 0.0, 1_440.0, 900.0));
-        // 왼쪽에 붙은 보조 화면처럼 원점이 음수여도 그대로 따라간다
-        let (x, _, _, _) = field_rect_of((-2_880, 0), (2_880, 1_800), 2.0).expect("음수 원점");
-        assert_eq!(x, -1_440.0);
     }
 
     #[test]
-    fn 크기가_0인_모니터에는_덮개를_깔지_않는다() {
+    fn 덮개는_모든_화면을_덮는다() {
+        // **실제로 겪은 버그다.** 펭귄이 있는 화면만 덮었더니 다른 화면에서
+        // 방망이가 아예 안 나왔다 — 커서는 펭귄과 달리 화면을 넘어 다닌다.
+        //
+        // 배율이 다른 화면이 섞여도 **각자의 배율로 논리 좌표를 낸 뒤에** 합쳐야
+        // 한다. 하나의 배율로 뭉치면 한쪽이 절반 크기로 잡혀 띠가 남는다.
+        let (x, y, w, h) = field_rect_of(&[
+            ((0, 0), (2_880, 1_800), 2.0),      // 논리 (0,0) 1440×900
+            ((1_800, -333), (3_008, 1_692), 1.0), // 논리 (1800,-333) 3008×1692
+        ])
+        .expect("두 화면");
+        assert_eq!((x, y), (0.0, -333.0), "왼쪽 위 끝은 두 화면의 최솟값이다");
+        assert_eq!((w, h), (4_808.0, 1_692.0), "오른쪽 아래 끝까지 덮어야 한다");
+    }
+
+    #[test]
+    fn 크기가_0인_화면은_건너뛴다() {
         // `primary_monitor()`는 화면이 하나도 없어도 Some을 주면서 크기 0인
-        // 핸들을 내놓는다 (`bounds_of_work_area`와 같은 이유). 그대로 만들면
-        // **클릭을 먹으면서 아무것도 안 덮는 창**이 생긴다
-        assert!(field_rect_of((0, 0), (0, 900), 2.0).is_none());
-        assert!(field_rect_of((0, 0), (1_440, 0), 2.0).is_none());
-        assert!(field_rect_of((0, 0), (1_440, 900), 0.0).is_none());
+        // 핸들을 내놓는다 (`bounds_of_work_area`와 같은 이유). 그대로 합치면
+        // 덮개가 원점까지 늘어나 **아무것도 없는 곳을 덮는다**
+        assert!(field_rect_of(&[]).is_none());
+        assert!(field_rect_of(&[((0, 0), (0, 900), 2.0)]).is_none());
+        assert!(field_rect_of(&[((0, 0), (1_440, 900), 0.0)]).is_none());
+        let (x, _, w, _) = field_rect_of(&[
+            ((0, 0), (0, 0), 1.0),
+            ((100, 0), (200, 200), 1.0),
+        ])
+        .expect("멀쩡한 화면 하나는 남는다");
+        assert_eq!((x, w), (100.0, 200.0), "크기 0인 화면이 원점까지 늘리면 안 된다");
     }
 
     /// 새 창의 라벨을 capabilities에 안 넣으면 그 창이 부르는 커맨드가

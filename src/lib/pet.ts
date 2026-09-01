@@ -116,6 +116,9 @@ export const normalizeTaunts = (lines: readonly string[]): string[] =>
 
 export const EVENT_PET_STATE = "pet://state";
 
+/** 설정이 **이 창 밖에서** 바뀌었을 때 오는 알림 (핀볼 판의 Esc 등). */
+export const EVENT_PET_SETTINGS = "pet://settings";
+
 /** 클릭과 드래그를 가르는 이동량(px). 이보다 덜 움직였으면 클릭으로 본다. */
 export const DRAG_THRESHOLD_PX = 4;
 
@@ -302,3 +305,17 @@ export const setPetPinball = (on: boolean): Promise<void> =>
  */
 export const onPetState = (cb: (snapshot: PetSnapshot) => void): Promise<UnlistenFn> =>
   getCurrentWebviewWindow().listen<PetSnapshot>(EVENT_PET_STATE, (event) => cb(event.payload));
+
+/**
+ * 설정이 이 창 밖에서 바뀌면 알려 준다 — 지금은 핀볼 판의 Esc가 유일한 경우다.
+ *
+ * **전역 `listen`이 아니라 창에 묶인 리스너여야 한다.** 전역은 대상을 `Any`로
+ * 등록해서 `emit_to`와 무관하게 모든 창이 받는다
+ * (`docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`).
+ */
+export const onPetSettings = (
+  cb: (settings: { pinball: boolean }) => void,
+): Promise<UnlistenFn> =>
+  getCurrentWebviewWindow().listen<{ pinball: boolean }>(EVENT_PET_SETTINGS, (event) =>
+    cb(event.payload),
+  );

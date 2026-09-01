@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { MotionCard, type Motion } from "./components/MotionCard";
 import { PetCountCard } from "./components/PetCountCard";
 import { SettingsCard } from "./components/SettingsCard";
@@ -7,6 +8,7 @@ import {
   addPet,
   fishPet,
   getPetSummary,
+  onPetSettings,
   removePet,
   setPetEnabled,
   setPetPinball,
@@ -108,9 +110,21 @@ function App() {
     };
     document.addEventListener("visibilitychange", onVisibility);
 
+    // **창이 열려 있는 채로도 바뀔 수 있다.** 핀볼 판에서 Esc를 누르면 저장소가
+    // 바뀌는데 그때는 `visibilitychange`가 안 뜬다 — 체크가 켜진 채로 남아
+    // 껐다 켜야 실제로 켜지는 꼴이 된다.
+    let unlisten: UnlistenFn | undefined;
+    void onPetSettings(({ pinball }) => setPinballEnabledState(pinball))
+      .then((off) => {
+        if (cancelled) off();
+        else unlisten = off;
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", onVisibility);
+      unlisten?.();
     };
   }, []);
 

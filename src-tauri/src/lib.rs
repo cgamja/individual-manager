@@ -25,9 +25,14 @@ fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
 }
 
-/// 테마를 두 곳에 건다 — 창(웹뷰의 prefers-color-scheme이 뒤집힌다)과
-/// 트레이 아이콘. 시스템이면 템플릿 이미지(색은 메뉴바가 정한다)이고,
-/// 라이트/다크 고정이면 템플릿을 끄고 검정/흰색 실루엣을 직접 든다.
+/// 테마를 **창에만** 건다 (웹뷰의 prefers-color-scheme이 뒤집힌다).
+///
+/// **트레이 아이콘은 여기서 건드리지 않는다** — 처음에는 테마가 트레이도
+/// 고정(검정/흰 실루엣)하게 만들었다가 뺐다(2026-09-01 리뷰). 메뉴바 색은
+/// `set_theme`이 아니라 OS(시스템 설정)가 정하므로, 고정 실루엣은 시스템과
+/// 테마가 같을 땐 템플릿과 똑같고 **다를 땐 메뉴바에 묻혀 안 보인다** —
+/// 쓸모 있는 경우가 없고, 트레이는 핀볼 모드의 "나가는 문 둘" 중 하나라
+/// 안 보이면 안 된다. 템플릿 이미지가 항상 맞는 색을 낸다.
 ///
 /// 시작 시(setup)와 설정 변경(`pet_set_theme`) 두 경로가 부른다 —
 /// `apply_saved_settings`처럼 한 곳에 모은다.
@@ -38,18 +43,6 @@ pub(crate) fn apply_theme(app: &AppHandle, theme: pet_bridge::Theme) {
         Theme::Light => Some(tauri::Theme::Light),
         Theme::Dark => Some(tauri::Theme::Dark),
     });
-    let Some(tray) = app.tray_by_id(TRAY_ID) else {
-        return;
-    };
-    let (bytes, template): (&[u8], bool) = match theme {
-        Theme::System => (include_bytes!("../icons/tray.png"), true),
-        Theme::Light => (include_bytes!("../icons/tray.png"), false),
-        Theme::Dark => (include_bytes!("../icons/tray-white.png"), false),
-    };
-    if let Ok(icon) = Image::from_bytes(bytes) {
-        let _ = tray.set_icon(Some(icon));
-        let _ = tray.set_icon_as_template(template);
-    }
 }
 
 /// 설정 창의 테마 선택. 저장은 웹뷰(`savePetSettings`)가 한다 — 여기는

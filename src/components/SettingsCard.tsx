@@ -10,7 +10,7 @@ interface SettingsCardProps {
   /** 음량 단계 0~4. 가운데(2)가 기본 크기, 단계마다 두 배(6dB)씩. */
   volume: number;
   onVolumeChange: (volume: number) => void;
-  /** 겉모습 테마 — 이 창과 트레이 아이콘이 함께 따른다. */
+  /** 겉모습 테마 — 이 창의 겉모습을 정한다. 트레이는 항상 자동(템플릿)이다. */
   theme: AppTheme;
   onThemeChange: (theme: AppTheme) => void;
   /** 핀볼 모드 여부. **기본은 꺼짐** — 켜면 착지 4단계가 가려진다. */
@@ -82,8 +82,8 @@ export function SettingsCard({
 
       <div className="settings-row">
         <label htmlFor="app-theme">테마</label>
-        {/* 이 창의 겉모습과 트레이 아이콘 색을 함께 정한다. 시스템이면 둘 다
-            OS를 따른다 (트레이는 템플릿 이미지) */}
+        {/* 이 창의 겉모습을 정한다. 트레이 아이콘은 여기 안 걸린다 — 메뉴바
+            색은 OS만 정하므로 고정하면 안 보이는 경우가 생긴다 (lib.rs 참고) */}
         <select
           id="app-theme"
           value={theme}

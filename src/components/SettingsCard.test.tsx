@@ -75,6 +75,6 @@ describe("SettingsCard", () => {
     // 조용하다는 마지막 절을 빼지 않는다 (KTD3)
     render(<SettingsCard {...props} />);
     expect(screen.getByText(/때리거나 던지면 소리가 나요/)).toBeInTheDocument();
-    expect(screen.getByText(/혼자 돌아다닐 때는 조용해요/)).toBeInTheDocument();
+    expect(screen.getByText(/그 밖에는 조용해요/)).toBeInTheDocument();
   });
 });

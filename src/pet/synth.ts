@@ -1,5 +1,5 @@
 /**
- * 소리 넷을 그 자리에서 합성한다 (KTD1 — Q9 확정).
+ * 소리 다섯을 그 자리에서 합성한다 (KTD1 — Q9 확정).
  *
  * 음원 파일을 쓰지 않는 이유: 번들이 0바이트 늘고, 라이선스·출처 표기가
  * 없고, 마리마다 목소리를 값으로 흔들 수 있다. 소리 하나 고치는 데 오디오
@@ -163,6 +163,54 @@ export const playSquawk = (
   semitones: number,
 ): void => {
   squawkBurst(ctx, out, ctx.currentTime, 750 * ratio(semitones), 0.35, 1.6);
+};
+
+/**
+ * 첨벙 — 물고기를 꺼내는 물소리. 꾸르륵대는 노이즈 한 겹. ≈480ms.
+ *
+ * 처음엔 사인 "퐁"이었는데 물이 아니라 알림음으로 들렸다(사용자 피드백,
+ * 2026-09-01) — 물소리의 정체는 음이 아니라 **노이즈**다. 퍽과 같은 노이즈
+ * 버퍼를 밴드패스로 물길처럼 쓸어내린다.
+ */
+export const playCatch = (
+  ctx: BaseAudioContext,
+  out: AudioNode,
+  semitones: number,
+): void => {
+  const r = ratio(semitones);
+  const t0 = ctx.currentTime;
+
+  // 물이 갈라지는 "촤아" — 필터를 LFO로 흔들어 꾸르륵대는 물의 질감을
+  // 만든다 (고정 필터면 그냥 바람 소리다). 고역 부딪힘("촤")도 앞에 얹어
+  // 봤지만 뺐다 — 이 한 겹이 제일 물답게 들렸다 (2026-09-01 사용자 피드백)
+  // 부드럽게: 어택을 길게(훅 하고 차오르게), Q를 낮춰 쏘는 공명을 빼고,
+  // 시작 주파수와 흔들림 폭도 내렸다 (2026-09-01 사용자 피드백)
+  const body = ctx.createBufferSource();
+  body.buffer = noiseBuffer(ctx, 0.5);
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.Q.value = 0.9;
+  bp.frequency.setValueAtTime(1200 * r, t0);
+  bp.frequency.exponentialRampToValueAtTime(400 * r, t0 + 0.44);
+  const wob = ctx.createOscillator();
+  wob.type = "sine";
+  wob.frequency.value = 10;
+  const wobGain = ctx.createGain();
+  wobGain.gain.value = 170 * r;
+  wob.connect(wobGain);
+  wobGain.connect(bp.frequency);
+  const bg = ctx.createGain();
+  envelope(bg, t0, 0.85, 0.07, 0.4);
+  body.connect(bp);
+  bp.connect(bg);
+  bg.connect(out);
+  body.start(t0);
+  body.stop(t0 + 0.5);
+  wob.start(t0);
+  wob.stop(t0 + 0.5);
+
+  // 물방울("뽁뽁뽁")도 얹어 봤지만 뺐다 — 물이 아니라 효과음 장식으로
+  // 들렸다 (2026-09-01 사용자 피드백). 첨벙은 이 한 겹이면 된다
 };
 
 /** 광란 — 빽을 짧게 줄여 여섯 발, 음높이를 계단식으로 올리며. ≈700ms. */

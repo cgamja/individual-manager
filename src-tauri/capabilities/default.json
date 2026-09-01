@@ -5,7 +5,7 @@
   "windows": [
     "main",
     "pet-*",
-    "pinball-field"
+    "pinball-field-*"
   ],
   "permissions": [
     "core:default",

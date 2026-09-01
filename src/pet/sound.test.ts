@@ -122,9 +122,22 @@ describe("soundsFor — 전이 검출", () => {
   it("잡으면_퐁이_난다", () => {
     // 자격 규칙("사용자 원인이거나 시간당 1회 미만")의 첫 예외 — 잡음은 16분에
     // 한 번 열리는 판 안에만 몰려 있고, 서사의 보상 지점이다 (플랜 018 KTD1)
-    const prev = snap({ behavior: { kind: "ice_fishing", fishing: "wait" } });
+    // 실제 진입 edge는 입질(bite) → 잡음이다 (pet.rs의 상태기계)
+    const prev = snap({ behavior: { kind: "ice_fishing", fishing: "bite" } });
     const next = snap({ behavior: { kind: "ice_fishing", fishing: "catch" } });
     expect(soundsFor(prev, next)).toEqual(["catch"]);
+  });
+
+  it("다시_드리워_또_잡으면_또_난다", () => {
+    // 잡아도 판이 끝나지 않는다 — catch→wait→bite→catch 루프가 매번 edge다
+    const phases = ["catch", "wait", "bite", "catch"] as const;
+    const sounds = phases.slice(1).map((fishing, i) =>
+      soundsFor(
+        snap({ behavior: { kind: "ice_fishing", fishing: phases[i] } }),
+        snap({ behavior: { kind: "ice_fishing", fishing } }),
+      ),
+    );
+    expect(sounds).toEqual([[], [], ["catch"]]);
   });
 
   it("잡는_국면이_이어지는_동안은_다시_안_난다", () => {
@@ -134,6 +147,16 @@ describe("soundsFor — 전이 검출", () => {
       speech: { seq: 1, roll: 0 },
     });
     expect(soundsFor(prev, next)).toEqual([]);
+  });
+
+  it("잡는_국면이_끝나면_조용하다", () => {
+    // 리뷰 지적 — wasCatch=true, isCatch=false 사분면. 코어는 Catch를 다시
+    // 드리우기(wait)나 정리(pack)로 보낸다
+    const caught = snap({ behavior: { kind: "ice_fishing", fishing: "catch" } });
+    const wait = snap({ behavior: { kind: "ice_fishing", fishing: "wait" } });
+    const pack = snap({ behavior: { kind: "ice_fishing", fishing: "pack" } });
+    expect(soundsFor(caught, wait)).toEqual([]);
+    expect(soundsFor(caught, pack)).toEqual([]);
   });
 
   it("꽝은_조용하다", () => {
@@ -280,6 +303,22 @@ describe("SoundPlayer", () => {
     player.setEnabled(true);
     player.play("squawk", 0);
     expect(ctx.created.filter((k) => k === "oscillator").length).toBeGreaterThan(0);
+  });
+
+  it("모든_소리가_스텁에서_그래프를_만든다", () => {
+    // 리뷰 지적 — SYNTH 표에 등록만 되고 한 번도 실행 안 되는 소리가 있으면
+    // 그래프 조립이 깨져도 러너가 초록이다. 파형은 안 보고 "만들긴 하는가"만 본다
+    const names: SoundName[] = ["whack", "whoosh", "squawk", "freakout", "catch"];
+    for (const name of names) {
+      const ctx = stubContext();
+      const player = new SoundPlayer("pet-1", () => ctx);
+      player.setEnabled(true);
+      player.play(name, 0);
+      expect(
+        ctx.created.filter((k) => k === "oscillator" || k === "source").length,
+        name,
+      ).toBeGreaterThan(0);
+    }
   });
 
   it("쿨다운_안의_재생은_버린다", () => {

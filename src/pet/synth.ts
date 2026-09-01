@@ -166,7 +166,7 @@ export const playSquawk = (
 };
 
 /**
- * 첨벙 — 물고기를 꺼내는 물소리. 노이즈 스플래시 + 물방울 하나. ≈350ms.
+ * 첨벙 — 물고기를 꺼내는 물소리. 부딪힘 + 물 꼬리 + 물방울 셋. ≈450ms.
  *
  * 처음엔 사인 "퐁"이었는데 물이 아니라 알림음으로 들렸다(사용자 피드백,
  * 2026-09-01) — 물소리의 정체는 음이 아니라 **노이즈**다. 퍽과 같은 노이즈
@@ -180,35 +180,66 @@ export const playCatch = (
   const r = ratio(semitones);
   const t0 = ctx.currentTime;
 
-  // 첨벙 — 노이즈를 밴드패스에 넣고 중심주파수를 아래로 쓸어내린다
-  // (수면을 뚫고 나오는 순간 → 물이 가라앉는 순간)
-  const splash = ctx.createBufferSource();
-  splash.buffer = noiseBuffer(ctx, 0.3);
+  // 1) 부딪히는 "촤" — 수면이 깨지는 순간. 고역 버스트가 짧고 세게
+  const impact = ctx.createBufferSource();
+  impact.buffer = noiseBuffer(ctx, 0.09);
+  const ihp = ctx.createBiquadFilter();
+  ihp.type = "bandpass";
+  ihp.Q.value = 0.7;
+  ihp.frequency.value = 3800 * r;
+  const ig = ctx.createGain();
+  envelope(ig, t0, 1.3, 0.004, 0.07);
+  impact.connect(ihp);
+  ihp.connect(ig);
+  ig.connect(out);
+  impact.start(t0);
+  impact.stop(t0 + 0.09);
+
+  // 2) 물이 갈라지는 "촤아" — 노이즈 꼬리. 필터를 LFO로 흔들어 꾸르륵대는
+  // 물의 질감을 만든다 (고정 필터면 그냥 바람 소리다)
+  const body = ctx.createBufferSource();
+  body.buffer = noiseBuffer(ctx, 0.4);
   const bp = ctx.createBiquadFilter();
   bp.type = "bandpass";
-  bp.Q.value = 0.9;
-  bp.frequency.setValueAtTime(2600 * r, t0);
-  bp.frequency.exponentialRampToValueAtTime(700 * r, t0 + 0.26);
-  const sg = ctx.createGain();
-  envelope(sg, t0, 1.1, 0.01, 0.26);
-  splash.connect(bp);
-  bp.connect(sg);
-  sg.connect(out);
-  splash.start(t0);
-  splash.stop(t0 + 0.3);
+  bp.Q.value = 1.3;
+  bp.frequency.setValueAtTime(1600 * r, t0);
+  bp.frequency.exponentialRampToValueAtTime(450 * r, t0 + 0.36);
+  const wob = ctx.createOscillator();
+  wob.type = "sine";
+  wob.frequency.value = 13;
+  const wobGain = ctx.createGain();
+  wobGain.gain.value = 280 * r;
+  wob.connect(wobGain);
+  wobGain.connect(bp.frequency);
+  const bg = ctx.createGain();
+  envelope(bg, t0, 1.0, 0.02, 0.34);
+  body.connect(bp);
+  bp.connect(bg);
+  bg.connect(out);
+  body.start(t0);
+  body.stop(t0 + 0.4);
+  wob.start(t0);
+  wob.stop(t0 + 0.4);
 
-  // 물방울 "뽁" — 떨어진 물이 튀어 오른다. 물방울은 내려가는 음이 아니라
-  // **올라가는 음**이다 (기포가 좁아지며 음이 솟는다)
-  const drip = ctx.createOscillator();
-  drip.type = "sine";
-  drip.frequency.setValueAtTime(420 * r, t0 + 0.22);
-  drip.frequency.exponentialRampToValueAtTime(1150 * r, t0 + 0.3);
-  const dg = ctx.createGain();
-  envelope(dg, t0 + 0.22, 0.9, 0.008, 0.11);
-  drip.connect(dg);
-  dg.connect(out);
-  drip.start(t0 + 0.22);
-  drip.stop(t0 + 0.36);
+  // 3) 흩어지는 물방울 셋 — 시차를 두고 서로 다른 높이로 "뽁뽁뽁".
+  // 물방울은 내려가는 음이 아니라 **올라가는 음**이다 (기포가 좁아지며 솟는다)
+  const drops: Array<[at: number, from: number, to: number, peak: number]> = [
+    [0.16, 520, 1400, 0.6],
+    [0.26, 380, 950, 0.5],
+    [0.34, 640, 1700, 0.45],
+  ];
+  for (const [at, from, to, peak] of drops) {
+    const drip = ctx.createOscillator();
+    drip.type = "sine";
+    drip.frequency.setValueAtTime(from * r, t0 + at);
+    drip.frequency.exponentialRampToValueAtTime(to * r, t0 + at + 0.07);
+    const dg = ctx.createGain();
+    envelope(dg, t0 + at, peak, 0.006, 0.09);
+    drip.connect(dg);
+    dg.connect(out);
+    drip.start(t0 + at);
+    drip.stop(t0 + at + 0.12);
+  }
 };
 
 /** 광란 — 빽을 짧게 줄여 여섯 발, 음높이를 계단식으로 올리며. ≈700ms. */

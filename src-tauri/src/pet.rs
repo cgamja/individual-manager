@@ -18,6 +18,15 @@ pub const PET_SIZE: f64 = 140.0;
 const WALK_SPEED: f64 = 42.0;
 /// 헤엄치는 속도 (논리 px/초). 걷기보다 빨라야 "떠서 이동한다"는 느낌이 난다.
 const SWIM_SPEED: f64 = 95.0;
+/// 내려앉는 속도 (논리 px/초). **헤엄보다 빠르다** — 중력이 돕는 방향이라
+/// 같은 속도로 내려오면 미끄러지듯 느리다.
+///
+/// **값의 근거는 공중에 떠 있는 시간이다.** 자유낙하를 내려앉기로 바꾸면서
+/// 헤엄의 화면 점유가 27.8% → 42.2%로 뛰었다(화면 꼭대기에서 바닥까지 8.4초).
+/// 착지를 고치려던 변경이 "펭귄이 절반쯤 공중에 떠 있는 앱"을 만들면 안 된다 —
+/// 이 값이면 3.8초로 줄어 점유가 원래대로 돌아온다.
+const SWIM_DESCENT_SPEED: f64 = 210.0;
+const _: () = assert!(SWIM_DESCENT_SPEED > SWIM_SPEED);
 /// 낙하 가속도 (논리 px/초²).
 const GRAVITY: f64 = 900.0;
 /// 벽·천장에 부딪혔을 때 남는 속도 비율. 1.0이면 영원히 튕긴다.
@@ -1027,11 +1036,32 @@ impl Pet {
                 let (dx, dy) = (tx - self.x, ty - self.y);
                 let dist = (dx * dx + dy * dy).sqrt();
                 if dist <= ARRIVE_EPSILON || now_ms >= self.behavior_until_ms {
-                    // 도착했거나 너무 오래 걸렸다 — 내려앉는다
-                    self.vy = 0.0;
-                    self.enter(Behavior::Falling, now_ms);
+                    if self.y >= bounds.floor_y - ARRIVE_EPSILON {
+                        // 바닥까지 내려왔다 — 통, 하고 닿는다
+                        self.vy = 0.0;
+                        self.enter(Behavior::Land, now_ms + LAND_MS);
+                    } else {
+                        // **자유낙하로 넘기지 않는다.** 높이 떠 있었으면 낙하 속도가
+                        // 널브러짐 문턱을 넘어, **스스로 헤엄친 것이 세게 던져진 것과
+                        // 같은 착지를 만든다** — 그러면 널브러짐의 존재 이유("세게
+                        // 던진 보람")가 사라진다. 실측으로 20시간 동안의 착지가
+                        // 전부 여기서 나왔고 그중 78%가 철푸덕·널브러짐이었다.
+                        // 날개를 저어 내려오는 것이 `MOTIONS.md`가 적어 둔 "내려앉음"이다.
+                        self.target = (self.x, bounds.floor_y);
+                        // **상한도 미룬다.** 안 미루면 다음 틱에 또 이 분기로 들어와
+                        // 목적지만 다시 찍고 영영 안 움직인다 (발작에서 겪었다).
+                        let 남은 = (bounds.floor_y - self.y).max(0.0);
+                        self.behavior_until_ms =
+                            now_ms + ((남은 / SWIM_DESCENT_SPEED) * 2_000.0) as u64 + 1_000;
+                    }
                 } else {
-                    let step = (SWIM_SPEED * dt).min(dist);
+                    // 목적지가 바닥이면 내려앉는 중이다 — 그때만 빠르다
+                    let speed = if ty >= bounds.floor_y - ARRIVE_EPSILON {
+                        SWIM_DESCENT_SPEED
+                    } else {
+                        SWIM_SPEED
+                    };
+                    let step = (speed * dt).min(dist);
                     self.x += dx / dist * step;
                     self.y += dy / dist * step;
                     // 진행 방향을 본다 (좌우 성분이 거의 없으면 방향을 유지한다)
@@ -1904,6 +1934,61 @@ mod tests {
         let w = world();
         let mut p = Pet::new(seed, 0, &w);
         drive(&mut p, 100, 30 * 60_000, 100, &w)
+    }
+
+    #[test]
+    fn 헤엄이_끝나면_자유낙하하지_않는다() {
+        // **널브러짐은 "세게 던진 보람"으로 만든 동작이다.** 헤엄이 끝날 때마다
+        // 그 높이에서 떨어뜨리면 1분에 한 번씩 저절로 널브러져 그 보람이 안 남는다
+        // (실측: 20시간 동안의 착지가 **전부** 헤엄 끝에서 나왔다).
+        for seed in 1u64..6 {
+            let 전체 = 삼십분(seed);
+            let mut 직전 = Behavior::Walk;
+            for s in 전체 {
+                if 직전 == Behavior::Swim {
+                    assert!(
+                        !matches!(s.behavior, Behavior::Falling),
+                        "시드 {seed}: 헤엄이 자유낙하로 끝났다"
+                    );
+                }
+                직전 = s.behavior;
+            }
+        }
+    }
+
+    #[test]
+    fn 저절로는_철푸덕하거나_널브러지지_않는다() {
+        // 손을 안 대면 세게 부딪힐 일이 없어야 한다 — 착지 4단계는 사용자가
+        // 던졌을 때의 보상이다
+        for seed in 1u64..6 {
+            for s in 삼십분(seed) {
+                assert!(
+                    !matches!(s.behavior, Behavior::Splat | Behavior::Sprawl),
+                    "시드 {seed}: 아무도 안 건드렸는데 {:?}가 나왔다",
+                    s.behavior
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn 헤엄은_바닥까지_내려와서_끝난다() {
+        // 내려앉는 동안에도 날개를 젓는다 — `MOTIONS.md`가 적어 둔 "내려앉음"이다
+        let w = world();
+        let mut p = pet();
+        p.enter_swim(1_000, BOUNDS);
+        let mut t = 1_000;
+        while t < 1_000 + 60_000 && p.behavior() == Behavior::Swim {
+            t += 50;
+            p.step(t, &w);
+        }
+        assert_ne!(p.behavior(), Behavior::Swim, "헤엄이 안 끝났다");
+        assert_eq!(
+            p.snapshot().y,
+            BOUNDS.floor_y,
+            "바닥까지 내려와서 끝나야 한다"
+        );
+        assert!(!p.snapshot().air, "지상 상태로 끝나야 한다");
     }
 
     #[test]
@@ -3964,9 +4049,11 @@ mod tests {
         // 결국 같은 화면으로 떨어지기 때문이다. 그래서 **수열을 통째로 못박는다.**
         //
         // 값은 **확률 갈래가 하나 늘 때마다** 다시 뜬다. 갈래는 난수를 하나 더
-        // 뽑고, 그러면 그 뒤가 통째로 밀린다. 지금까지 **네 번** 재기준화했다 —
-        // 벽 굴림(`hit_wall`), 얼음낚시, 슬라이딩, 발작(뒤 셋은 `pick_next`).
-        // 전부 의도한 변경이다.
+        // 뽑고, 그러면 그 뒤가 통째로 밀린다. 지금까지 **다섯 번** 재기준화했다 —
+        // 벽 굴림(`hit_wall`), 얼음낚시, 슬라이딩, 발작(뒤 셋은 `pick_next`),
+        // 그리고 헤엄의 종료를 자유낙하에서 내려앉기로 바꾼 것. 마지막 하나는
+        // 갈래가 는 게 아니라 **뒤에 오는 동작이 달라져서** 난수 소비 시점이
+        // 밀린 경우다. 전부 의도한 변경이다.
         // **동작을 늘리지 않았는데 이 배열이 흔들리면 그건 의도하지 않은 변경이다.**
         let w = world();
         let mut p = Pet::new(42, 0, &w);
@@ -3978,15 +4065,17 @@ mod tests {
             (0_usize, "Turn", 0.0, 800.0),
             (97, "Slide", 408.5, 800.0),
             (194, "Swim", 459.2, 701.3),
-            (291, "Falling", 394.8, 266.2),
+            // 873과 970이 둘 다 헤엄인데 y가 563 → 763이다 — 날개를 저어
+            // **내려오는 구간**이다. 예전에는 이 자리가 `Falling`이었다.
+            (291, "Swim", 394.8, 280.5),
             (388, "Idle { idle: ShiftFeet }", 394.8, 800.0),
-            (485, "Walk", 195.3, 800.0),
-            (582, "Walk", 111.3, 800.0),
-            (679, "Walk", 81.9, 800.0),
-            (776, "Idle { idle: LookAround }", 128.1, 800.0),
-            (873, "Swim", 140.9, 472.5),
-            (970, "Idle { idle: Shake }", 147.2, 800.0),
-            (1067, "Walk", 182.9, 800.0),
+            (485, "Walk", 235.2, 800.0),
+            (582, "Idle { idle: LookAround }", 144.9, 800.0),
+            (679, "Walk", 42.0, 800.0),
+            (776, "Idle { idle: ShiftFeet }", 128.1, 800.0),
+            (873, "Swim", 137.3, 562.7),
+            (970, "Swim", 147.2, 762.6),
+            (1067, "Idle { idle: Stretch }", 147.2, 800.0),
             (1164, "Idle { idle: Shake }", 304.7, 800.0),
         ];
         for (i, behavior, x, y) in golden {

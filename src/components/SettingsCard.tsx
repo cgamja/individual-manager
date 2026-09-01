@@ -5,6 +5,9 @@ interface SettingsCardProps {
   /** 효과음 여부. **기본은 꺼짐** (PRD Q6). */
   soundEnabled: boolean;
   onSoundEnabledChange: (enabled: boolean) => void;
+  /** 음량 단계 0~4. 가운데(2)가 기본 크기, 단계마다 두 배(6dB)씩. */
+  volume: number;
+  onVolumeChange: (volume: number) => void;
   /** 핀볼 모드 여부. **기본은 꺼짐** — 켜면 착지 4단계가 가려진다. */
   pinballEnabled: boolean;
   onPinballEnabledChange: (enabled: boolean) => void;
@@ -21,6 +24,8 @@ export function SettingsCard({
   onPetEnabledChange,
   soundEnabled,
   onSoundEnabledChange,
+  volume,
+  onVolumeChange,
   pinballEnabled,
   onPinballEnabledChange,
 }: SettingsCardProps) {
@@ -46,10 +51,27 @@ export function SettingsCard({
           onChange={(e) => onSoundEnabledChange(e.target.checked)}
         />
       </div>
-      {/* 낼 소리가 아직 없다는 것을 말해 준다 — 켰는데 조용하면 고장으로 읽힌다 */}
+      {/* **얼마나 시끄러워지나**를 적는다 — 상주 앱의 소리는 그게 전부다.
+          저절로는 조용하다는 마지막 절을 빼지 않는다 (KTD3) */}
       <p className="settings-hint">
-        아직 낼 소리가 없어요. 빽빽거리기가 들어오면 이 설정을 따릅니다.
+        때리거나 던지면 소리가 나요. 빽빽거리기와 발작에도요. 혼자 돌아다닐 때는
+        조용해요.
       </p>
+
+      <div className="settings-row">
+        <label htmlFor="sound-volume">음량</label>
+        {/* 연속값이 아니라 다섯 단계다 — 단계마다 두 배(6dB)라 차이가 귀에
+            들리고, 값이 이산이라 테스트로 못 박힌다. 가운데가 기본 크기다 */}
+        <input
+          id="sound-volume"
+          type="range"
+          min={0}
+          max={4}
+          step={1}
+          value={volume}
+          onChange={(e) => onVolumeChange(Number(e.target.value))}
+        />
+      </div>
 
       <div className="settings-row">
         <label htmlFor="pinball-enabled">핀볼 모드</label>

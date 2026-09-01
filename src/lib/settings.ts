@@ -22,7 +22,16 @@ export interface PetSettings {
    * 착지 4단계를 **지우는 게 아니라 가려두는** 모드라 끄면 그대로 돌아온다.
    */
   pinball: boolean;
+  /**
+   * 음량 단계 0~4. 가운데(2)가 원래 크기(-18 dBFS)라 기존 사용자의 소리
+   * 크기가 안 바뀐다. 단계 정의는 `sound.ts`의 `gainForVolume`이 소유한다.
+   */
+  volume: number;
 }
+
+/** 0~4의 정수만 유효하다. 깨진 값은 가운데 단계(지금 크기)로 수렴한다. */
+const sanitizeVolume = (v: unknown): number =>
+  typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 4 ? v : 2;
 
 /** 펭귄은 기본 켜짐(사용자가 직접 요청한 기능이라 opt-in으로 숨기지 않는다),
  * 소리는 기본 꺼짐(예고 없이 소리를 내면 사고가 난다). */
@@ -30,6 +39,7 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   enabled: true,
   sound: false,
   pinball: false,
+  volume: 2,
 };
 
 /** 저장된 펭귄 설정을 로드한다. 깨진 값은 항목별로 기본값에 수렴시킨다 —
@@ -42,6 +52,7 @@ export async function loadPetSettings(): Promise<PetSettings> {
     sound: typeof value?.sound === "boolean" ? value.sound : DEFAULT_PET_SETTINGS.sound,
     pinball:
       typeof value?.pinball === "boolean" ? value.pinball : DEFAULT_PET_SETTINGS.pinball,
+    volume: sanitizeVolume(value?.volume),
   };
 }
 

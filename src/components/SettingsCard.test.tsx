@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsCard } from "./SettingsCard";
@@ -10,6 +10,8 @@ const props = {
   onPetEnabledChange: () => {},
   soundEnabled: false,
   onSoundEnabledChange: () => {},
+  volume: 2,
+  onVolumeChange: () => {},
   pinballEnabled: false,
   onPinballEnabledChange: () => {},
 };
@@ -40,6 +42,13 @@ describe("SettingsCard", () => {
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
+  it("음량을_움직이면_숫자로_알린다", async () => {
+    const onChange = vi.fn();
+    render(<SettingsCard {...props} onVolumeChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("음량"), { target: { value: "0" } });
+    expect(onChange).toHaveBeenCalledWith(0);
+  });
+
   it("핀볼은_기본이_꺼짐으로_보인다", () => {
     // 착지 4단계를 가리는 모드다 — 사용자가 켜기 전에는 아무것도 바뀌지 않아야 한다
     render(<SettingsCard {...props} />);
@@ -61,9 +70,11 @@ describe("SettingsCard", () => {
     expect(screen.getByText(/끄면 원래대로 돌아와요/)).toBeInTheDocument();
   });
 
-  it("아직_낼_소리가_없다는_것을_알린다", () => {
-    // 켰는데 조용하면 고장으로 읽힌다
+  it("무엇이_들리는지_적어_둔다", () => {
+    // 켜는 사람이 가장 알고 싶은 것은 "얼마나 시끄러워지나"다 — 저절로는
+    // 조용하다는 마지막 절을 빼지 않는다 (KTD3)
     render(<SettingsCard {...props} />);
-    expect(screen.getByText(/아직 낼 소리가 없어요/)).toBeInTheDocument();
+    expect(screen.getByText(/때리거나 던지면 소리가 나요/)).toBeInTheDocument();
+    expect(screen.getByText(/혼자 돌아다닐 때는 조용해요/)).toBeInTheDocument();
   });
 });

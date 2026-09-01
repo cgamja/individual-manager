@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 export type Facing = "left" | "right";
@@ -118,6 +118,14 @@ export const EVENT_PET_STATE = "pet://state";
 
 /** 설정이 **이 창 밖에서** 바뀌었을 때 오는 알림 (핀볼 판의 Esc 등). */
 export const EVENT_PET_SETTINGS = "pet://settings";
+
+/**
+ * 효과음 설정의 방송. `pet://settings`에 얹지 않는 이유: 그쪽은 **Rust가
+ * 보내는** 이벤트고 소리는 Rust가 모르는 값이다 (KTD5). 페이로드를 넓히면
+ * 보내는 쪽마다 다른 절반이 `undefined`가 되는 문제를 받는 쪽에서 매번
+ * 방어해야 한다. 여기는 **웹뷰끼리의** 브로드캐스트다.
+ */
+export const EVENT_PET_SOUND = "pet://sound";
 
 /** 클릭과 드래그를 가르는 이동량(px). 이보다 덜 움직였으면 클릭으로 본다. */
 export const DRAG_THRESHOLD_PX = 4;
@@ -323,3 +331,28 @@ export const onPetSettings = (
   cb: (settings: { pinball: boolean }) => void,
 ): Promise<UnlistenFn> =>
   listen<{ pinball: boolean }>(EVENT_PET_SETTINGS, (event) => cb(event.payload));
+
+/**
+ * 효과음 토글이 바뀌면 알려 준다 — 설정 창이 보내고 펭귄 창들이 듣는다.
+ *
+ * **`onPetSettings`처럼 전역 `listen`이다.** 전역 리스너는 대상을 `Any`로
+ * 등록해 emit 대상과 무관하게 전부 받는데
+ * (`docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`),
+ * 여기서는 그게 결함이 아니라 원하는 성질이다: **앱 전역 설정 하나를 여덟
+ * 마리가 전부 들어야 한다.** `pet://state`가 창에 묶여야 하는 것(마리마다
+ * 다른 값)과 정확히 반대의 이유다 — 창에 묶으면 조용히 안 오는 경로만 는다.
+ */
+export const onPetSound = (
+  cb: (settings: { sound: boolean; volume: number }) => void,
+): Promise<UnlistenFn> =>
+  listen<{ sound: boolean; volume: number }>(EVENT_PET_SOUND, (event) =>
+    cb(event.payload),
+  );
+
+/**
+ * 효과음 설정을 방송한다 — 프론트가 직접 emit한다. Rust를 거치지 않는다 (KTD2).
+ * **켜짐과 음량을 항상 함께 싣는다** — 절반만 실으면 받는 쪽이 undefined를
+ * 매번 방어해야 한다 (KTD5가 `pet://settings`를 안 넓힌 이유와 같다).
+ */
+export const emitPetSound = (on: boolean, volume: number): Promise<void> =>
+  emit(EVENT_PET_SOUND, { sound: on, volume });

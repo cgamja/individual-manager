@@ -41,6 +41,7 @@ describe("펭귄 설정", () => {
       enabled: true,
       sound: false,
       pinball: false,
+      volume: 2,
     });
   });
 
@@ -50,6 +51,7 @@ describe("펭귄 설정", () => {
       enabled: false,
       sound: false,
       pinball: false,
+      volume: 2,
     });
   });
 
@@ -60,6 +62,7 @@ describe("펭귄 설정", () => {
       enabled: true,
       sound: false,
       pinball: false,
+      volume: 2,
     });
   });
 
@@ -101,11 +104,29 @@ describe("펭귄 설정", () => {
     expect((await loadPetSettings()).sound).toBe(false);
   });
 
+  it("음량은_저장된_적이_없으면_가운데_단계다", async () => {
+    // 0~4의 가운데(2)가 "지금 크기"다 — 기존 사용자의 소리 크기가 안 바뀐다
+    mockStore({ pet: { enabled: true, sound: true } });
+    expect((await loadPetSettings()).volume).toBe(2);
+  });
+
+  it("저장된_음량을_그대로_읽는다", async () => {
+    mockStore({ pet: { volume: 4 } });
+    expect((await loadPetSettings()).volume).toBe(4);
+  });
+
+  it("깨진_음량은_가운데_단계로_수렴한다", async () => {
+    for (const bad of ["크게", 9, -1, 1.5, null]) {
+      mockStore({ pet: { volume: bad } });
+      expect((await loadPetSettings()).volume, String(bad)).toBe(2);
+    }
+  });
+
   it("한_항목이_깨져도_나머지는_살린다", async () => {
     const data = mockStore();
     data.set("pet", { enabled: false, sound: "네" });
     const loaded = await loadPetSettings();
-    expect(loaded).toEqual({ enabled: false, sound: false, pinball: false });
+    expect(loaded).toEqual({ enabled: false, sound: false, pinball: false, volume: 2 });
   });
 });
 

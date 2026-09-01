@@ -6,6 +6,7 @@ import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
 import {
   addPet,
+  emitPetSound,
   fishPet,
   getPetSummary,
   onPetSettings,
@@ -63,6 +64,7 @@ function App() {
   const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
   const [soundEnabled, setSoundEnabledState] = useState(DEFAULT_PET_SETTINGS.sound);
   const [pinballEnabled, setPinballEnabledState] = useState(DEFAULT_PET_SETTINGS.pinball);
+  const [volume, setVolumeState] = useState(DEFAULT_PET_SETTINGS.volume);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
   /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
   const [petSummary, setPetSummary] = useState<PetSummary>({ count: 1, max: 8, focused: null });
@@ -76,6 +78,7 @@ function App() {
         setPetEnabledState(savedPet.enabled);
         setSoundEnabledState(savedPet.sound);
         setPinballEnabledState(savedPet.pinball);
+        setVolumeState(savedPet.volume);
       }
       const savedTaunts = await loadTaunts().catch(() => []);
       if (!cancelled) setTaunts(savedTaunts);
@@ -104,6 +107,7 @@ function App() {
             setPetEnabledState(saved.enabled);
             setSoundEnabledState(saved.sound);
             setPinballEnabledState(saved.pinball);
+            setVolumeState(saved.volume);
           })
           .catch(() => {});
       }
@@ -159,17 +163,45 @@ function App() {
       .catch(() => {});
   }, []);
 
-  /** 소리 on/off — 저장만 한다. 낼 소리는 F3에서 붙는다.
-   * 저장에 실패하면 표시를 되돌린다 — 켜졌다고 보이는데 안 켜진 상태를 만들지 않게. */
-  const handleSoundEnabledChange = useCallback(async (next: boolean) => {
-    setSoundEnabledState(next);
-    try {
-      await savePetSettings({ sound: next });
-    } catch (err) {
-      console.error("소리 설정 저장 실패:", err);
-      setSoundEnabledState(!next);
-    }
-  }, []);
+  /** 소리 on/off — 저장하고, 성공하면 떠 있는 펭귄 전부에 방송한다 (R2).
+   * 저장에 실패하면 표시를 되돌리고 방송도 안 한다 — "저장은 실패했는데
+   * 소리는 켜진" 상태를 만들지 않게. */
+  const handleSoundEnabledChange = useCallback(
+    async (next: boolean) => {
+      setSoundEnabledState(next);
+      try {
+        await savePetSettings({ sound: next });
+      } catch (err) {
+        console.error("소리 설정 저장 실패:", err);
+        setSoundEnabledState(!next);
+        return;
+      }
+      // 방송 실패는 표시를 되돌리지 않는다 — 저장은 이미 됐고, 다음 실행이 맞춘다
+      await emitPetSound(next, volume).catch((err) =>
+        console.error("소리 설정 방송 실패:", err),
+      );
+    },
+    [volume],
+  );
+
+  /** 음량 단계 — 토글과 같은 규칙: 저장 성공 뒤에만 방송, 실패하면 되돌린다. */
+  const handleVolumeChange = useCallback(
+    async (next: number) => {
+      const prev = volume;
+      setVolumeState(next);
+      try {
+        await savePetSettings({ volume: next });
+      } catch (err) {
+        console.error("음량 저장 실패:", err);
+        setVolumeState(prev);
+        return;
+      }
+      await emitPetSound(soundEnabled, next).catch((err) =>
+        console.error("음량 방송 실패:", err),
+      );
+    },
+    [soundEnabled, volume],
+  );
 
   /** 핀볼 on/off — **거는 것과 저장하는 것 둘 다 한다.** 거는 쪽은 지금 떠 있는
    * 펭귄들에게, 저장은 다음에 태어날 펭귄을 위해. 어느 한쪽이 실패하면 표시를
@@ -243,6 +275,8 @@ function App() {
         onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
         soundEnabled={soundEnabled}
         onSoundEnabledChange={(next) => void handleSoundEnabledChange(next)}
+        volume={volume}
+        onVolumeChange={(next) => void handleVolumeChange(next)}
         pinballEnabled={pinballEnabled}
         onPinballEnabledChange={(next) => void handlePinballEnabledChange(next)}
       />

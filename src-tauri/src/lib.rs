@@ -25,6 +25,43 @@ fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
 }
 
+/// 테마를 두 곳에 건다 — 창(웹뷰의 prefers-color-scheme이 뒤집힌다)과
+/// 트레이 아이콘. 시스템이면 템플릿 이미지(색은 메뉴바가 정한다)이고,
+/// 라이트/다크 고정이면 템플릿을 끄고 검정/흰색 실루엣을 직접 든다.
+///
+/// 시작 시(setup)와 설정 변경(`pet_set_theme`) 두 경로가 부른다 —
+/// `apply_saved_settings`처럼 한 곳에 모은다.
+pub(crate) fn apply_theme(app: &AppHandle, theme: pet_bridge::Theme) {
+    use pet_bridge::Theme;
+    app.set_theme(match theme {
+        Theme::System => None,
+        Theme::Light => Some(tauri::Theme::Light),
+        Theme::Dark => Some(tauri::Theme::Dark),
+    });
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    let (bytes, template): (&[u8], bool) = match theme {
+        Theme::System => (include_bytes!("../icons/tray.png"), true),
+        Theme::Light => (include_bytes!("../icons/tray.png"), false),
+        Theme::Dark => (include_bytes!("../icons/tray-white.png"), false),
+    };
+    if let Ok(icon) = Image::from_bytes(bytes) {
+        let _ = tray.set_icon(Some(icon));
+        let _ = tray.set_icon_as_template(template);
+    }
+}
+
+/// 설정 창의 테마 선택. 저장은 웹뷰(`savePetSettings`)가 한다 — 여기는
+/// 지금 떠 있는 창과 트레이에 즉시 거는 쪽이다.
+#[tauri::command]
+fn pet_set_theme(app: AppHandle, theme: String) {
+    apply_theme(
+        &app,
+        pet_bridge::theme_from(Some(&serde_json::json!({ "theme": theme }))),
+    );
+}
+
 /// 팝오버를 지정한 자리에 놓고 연다. `at`이 없으면 트레이 밑(기존 동작).
 pub(crate) fn toggle_popover_at(app: &AppHandle, at: Option<(f64, f64)>) {
     let Some(window) = main_window(app) else {
@@ -150,6 +187,10 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // 저장된 테마를 시작 시점에 건다 — 트레이는 위에서 템플릿(시스템)으로
+            // 만들어졌으므로, 고정 테마가 저장돼 있으면 여기서 갈아 끼운다
+            apply_theme(&app.handle().clone(), pet_bridge::pet_theme(app.handle()));
+
             // 바탕화면 펭귄 — 실패해도 앱 본체는 계속 뜬다 (장식 기능이 셸을 막지 않는다).
             // 실제 이동 영역은 첫 틱에서 모니터를 읽어 정정하므로 여기서는 잠정값이다.
             app.manage(pet_bridge::PetState::new(pet::Pets::new()));
@@ -190,6 +231,7 @@ pub fn run() {
             pet_bridge::pet_slide,
             pet_bridge::pet_squawk,
             pet_bridge::pet_freakout,
+            pet_set_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

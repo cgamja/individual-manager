@@ -27,7 +27,18 @@ export interface PetSettings {
    * 크기가 안 바뀐다. 단계 정의는 `sound.ts`의 `gainForVolume`이 소유한다.
    */
   volume: number;
+  /**
+   * 겉모습 테마 — 설정 창과 트레이 아이콘이 함께 따른다 (2026-09-01 사용자
+   * 지시). 기본은 시스템: 사용자가 고르기 전에는 아무것도 강제하지 않는다.
+   */
+  theme: AppTheme;
 }
+
+export type AppTheme = "system" | "light" | "dark";
+
+/** 셋 중 하나만 유효하다. 깨진 값은 시스템으로 수렴한다 — Rust의 `theme_from`과 짝. */
+const sanitizeTheme = (v: unknown): AppTheme =>
+  v === "light" || v === "dark" ? v : "system";
 
 /** 0~4의 정수만 유효하다. 깨진 값은 가운데 단계(지금 크기)로 수렴한다. */
 const sanitizeVolume = (v: unknown): number =>
@@ -40,6 +51,7 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   sound: false,
   pinball: false,
   volume: 2,
+  theme: "system",
 };
 
 /** 저장된 펭귄 설정을 로드한다. 깨진 값은 항목별로 기본값에 수렴시킨다 —
@@ -53,6 +65,7 @@ export async function loadPetSettings(): Promise<PetSettings> {
     pinball:
       typeof value?.pinball === "boolean" ? value.pinball : DEFAULT_PET_SETTINGS.pinball,
     volume: sanitizeVolume(value?.volume),
+    theme: sanitizeTheme(value?.theme),
   };
 }
 

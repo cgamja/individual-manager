@@ -141,6 +141,39 @@ pub fn pinball_from(stored: Option<&serde_json::Value>) -> bool {
         .unwrap_or(false)
 }
 
+/// 겉모습 테마 — 설정 창과 트레이 아이콘이 함께 따른다 (2026-09-01 사용자 지시).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Theme {
+    /// OS를 따른다 — 창은 테마 강제 없음, 트레이는 템플릿 이미지(자동 적응).
+    System,
+    Light,
+    Dark,
+}
+
+/// 저장된 값에서 테마를 꺼낸다. 없거나 깨졌으면 **시스템**이다 — 사용자가
+/// 고르기 전에는 아무것도 강제하지 않는다. `pinball_from`처럼 값을 받는
+/// 이유도 같다: `AppHandle` 없이 테스트하기 위해서다.
+pub fn theme_from(stored: Option<&serde_json::Value>) -> Theme {
+    match stored
+        .and_then(|value| value.get("theme"))
+        .and_then(|v| v.as_str())
+    {
+        Some("light") => Theme::Light,
+        Some("dark") => Theme::Dark,
+        _ => Theme::System,
+    }
+}
+
+/// 저장된 테마.
+pub fn pet_theme(app: &AppHandle) -> Theme {
+    theme_from(
+        app.store(SETTINGS_FILE)
+            .ok()
+            .and_then(|store| store.get(PET_KEY))
+            .as_ref(),
+    )
+}
+
 /// 저장된 핀볼 모드 여부.
 pub fn pet_pinball(app: &AppHandle) -> bool {
     pinball_from(
@@ -1466,6 +1499,39 @@ mod tests {
             "문자열은 켜짐으로 읽지 않는다"
         );
         assert!(pinball_from(Some(&serde_json::json!({ "pinball": true }))));
+    }
+
+    #[test]
+    fn 테마_설정이_없으면_시스템이다() {
+        // 기본은 "OS를 따른다" — 사용자가 고르기 전에는 아무것도 강제하지 않는다
+        assert_eq!(theme_from(None), Theme::System);
+        assert_eq!(theme_from(Some(&serde_json::json!({}))), Theme::System);
+    }
+
+    #[test]
+    fn 저장된_테마를_그대로_읽는다() {
+        assert_eq!(
+            theme_from(Some(&serde_json::json!({ "theme": "light" }))),
+            Theme::Light
+        );
+        assert_eq!(
+            theme_from(Some(&serde_json::json!({ "theme": "dark" }))),
+            Theme::Dark
+        );
+        assert_eq!(
+            theme_from(Some(&serde_json::json!({ "theme": "system" }))),
+            Theme::System
+        );
+    }
+
+    #[test]
+    fn 깨진_테마는_시스템으로_수렴한다() {
+        // 손으로 고친 settings.json이 이상해도 트레이가 안 보이게 되면 안 된다
+        assert_eq!(
+            theme_from(Some(&serde_json::json!({ "theme": "어둡게" }))),
+            Theme::System
+        );
+        assert_eq!(theme_from(Some(&serde_json::json!({ "theme": 2 }))), Theme::System);
     }
 
     #[test]

@@ -42,6 +42,7 @@ describe("펭귄 설정", () => {
       sound: false,
       pinball: false,
       volume: 2,
+      theme: "system",
     });
   });
 
@@ -52,6 +53,7 @@ describe("펭귄 설정", () => {
       sound: false,
       pinball: false,
       volume: 2,
+      theme: "system",
     });
   });
 
@@ -63,6 +65,7 @@ describe("펭귄 설정", () => {
       sound: false,
       pinball: false,
       volume: 2,
+      theme: "system",
     });
   });
 
@@ -122,11 +125,35 @@ describe("펭귄 설정", () => {
     }
   });
 
+  it("테마가_없으면_시스템이다", async () => {
+    // 사용자가 고르기 전에는 아무것도 강제하지 않는다 — Rust의 테마 기본과 짝
+    mockStore({ pet: { enabled: true } });
+    expect((await loadPetSettings()).theme).toBe("system");
+  });
+
+  it("저장된_테마를_그대로_읽는다", async () => {
+    mockStore({ pet: { theme: "dark" } });
+    expect((await loadPetSettings()).theme).toBe("dark");
+  });
+
+  it("깨진_테마는_시스템으로_수렴한다", async () => {
+    for (const bad of ["어둡게", 2, null, true]) {
+      mockStore({ pet: { theme: bad } });
+      expect((await loadPetSettings()).theme, String(bad)).toBe("system");
+    }
+  });
+
   it("한_항목이_깨져도_나머지는_살린다", async () => {
     const data = mockStore();
     data.set("pet", { enabled: false, sound: "네" });
     const loaded = await loadPetSettings();
-    expect(loaded).toEqual({ enabled: false, sound: false, pinball: false, volume: 2 });
+    expect(loaded).toEqual({
+      enabled: false,
+      sound: false,
+      pinball: false,
+      volume: 2,
+      theme: "system",
+    });
   });
 });
 

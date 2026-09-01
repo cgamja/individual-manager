@@ -291,6 +291,13 @@ export const throwVelocity = (
   return { vx: (last.x - first.x) / dt, vy: (last.y - first.y) / dt };
 };
 
+/**
+ * 테마를 지금 떠 있는 창·트레이에 건다. 저장은 `savePetSettings`가 따로 한다 —
+ * 핀볼의 "거는 것과 저장하는 것" 분리와 같은 규칙이다.
+ */
+export const setPetTheme = (theme: string): Promise<void> =>
+  invoke("pet_set_theme", { theme });
+
 /** 펭귄을 켜고 끈다 (R8). 끄면 창이 닫힌다. */
 export const setPetEnabled = (enabled: boolean): Promise<void> =>
   invoke("pet_set_enabled", { enabled });

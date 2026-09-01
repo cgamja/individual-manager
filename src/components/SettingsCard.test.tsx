@@ -12,6 +12,8 @@ const props = {
   onSoundEnabledChange: () => {},
   volume: 2,
   onVolumeChange: () => {},
+  theme: "system" as const,
+  onThemeChange: () => {},
   pinballEnabled: false,
   onPinballEnabledChange: () => {},
 };
@@ -47,6 +49,18 @@ describe("SettingsCard", () => {
     render(<SettingsCard {...props} onVolumeChange={onChange} />);
     fireEvent.change(screen.getByLabelText("음량"), { target: { value: "0" } });
     expect(onChange).toHaveBeenCalledWith(0);
+  });
+
+  it("테마를_고르면_값으로_알린다", async () => {
+    const onChange = vi.fn();
+    render(<SettingsCard {...props} onThemeChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("테마"), { target: { value: "dark" } });
+    expect(onChange).toHaveBeenCalledWith("dark");
+  });
+
+  it("테마는_기본이_시스템이다", () => {
+    render(<SettingsCard {...props} />);
+    expect(screen.getByLabelText("테마")).toHaveValue("system");
   });
 
   it("핀볼은_기본이_꺼짐으로_보인다", () => {

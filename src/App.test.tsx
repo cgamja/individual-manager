@@ -113,7 +113,43 @@ describe("설정 창", () => {
 
     await waitFor(() => {
       const sound = events.find((e) => e.event === "pet://sound");
-      expect(sound?.payload).toMatchObject({ sound: true });
+      // 음량도 항상 같이 실린다 — 절반이 undefined인 페이로드를 만들지 않는다
+      expect(sound?.payload).toMatchObject({ sound: true, volume: 2 });
+    });
+  });
+
+  it("음량을_바꾸면_저장하고_방송한다", async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const store = new Map<string, unknown>();
+    mockWindow();
+    mockIPC((cmd, args) => {
+      const a = (args ?? {}) as Record<string, unknown>;
+      if (cmd === "plugin:event|listen") return 1;
+      if (cmd === "plugin:event|unlisten") return undefined;
+      if (cmd === "plugin:event|emit") {
+        events.push(a);
+        return undefined;
+      }
+      if (cmd === "pet_summary") return { count: 1, max: 8, focused: 3 };
+      if (cmd === "plugin:store|load") return 1;
+      if (cmd === "plugin:store|get") {
+        return store.has(a.key as string) ? [store.get(a.key as string), true] : [null, false];
+      }
+      if (cmd === "plugin:store|set") {
+        store.set(a.key as string, a.value);
+        return undefined;
+      }
+      if (cmd.startsWith("plugin:store|")) return null;
+      return undefined;
+    });
+    render(<App />);
+    const slider = await screen.findByLabelText("음량");
+    fireEvent.change(slider, { target: { value: "4" } });
+
+    await waitFor(() => {
+      expect(store.get("pet")).toMatchObject({ volume: 4 });
+      const sound = events.find((e) => e.event === "pet://sound");
+      expect(sound?.payload).toMatchObject({ sound: false, volume: 4 });
     });
   });
 

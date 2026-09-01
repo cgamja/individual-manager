@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsCard } from "./SettingsCard";
@@ -10,6 +10,8 @@ const props = {
   onPetEnabledChange: () => {},
   soundEnabled: false,
   onSoundEnabledChange: () => {},
+  volume: 2,
+  onVolumeChange: () => {},
   pinballEnabled: false,
   onPinballEnabledChange: () => {},
 };
@@ -38,6 +40,13 @@ describe("SettingsCard", () => {
     render(<SettingsCard {...props} onSoundEnabledChange={onChange} />);
     await userEvent.click(screen.getByLabelText("효과음"));
     expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("음량을_움직이면_숫자로_알린다", async () => {
+    const onChange = vi.fn();
+    render(<SettingsCard {...props} onVolumeChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("음량"), { target: { value: "0" } });
+    expect(onChange).toHaveBeenCalledWith(0);
   });
 
   it("핀볼은_기본이_꺼짐으로_보인다", () => {

@@ -82,11 +82,23 @@ export const voiceOffsetFor = (label: string): number => {
 };
 
 /**
- * 마스터 게인 ≈ -18 dBFS (KTD9). 시스템 볼륨 100%에서 1.0으로 울리면
- * 헤드폰을 낀 사람이 놀란다. 더 듣고 싶으면 시스템 볼륨이 있다 —
- * 볼륨 슬라이더를 만들지 않는 이유다 (설정은 늘리지 않는다, PRINCIPLE 5).
+ * 음량 단계 — 0~4의 다섯 단계, 가운데(2)가 원래의 -18 dBFS다.
+ *
+ * KTD9는 "슬라이더를 만들지 않는다"였지만 2026-09-01 사용자 지시로 뒤집었다.
+ * 연속값 대신 단계인 이유: 단계마다 정확히 두 배(6dB)라 결정적으로 테스트되고,
+ * 상한 0.48이 헤드폰 사고를 막는 선으로 남는다. 미세 조절은 시스템 볼륨이 한다.
  */
-const MASTER_GAIN = 0.12;
+export const DEFAULT_VOLUME_STEP = 2;
+export const VOLUME_MAX_STEP = 4;
+
+/** 단계 → 마스터 게인. 이상한 값은 가운데 단계(지금 크기)로 수렴한다. */
+export const gainForVolume = (step: number): number => {
+  const s =
+    Number.isInteger(step) && step >= 0 && step <= VOLUME_MAX_STEP
+      ? step
+      : DEFAULT_VOLUME_STEP;
+  return 0.12 * Math.pow(2, s - DEFAULT_VOLUME_STEP);
+};
 
 const SYNTH: Record<
   SoundName,
@@ -125,7 +137,7 @@ export class SoundPlayer {
       else if (typeof AudioContext !== "undefined") this.ctx = new AudioContext();
       if (this.ctx) {
         this.out = this.ctx.createGain();
-        this.out.gain.value = MASTER_GAIN;
+        this.out.gain.value = gainForVolume(DEFAULT_VOLUME_STEP);
         this.out.connect(this.ctx.destination);
       }
     } catch {
@@ -138,6 +150,16 @@ export class SoundPlayer {
   /** 효과음 설정. 꺼지면 어떤 상황에서도 소리가 나지 않는다 (R1). */
   setEnabled(on: boolean): void {
     this.enabled = on;
+  }
+
+  /** 음량 단계(0~4). 재생 중인 소리에도 즉시 걸린다 — 마스터가 한 곳인 이유다. */
+  setVolume(step: number): void {
+    if (!this.out) return;
+    try {
+      this.out.gain.value = gainForVolume(step);
+    } catch {
+      // 음량 하나가 못 바뀌는 것이 펭귄을 멈추는 이유가 되면 안 된다
+    }
   }
 
   /**

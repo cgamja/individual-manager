@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Behavior, PetSnapshot } from "../lib/pet";
 import {
+  DEFAULT_VOLUME_STEP,
   SOUND_COOLDOWN_MS,
   SoundPlayer,
+  gainForVolume,
   passesCooldown,
   soundsFor,
   voiceOffsetFor,
@@ -143,6 +145,25 @@ describe("passesCooldown — 소리별 최소 간격", () => {
   });
 });
 
+describe("gainForVolume — 음량 단계", () => {
+  it("가운데_단계가_지금_크기다", () => {
+    expect(gainForVolume(DEFAULT_VOLUME_STEP)).toBeCloseTo(0.12);
+  });
+
+  it("단계마다_두_배씩_커진다", () => {
+    // 0.03 → 0.06 → 0.12 → 0.24 → 0.48 (6dB 간격)
+    for (let s = 0; s < 4; s++) {
+      expect(gainForVolume(s + 1)).toBeCloseTo(gainForVolume(s) * 2);
+    }
+  });
+
+  it("이상한_단계는_지금_크기다", () => {
+    for (const bad of [-1, 5, 1.5, NaN]) {
+      expect(gainForVolume(bad), String(bad)).toBeCloseTo(0.12);
+    }
+  });
+});
+
 /** 소리 그래프의 최소 표면만 흉내 낸 스텁 — 만든 노드의 종류를 기록한다. */
 const stubContext = () => {
   const created: string[] = [];
@@ -167,8 +188,10 @@ const stubContext = () => {
     buffer: null as unknown,
     type: "",
   });
+  const gains: Array<{ gain: { value: number } }> = [];
   const ctx = {
     created,
+    gains,
     state: "running" as AudioContextState,
     sampleRate: 48000,
     currentTime: 0,
@@ -177,7 +200,9 @@ const stubContext = () => {
     close: () => Promise.resolve(),
     createGain() {
       created.push("gain");
-      return node();
+      const n = node();
+      gains.push(n);
+      return n;
     },
     createOscillator() {
       created.push("oscillator");
@@ -233,6 +258,17 @@ describe("SoundPlayer", () => {
     const after = ctx.created.length;
     player.play("squawk", 1000 + SOUND_COOLDOWN_MS.squawk - 1);
     expect(ctx.created.length).toBe(after);
+  });
+
+  it("음량을_바꾸면_마스터_게인이_바뀐다", () => {
+    const ctx = stubContext();
+    const player = new SoundPlayer("pet-1", () => ctx);
+    // 첫 게인 노드가 마스터다 — 생성자가 만든다
+    expect(ctx.gains[0].gain.value).toBeCloseTo(gainForVolume(DEFAULT_VOLUME_STEP));
+    player.setVolume(4);
+    expect(ctx.gains[0].gain.value).toBeCloseTo(gainForVolume(4));
+    player.setVolume(0);
+    expect(ctx.gains[0].gain.value).toBeCloseTo(gainForVolume(0));
   });
 
   it("컨텍스트가_잠겨_있으면_버리고_깨우기만_시도한다", () => {

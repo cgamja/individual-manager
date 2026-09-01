@@ -98,8 +98,14 @@ export function PetApp() {
     (async () => {
       // 시작 값은 저장소에서 — 설정 창의 방송은 그 뒤의 변경만 실어 나른다
       const settings = await loadPetSettings().catch(() => null);
-      if (!cancelled && settings) player.setEnabled(settings.sound);
-      unlisten = await onPetSound((on) => player.setEnabled(on));
+      if (!cancelled && settings) {
+        player.setEnabled(settings.sound);
+        player.setVolume(settings.volume);
+      }
+      unlisten = await onPetSound(({ sound, volume }) => {
+        player.setEnabled(sound);
+        player.setVolume(volume);
+      });
     })();
     return () => {
       cancelled = true;

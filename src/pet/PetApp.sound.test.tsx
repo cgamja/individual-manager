@@ -14,14 +14,16 @@ const h = vi.hoisted(() => ({
   players: [] as Array<{
     label: string;
     enabled: boolean | null;
+    volume: number | null;
     played: string[];
     nudged: number;
     closed: number;
   }>,
   stateCb: null as ((s: PetSnapshot) => void) | null,
-  soundCb: null as ((on: boolean) => void) | null,
+  soundCb: null as ((p: { sound: boolean; volume: number }) => void) | null,
   soundsForSpy: vi.fn(),
   savedSound: false,
+  savedVolume: 2,
 }));
 
 vi.mock("./sound", async (importOriginal) => {
@@ -33,6 +35,7 @@ vi.mock("./sound", async (importOriginal) => {
     SoundPlayer: class {
       label: string;
       enabled: boolean | null = null;
+      volume: number | null = null;
       played: string[] = [];
       nudged = 0;
       closed = 0;
@@ -42,6 +45,9 @@ vi.mock("./sound", async (importOriginal) => {
       }
       setEnabled(on: boolean) {
         this.enabled = on;
+      }
+      setVolume(step: number) {
+        this.volume = step;
       }
       nudge() {
         this.nudged += 1;
@@ -59,7 +65,7 @@ vi.mock("./sound", async (importOriginal) => {
 vi.mock("../lib/settings", () => ({
   loadTaunts: () => Promise.resolve(["안녕"]),
   loadPetSettings: () =>
-    Promise.resolve({ enabled: true, sound: h.savedSound, pinball: false }),
+    Promise.resolve({ enabled: true, sound: h.savedSound, pinball: false, volume: h.savedVolume }),
 }));
 
 vi.mock("../lib/pet", async (importOriginal) => {
@@ -72,7 +78,7 @@ vi.mock("../lib/pet", async (importOriginal) => {
       h.stateCb = cb;
       return Promise.resolve(() => {});
     },
-    onPetSound: (cb: (on: boolean) => void) => {
+    onPetSound: (cb: (p: { sound: boolean; volume: number }) => void) => {
       h.soundCb = cb;
       return Promise.resolve(() => {});
     },
@@ -105,6 +111,7 @@ beforeEach(() => {
   h.stateCb = null;
   h.soundCb = null;
   h.savedSound = false;
+  h.savedVolume = 2;
   h.soundsForSpy.mockClear();
 });
 
@@ -130,10 +137,24 @@ describe("PetApp 소리 배선", () => {
     render(<PetApp />);
     await flush();
     // 설정 창의 방송이 앱 재시작 없이 걸린다 (R2)
-    h.soundCb?.(true);
+    h.soundCb?.({ sound: true, volume: 2 });
     expect(h.players[0].enabled).toBe(true);
-    h.soundCb?.(false);
+    h.soundCb?.({ sound: false, volume: 2 });
     expect(h.players[0].enabled).toBe(false);
+  });
+
+  it("음량_방송이_즉시_반영된다", async () => {
+    render(<PetApp />);
+    await flush();
+    h.soundCb?.({ sound: true, volume: 4 });
+    expect(h.players[0].volume).toBe(4);
+  });
+
+  it("시작_음량은_저장소에서_건다", async () => {
+    h.savedVolume = 3;
+    render(<PetApp />);
+    await flush();
+    expect(h.players[0].volume).toBe(3);
   });
 
   it("스냅샷_전이마다_판정을_한_번씩_한다", async () => {

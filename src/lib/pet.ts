@@ -342,9 +342,17 @@ export const onPetSettings = (
  * 마리가 전부 들어야 한다.** `pet://state`가 창에 묶여야 하는 것(마리마다
  * 다른 값)과 정확히 반대의 이유다 — 창에 묶으면 조용히 안 오는 경로만 는다.
  */
-export const onPetSound = (cb: (on: boolean) => void): Promise<UnlistenFn> =>
-  listen<{ sound: boolean }>(EVENT_PET_SOUND, (event) => cb(event.payload.sound));
+export const onPetSound = (
+  cb: (settings: { sound: boolean; volume: number }) => void,
+): Promise<UnlistenFn> =>
+  listen<{ sound: boolean; volume: number }>(EVENT_PET_SOUND, (event) =>
+    cb(event.payload),
+  );
 
-/** 효과음 토글을 방송한다 — 프론트가 직접 emit한다. Rust를 거치지 않는다 (KTD2). */
-export const emitPetSound = (on: boolean): Promise<void> =>
-  emit(EVENT_PET_SOUND, { sound: on });
+/**
+ * 효과음 설정을 방송한다 — 프론트가 직접 emit한다. Rust를 거치지 않는다 (KTD2).
+ * **켜짐과 음량을 항상 함께 싣는다** — 절반만 실으면 받는 쪽이 undefined를
+ * 매번 방어해야 한다 (KTD5가 `pet://settings`를 안 넓힌 이유와 같다).
+ */
+export const emitPetSound = (on: boolean, volume: number): Promise<void> =>
+  emit(EVENT_PET_SOUND, { sound: on, volume });

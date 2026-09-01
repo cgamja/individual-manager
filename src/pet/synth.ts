@@ -179,28 +179,30 @@ export const playCatch = (
   const r = ratio(semitones);
   const t0 = ctx.currentTime;
 
-  // 물방울 "퐁" — 사인이 위에서 아래로 떨어진다
+  // 물방울 "퐁" — 사인이 위에서 아래로 떨어진다. **게인이 퍽·빽보다 커
+  // 보이는 것은 착시다**: 저역 사인은 같은 게인에서 훨씬 작게 들리고(등청감),
+  // 필터 감쇠도 없다. 처음 0.6으로 잡았더니 실청에서 거의 안 들렸다
   const plop = ctx.createOscillator();
   plop.type = "sine";
-  plop.frequency.setValueAtTime(420 * r, t0);
-  plop.frequency.exponentialRampToValueAtTime(150 * r, t0 + 0.09);
+  plop.frequency.setValueAtTime(520 * r, t0);
+  plop.frequency.exponentialRampToValueAtTime(170 * r, t0 + 0.12);
   const pg = ctx.createGain();
-  envelope(pg, t0, 0.6, 0.005, 0.09);
+  envelope(pg, t0, 1.4, 0.005, 0.12);
   plop.connect(pg);
   pg.connect(out);
   plop.start(t0);
-  plop.stop(t0 + 0.1);
+  plop.stop(t0 + 0.14);
 
   // 반짝 — 높은 블립 하나, 살짝 늦게
   const spark = ctx.createOscillator();
   spark.type = "sine";
-  spark.frequency.setValueAtTime(1900 * r, t0 + 0.1);
+  spark.frequency.setValueAtTime(2100 * r, t0 + 0.11);
   const sg = ctx.createGain();
-  envelope(sg, t0 + 0.1, 0.35, 0.005, 0.12);
+  envelope(sg, t0 + 0.11, 0.8, 0.005, 0.13);
   spark.connect(sg);
   sg.connect(out);
-  spark.start(t0 + 0.1);
-  spark.stop(t0 + 0.25);
+  spark.start(t0 + 0.11);
+  spark.stop(t0 + 0.26);
 };
 
 /** 광란 — 빽을 짧게 줄여 여섯 발, 음높이를 계단식으로 올리며. ≈700ms. */

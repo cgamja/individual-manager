@@ -91,6 +91,16 @@ describe("pet.css 커버리지", () => {
     }
   });
 
+  it("핀볼_커서_규칙이_실제로_있다", () => {
+    // PetApp이 클래스를 걸고 CSS를 빠뜨리면 **아무것도 실패하지 않는다** —
+    // 모드를 켰는데 커서만 그대로일 뿐이라 눈으로만 잡힌다 (이 파일이 있는 이유)
+    expect(petApp).toContain("pg-pinball");
+    expect(css).toContain(".pg-pinball");
+    // 집어 드는 동안에는 방망이가 아니라 손이어야 한다 — 클래스가 겹칠 때
+    // 이쪽 특이도가 높아서 제외하지 않으면 방망이가 남는다
+    expect(css).toMatch(/\.pg-pinball:not\(\.pg--dragged\)/);
+  });
+
   it("CSS에_없어진_동작의_잔재가_남아있지_않다", () => {
     // Startled는 Sassy로 대체됐다. 죽은 규칙이 남으면 다음 사람이 헷갈린다
     expect(css).not.toContain("pg--startled");

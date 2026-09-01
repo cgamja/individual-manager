@@ -230,6 +230,9 @@ export function PetApp() {
     // 그림자는 동작이 아니라 "떠 있는가"로 지운다 — 공중에서 클릭하면 지상
     // 동작(반응)을 하면서도 떠 있어서, 동작으로 판정하면 그림자가 되살아난다
     snapshot?.air ? "pg-air" : "",
+    // 핀볼이면 커서가 채가 된다. **저장소를 다시 읽지 않는다** — 스냅샷으로
+    // 오므로 설정을 켠 순간 반영된다 (`Look`에 들어 있는 이유가 이것이다)
+    snapshot?.pinball ? "pg-pinball" : "",
   ]
     .filter(Boolean)
     .join(" ");

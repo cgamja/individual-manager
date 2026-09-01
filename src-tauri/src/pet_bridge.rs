@@ -141,6 +141,39 @@ pub fn pinball_from(stored: Option<&serde_json::Value>) -> bool {
         .unwrap_or(false)
 }
 
+/// 겉모습 테마 — 설정 창과 트레이 아이콘이 함께 따른다 (2026-09-01 사용자 지시).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Theme {
+    /// OS를 따른다 — 창은 테마 강제 없음, 트레이는 템플릿 이미지(자동 적응).
+    System,
+    Light,
+    Dark,
+}
+
+/// 저장된 값에서 테마를 꺼낸다. 없거나 깨졌으면 **시스템**이다 — 사용자가
+/// 고르기 전에는 아무것도 강제하지 않는다. `pinball_from`처럼 값을 받는
+/// 이유도 같다: `AppHandle` 없이 테스트하기 위해서다.
+pub fn theme_from(stored: Option<&serde_json::Value>) -> Theme {
+    match stored
+        .and_then(|value| value.get("theme"))
+        .and_then(|v| v.as_str())
+    {
+        Some("light") => Theme::Light,
+        Some("dark") => Theme::Dark,
+        _ => Theme::System,
+    }
+}
+
+/// 저장된 테마.
+pub fn pet_theme(app: &AppHandle) -> Theme {
+    theme_from(
+        app.store(SETTINGS_FILE)
+            .ok()
+            .and_then(|store| store.get(PET_KEY))
+            .as_ref(),
+    )
+}
+
 /// 저장된 핀볼 모드 여부.
 pub fn pet_pinball(app: &AppHandle) -> bool {
     pinball_from(
@@ -306,8 +339,12 @@ pub fn create_pet_window(app: &AppHandle, id: PetId, at: (f64, f64)) -> tauri::R
         .visible_on_all_workspaces(true)
         // 첫 클릭이 앱 활성화에 먹히지 않게 한다 — 없으면 펭귄을 두 번 눌러야 반응한다
         .accept_first_mouse(true)
-        // 키보드 포커스를 뺏지 않는다 (R9)
+        // 키보드 포커스를 뺏지 않는다 (R9). `focused(false)`는 **만들 때만**
+        // 유효해서, 클릭하면 키 포커스가 넘어와 작업하던 앱의 포커스를 뺏고
+        // 열려 있던 설정 창의 컨트롤이 비활성(회색)으로 그려졌다 —
+        // `focusable(false)`여야 클릭해도 마우스 이벤트만 받고 키 창이 안 된다
         .focused(false)
+        .focusable(false)
         .visible(true)
         // 다른 Space로 가리거나 가려져도 CSS 애니메이션이 스로틀되지 않게 한다
         // (솔루션 문서 함정 1의 보조 대응. macOS 14+)
@@ -422,6 +459,9 @@ fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
             .skip_taskbar(true)
             .visible_on_all_workspaces(true)
             .accept_first_mouse(true)
+            // 펭귄 창과 달리 `focusable(false)`를 **걸지 않는다** — 판의 Esc
+            // 탈출문이 웹뷰 keydown이라 키 창이 될 수 있어야 받는다. 판이
+            // 포커스를 먹는 것은 핀볼 모드의 성격이고, 나가는 문이 둘인 이유다
             .focused(false)
             .visible(true)
             .build()?
@@ -1466,6 +1506,39 @@ mod tests {
             "문자열은 켜짐으로 읽지 않는다"
         );
         assert!(pinball_from(Some(&serde_json::json!({ "pinball": true }))));
+    }
+
+    #[test]
+    fn 테마_설정이_없으면_시스템이다() {
+        // 기본은 "OS를 따른다" — 사용자가 고르기 전에는 아무것도 강제하지 않는다
+        assert_eq!(theme_from(None), Theme::System);
+        assert_eq!(theme_from(Some(&serde_json::json!({}))), Theme::System);
+    }
+
+    #[test]
+    fn 저장된_테마를_그대로_읽는다() {
+        assert_eq!(
+            theme_from(Some(&serde_json::json!({ "theme": "light" }))),
+            Theme::Light
+        );
+        assert_eq!(
+            theme_from(Some(&serde_json::json!({ "theme": "dark" }))),
+            Theme::Dark
+        );
+        assert_eq!(
+            theme_from(Some(&serde_json::json!({ "theme": "system" }))),
+            Theme::System
+        );
+    }
+
+    #[test]
+    fn 깨진_테마는_시스템으로_수렴한다() {
+        // 손으로 고친 settings.json이 이상해도 트레이가 안 보이게 되면 안 된다
+        assert_eq!(
+            theme_from(Some(&serde_json::json!({ "theme": "어둡게" }))),
+            Theme::System
+        );
+        assert_eq!(theme_from(Some(&serde_json::json!({ "theme": 2 }))), Theme::System);
     }
 
     #[test]

@@ -13,6 +13,7 @@ import {
   removePet,
   setPetEnabled,
   setPetPinball,
+  setPetTheme,
   slidePet,
   squawkPet,
   freakoutPet,
@@ -24,6 +25,7 @@ import {
   loadTaunts,
   savePetSettings,
   saveTaunts,
+  type AppTheme,
 } from "./lib/settings";
 import "./App.css";
 
@@ -65,6 +67,7 @@ function App() {
   const [soundEnabled, setSoundEnabledState] = useState(DEFAULT_PET_SETTINGS.sound);
   const [pinballEnabled, setPinballEnabledState] = useState(DEFAULT_PET_SETTINGS.pinball);
   const [volume, setVolumeState] = useState(DEFAULT_PET_SETTINGS.volume);
+  const [theme, setThemeState] = useState(DEFAULT_PET_SETTINGS.theme);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
   /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
   const [petSummary, setPetSummary] = useState<PetSummary>({ count: 1, max: 8, focused: null });
@@ -79,6 +82,7 @@ function App() {
         setSoundEnabledState(savedPet.sound);
         setPinballEnabledState(savedPet.pinball);
         setVolumeState(savedPet.volume);
+        setThemeState(savedPet.theme);
       }
       const savedTaunts = await loadTaunts().catch(() => []);
       if (!cancelled) setTaunts(savedTaunts);
@@ -108,6 +112,7 @@ function App() {
             setSoundEnabledState(saved.sound);
             setPinballEnabledState(saved.pinball);
             setVolumeState(saved.volume);
+            setThemeState(saved.theme);
           })
           .catch(() => {});
       }
@@ -225,6 +230,30 @@ function App() {
     }
   }, []);
 
+  /** 테마 — 거는 것(지금 떠 있는 창·트레이)과 저장(다음 실행) 둘 다.
+   * 핀볼과 같은 규칙: 어느 한쪽이 실패하면 표시와 실제를 함께 되돌린다. */
+  const handleThemeChange = useCallback(
+    async (next: AppTheme) => {
+      const prev = theme;
+      setThemeState(next);
+      try {
+        await setPetTheme(next);
+      } catch (err) {
+        console.error("테마 변경 실패:", err);
+        setThemeState(prev);
+        return;
+      }
+      try {
+        await savePetSettings({ theme: next });
+      } catch (err) {
+        console.error("테마 저장 실패:", err);
+        await setPetTheme(prev).catch(() => {});
+        setThemeState(prev);
+      }
+    },
+    [theme],
+  );
+
   /** 펭귄 추가·삭제 — 결과를 낙관적으로 그리지 않고 **다시 읽는다.** 상한이나
    * 마지막 한 마리에 걸려 거부될 수 있고, 그때 화면만 늘어나면 거짓말이 된다. */
   const refreshPets = useCallback(async () => {
@@ -277,6 +306,8 @@ function App() {
         onSoundEnabledChange={(next) => void handleSoundEnabledChange(next)}
         volume={volume}
         onVolumeChange={(next) => void handleVolumeChange(next)}
+        theme={theme}
+        onThemeChange={(next) => void handleThemeChange(next)}
         pinballEnabled={pinballEnabled}
         onPinballEnabledChange={(next) => void handlePinballEnabledChange(next)}
       />

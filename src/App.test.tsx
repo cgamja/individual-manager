@@ -180,6 +180,40 @@ describe("설정 창", () => {
     expect(events.some((e) => e.event === "pet://sound")).toBe(false);
   });
 
+  it("테마를_고르면_커맨드를_걸고_저장한다", async () => {
+    // 거는 것(지금 떠 있는 창·트레이)과 저장(다음 실행)은 다른 일이다 — 핀볼과 같은 규칙
+    const calls: Array<[string, Record<string, unknown>]> = [];
+    const store = new Map<string, unknown>();
+    mockWindow();
+    mockIPC((cmd, args) => {
+      const a = (args ?? {}) as Record<string, unknown>;
+      if (cmd === "plugin:event|listen") return 1;
+      if (cmd === "plugin:event|unlisten") return undefined;
+      if (cmd === "pet_summary") return { count: 1, max: 8, focused: 3 };
+      if (cmd === "pet_set_theme") {
+        calls.push([cmd, a]);
+        return undefined;
+      }
+      if (cmd === "plugin:store|load") return 1;
+      if (cmd === "plugin:store|get") {
+        return store.has(a.key as string) ? [store.get(a.key as string), true] : [null, false];
+      }
+      if (cmd === "plugin:store|set") {
+        store.set(a.key as string, a.value);
+        return undefined;
+      }
+      if (cmd.startsWith("plugin:store|")) return null;
+      return undefined;
+    });
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText("테마"), { target: { value: "dark" } });
+
+    await waitFor(() => {
+      expect(calls).toContainEqual(["pet_set_theme", { theme: "dark" }]);
+      expect(store.get("pet")).toMatchObject({ theme: "dark" });
+    });
+  });
+
   it("우클릭_대상이_없으면_낚시와_삭제가_함께_잠긴다", async () => {
     mockSettings({ count: 2, max: 8, focused: null as unknown as number });
     render(<App />);

@@ -1,3 +1,5 @@
+import type { AppTheme } from "../lib/settings";
+
 interface SettingsCardProps {
   /** 바탕화면 펭귄 표시 여부 (R8). */
   petEnabled: boolean;
@@ -8,6 +10,9 @@ interface SettingsCardProps {
   /** 음량 단계 0~4. 가운데(2)가 기본 크기, 단계마다 두 배(6dB)씩. */
   volume: number;
   onVolumeChange: (volume: number) => void;
+  /** 겉모습 테마 — 이 창의 겉모습을 정한다. 트레이는 항상 자동(템플릿)이다. */
+  theme: AppTheme;
+  onThemeChange: (theme: AppTheme) => void;
   /** 핀볼 모드 여부. **기본은 꺼짐** — 켜면 착지 4단계가 가려진다. */
   pinballEnabled: boolean;
   onPinballEnabledChange: (enabled: boolean) => void;
@@ -26,6 +31,8 @@ export function SettingsCard({
   onSoundEnabledChange,
   volume,
   onVolumeChange,
+  theme,
+  onThemeChange,
   pinballEnabled,
   onPinballEnabledChange,
 }: SettingsCardProps) {
@@ -71,6 +78,21 @@ export function SettingsCard({
           value={volume}
           onChange={(e) => onVolumeChange(Number(e.target.value))}
         />
+      </div>
+
+      <div className="settings-row">
+        <label htmlFor="app-theme">테마</label>
+        {/* 이 창의 겉모습을 정한다. 트레이 아이콘은 여기 안 걸린다 — 메뉴바
+            색은 OS만 정하므로 고정하면 안 보이는 경우가 생긴다 (lib.rs 참고) */}
+        <select
+          id="app-theme"
+          value={theme}
+          onChange={(e) => onThemeChange(e.target.value as AppTheme)}
+        >
+          <option value="system">시스템 설정</option>
+          <option value="light">라이트</option>
+          <option value="dark">다크</option>
+        </select>
       </div>
 
       <div className="settings-row">

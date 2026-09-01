@@ -25,6 +25,36 @@ fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
 }
 
+/// 테마를 **창에만** 건다 (웹뷰의 prefers-color-scheme이 뒤집힌다).
+///
+/// **트레이 아이콘은 여기서 건드리지 않는다** — 처음에는 테마가 트레이도
+/// 고정(검정/흰 실루엣)하게 만들었다가 뺐다(2026-09-01 리뷰). 메뉴바 색은
+/// `set_theme`이 아니라 OS(시스템 설정)가 정하므로, 고정 실루엣은 시스템과
+/// 테마가 같을 땐 템플릿과 똑같고 **다를 땐 메뉴바에 묻혀 안 보인다** —
+/// 쓸모 있는 경우가 없고, 트레이는 핀볼 모드의 "나가는 문 둘" 중 하나라
+/// 안 보이면 안 된다. 템플릿 이미지가 항상 맞는 색을 낸다.
+///
+/// 시작 시(setup)와 설정 변경(`pet_set_theme`) 두 경로가 부른다 —
+/// `apply_saved_settings`처럼 한 곳에 모은다.
+pub(crate) fn apply_theme(app: &AppHandle, theme: pet_bridge::Theme) {
+    use pet_bridge::Theme;
+    app.set_theme(match theme {
+        Theme::System => None,
+        Theme::Light => Some(tauri::Theme::Light),
+        Theme::Dark => Some(tauri::Theme::Dark),
+    });
+}
+
+/// 설정 창의 테마 선택. 저장은 웹뷰(`savePetSettings`)가 한다 — 여기는
+/// 지금 떠 있는 창과 트레이에 즉시 거는 쪽이다.
+#[tauri::command]
+fn pet_set_theme(app: AppHandle, theme: String) {
+    apply_theme(
+        &app,
+        pet_bridge::theme_from(Some(&serde_json::json!({ "theme": theme }))),
+    );
+}
+
 /// 팝오버를 지정한 자리에 놓고 연다. `at`이 없으면 트레이 밑(기존 동작).
 pub(crate) fn toggle_popover_at(app: &AppHandle, at: Option<(f64, f64)>) {
     let Some(window) = main_window(app) else {
@@ -125,8 +155,10 @@ pub fn run() {
 
             // 트레이는 setup()에서 동기 생성해야 마우스 이벤트를 받는다 (KTD3, tauri#11462)
             TrayIconBuilder::with_id(TRAY_ID)
+                // 템플릿 이미지(검정 + 알파) — 색은 우리가 아니라 메뉴바가 정한다.
+                // 다크/라이트에 따라 macOS가 흰/검으로 알아서 그린다
                 .icon(Image::from_bytes(include_bytes!("../icons/tray.png"))?)
-                .icon_as_template(false)
+                .icon_as_template(true)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| {
@@ -147,6 +179,10 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // 저장된 테마를 시작 시점에 건다 — 트레이는 위에서 템플릿(시스템)으로
+            // 만들어졌으므로, 고정 테마가 저장돼 있으면 여기서 갈아 끼운다
+            apply_theme(&app.handle().clone(), pet_bridge::pet_theme(app.handle()));
 
             // 바탕화면 펭귄 — 실패해도 앱 본체는 계속 뜬다 (장식 기능이 셸을 막지 않는다).
             // 실제 이동 영역은 첫 틱에서 모니터를 읽어 정정하므로 여기서는 잠정값이다.
@@ -188,6 +224,7 @@ pub fn run() {
             pet_bridge::pet_slide,
             pet_bridge::pet_squawk,
             pet_bridge::pet_freakout,
+            pet_set_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -315,23 +315,83 @@ pub fn bounds_from_work_area(
     }
 }
 
-/// 지금 펭귄이 놓인 모니터의 이동 영역. 모니터를 못 읽으면 이전 경계를 쓰도록
-/// `None`을 돌려준다 — 임의의 기본값으로 펭귄을 순간이동시키지 않는다.
+/// 지금 펭귄이 놓인 모니터의 이동 영역. **창이 어떤 화면에도 안 걸치면 `None`이다** —
+/// 모니터를 뽑은 순간이 그 경우이고, 부르는 쪽이 주 모니터로 떨어진다
+/// ([`current_world_or_primary`]).
 fn current_bounds(window: &WebviewWindow) -> Option<Bounds> {
-    let monitor = window.current_monitor().ok().flatten()?;
+    window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .and_then(|m| monitor_bounds(&m))
+}
+
+/// **주 모니터**의 경계. 창이 어떤 모니터에도 안 걸칠 때 돌아갈 곳이다.
+fn primary_bounds(window: &WebviewWindow) -> Option<Bounds> {
+    window
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .and_then(|m| monitor_bounds(&m))
+}
+
+/// 모니터 하나에서 펭귄이 다닐 수 있는 범위를 낸다.
+///
+/// `current_bounds`와 `primary_bounds`가 **이 한 곳을 공유한다** — 배율 나눗셈을
+/// 두 벌로 만들면 한쪽만 고쳐지고 조용히 갈라진다.
+fn monitor_bounds(monitor: &tauri::Monitor) -> Option<Bounds> {
     let area = monitor.work_area();
-    Some(bounds_from_work_area(
+    bounds_of_work_area(
         (area.position.x, area.position.y),
         (area.size.width, area.size.height),
         monitor.scale_factor(),
-        PET_SIZE,
-    ))
+    )
 }
 
-/// 지금의 세계. **아직 화면 하나짜리다** — 연결된 화면 전부를 담는 것은
-/// 다음 항목(모니터 경계 넘기)의 일이고, 여기서는 코어의 자리만 바꿔 둔다.
-fn current_world(window: &WebviewWindow) -> Option<World> {
-    current_bounds(window).map(World::single)
+/// 작업 영역 하나를 경계로. **크기가 0이면 `None`이다.**
+///
+/// macOS의 `primary_monitor()`는 화면이 하나도 없어도 항상 `Some`을 준다 — tao가
+/// `CGDisplay::main()`을 그대로 감싸기 때문이다. 그 핸들은 크기가 0이고 배율도
+/// 1.0으로 떨어져, 그대로 쓰면 경계가 한 점으로 무너져 **펭귄이 원점에 붙고 있던
+/// 자리를 잃는다.** 잃어버리지 않으려던 수정이 잃어버리는 꼴이 된다.
+///
+/// 순수 함수로 빼 둔 이유는 테스트가 닿게 하기 위해서다 — `tauri::Monitor`는
+/// 테스트에서 만들 수 없어서, 안에 두면 이 판정이 영영 검증되지 않는다.
+fn bounds_of_work_area(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<Bounds> {
+    if size.0 == 0 || size.1 == 0 {
+        return None;
+    }
+    Some(bounds_from_work_area(pos, size, scale, PET_SIZE))
+}
+
+/// 캐시에 넣을 세계를 고른다 — 못 읽었으면 **주 모니터로 떨어진다.**
+///
+/// **읽기 실패를 무시하고 낡은 값을 붙들면 안 된다.** 모니터를 뽑으면 창이 어떤
+/// 화면에도 안 걸쳐 `current_monitor()`가 `None`을 준다. 그때 캐시를 그대로 두면
+/// 펭귄이 **사라진 화면의 좌표로 매 틱 clamp되어 다시는 안 보인다** — 상태에도
+/// 있고 창도 살아 있는데 갈 방법이 없다. 실제로 겪은 사고다.
+///
+/// 주 모니터로 떨어뜨리면 `Pet::clamp`가 다음 틱에 펭귄을 화면 안으로 데려온다.
+/// 둘 다 못 읽는 경우(모니터가 하나도 없다)에만 낡은 값을 그대로 둔다.
+fn world_to_cache(
+    current: Option<World>,
+    primary: impl FnOnce() -> Option<World>,
+) -> Option<World> {
+    // **`or`가 아니라 `or_else`다.** `primary_monitor()`도 `current_monitor()`와
+    // 똑같이 이벤트 루프를 왕복하는 블로킹 호출이라(CLAUDE.md의 함정 항목),
+    // 미리 계산해 넘기면 성공하는 경로에서도 왕복을 두 번 한다.
+    current.or_else(primary)
+}
+
+/// 창이 선 화면의 세계. 못 읽으면 주 모니터로 떨어진다 ([`world_to_cache`]).
+///
+/// **세계를 만드는 곳은 여기 하나다.** 틱도 커맨드도 이걸 쓴다 — `World::single`을
+/// 딴 데서 또 부르면 폴백이 한쪽에만 붙어 조용히 갈라진다.
+/// 아직 **화면 하나짜리다**: 연결된 화면을 전부 담는 것은 F2에서 범위 밖으로 뺐다.
+fn current_world_or_primary(window: &WebviewWindow) -> Option<World> {
+    world_to_cache(current_bounds(window).map(World::single), || {
+        primary_bounds(window).map(World::single)
+    })
 }
 
 /// 위치·동작 틱. 트레이(`set_title`)와 달리 `set_position`은 어느 스레드에서
@@ -411,9 +471,22 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 let stale = worlds
                     .get(&id)
                     .is_none_or(|(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
+                // 경계를 못 읽어 주 모니터로 떨어진 틱인가. **자는 펭귄 때문에
+                // 필요하다** — 아래에서 창을 옮길지 정하는 데 쓴다.
+                let mut rescued = false;
                 if stale {
-                    if let Some(world) = current_world(&window) {
+                    // **실패했다고 넘어가면 안 된다** — 모니터를 뽑았을 때가
+                    // 정확히 그 경우이고, 낡은 경계를 붙들면 펭귄이 사라진 좌표에
+                    // 갇힌다. `world_to_cache`가 주 모니터로 떨어뜨린다.
+                    let read = current_bounds(&window).map(World::single);
+                    rescued = read.is_none();
+                    if let Some(world) =
+                        world_to_cache(read, || primary_bounds(&window).map(World::single))
+                    {
                         worlds.insert(id, (world, now));
+                    } else {
+                        // 떨어질 곳도 없다 — 낡은 경계라도 붙들고 있는 게 낫다
+                        rescued = false;
                     }
                 }
                 let Some((world, _)) = worlds.get(&id) else {
@@ -429,8 +502,12 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     pet.step(now, world)
                 };
 
-                let moves = snapshot.behavior.moves_window();
-                any_moves |= moves;
+                // **구조된 틱에는 자고 있어도 창을 옮긴다.** `moves_window()`는
+                // 졸기에 거짓이라, 이게 없으면 자는 동안 상태의 x·y만 화면 안으로
+                // 돌아오고 창은 사라진 모니터 좌표에 그대로 남는다 — 깰 때까지
+                // (최대 25초) 계속 안 보인다. 틱 주기는 원래대로 둔다.
+                let moves = snapshot.behavior.moves_window() || rescued;
+                any_moves |= snapshot.behavior.moves_window();
                 let look = look_of(&snapshot);
                 // 졸기로 "전이하는" 그 스냅샷은 반드시 알려야 한다. 움직임 여부로만
                 // 거르면 자는 모습이 웹뷰에 영영 도달하지 않아 직전 동작이 그대로 남는다.
@@ -529,17 +606,17 @@ const FLAT_BOUNDS: Bounds = Bounds {
 /// 따로 부르면, 화면 목록을 실제로 여러 개로 넓힐 때 한쪽만 넓어져 조용히 갈라진다.
 fn world_or_flat(app: &AppHandle, id: PetId) -> World {
     pet_window(app, id)
-        .and_then(|w| current_world(&w))
+        .and_then(|w| current_world_or_primary(&w))
         .unwrap_or_else(|| World::single(FLAT_BOUNDS))
 }
 
 /// 아무 펭귄이나 기준으로 본 세계.
 fn world_or_flat_any(app: &AppHandle) -> World {
     any_pet_window(app)
-        .and_then(|w| current_world(&w))
+        .and_then(|w| current_world_or_primary(&w))
         .or_else(|| {
             app.get_webview_window("main")
-                .and_then(|w| current_world(&w))
+                .and_then(|w| current_world_or_primary(&w))
         })
         .unwrap_or_else(|| World::single(FLAT_BOUNDS))
 }
@@ -797,6 +874,52 @@ fn next_to(x: f64, bounds: Bounds) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn 경계(right: f64) -> Bounds {
+        Bounds { left: 0.0, right, top: 0.0, floor_y: 800.0 }
+    }
+
+    #[test]
+    fn 경계를_못_읽으면_주_모니터로_떨어진다() {
+        // **모니터를 뽑으면 `current_monitor()`가 None을 준다.** 그때 낡은 캐시를
+        // 그대로 두면 펭귄이 사라진 화면의 좌표로 영원히 clamp되어 다시는 안 보인다.
+        // 실제로 겪은 사고다 — 확장 모니터 선을 뽑았더니 두 마리가 사라졌다.
+        let 주 = World::single(경계(1_440.0));
+        let got = world_to_cache(None, || Some(주.clone()));
+        assert_eq!(
+            got.map(|w| w.first().bounds.right),
+            Some(1_440.0),
+            "읽기에 실패했으면 주 모니터로 떨어져야 한다"
+        );
+    }
+
+    #[test]
+    fn 경계를_읽었으면_그대로_쓴다() {
+        let 지금 = World::single(경계(3_008.0));
+        let 주 = World::single(경계(1_440.0));
+        let got = world_to_cache(Some(지금), || Some(주));
+        assert_eq!(got.map(|w| w.first().bounds.right), Some(3_008.0));
+    }
+
+    #[test]
+    fn 둘_다_못_읽으면_캐시를_건드리지_않는다() {
+        // 모니터가 하나도 없는 상황 — 낡은 값이라도 붙들고 있는 편이 낫다
+        assert!(world_to_cache(None, || None).is_none());
+    }
+
+    #[test]
+    fn 크기가_0인_작업_영역은_모니터로_치지_않는다() {
+        // macOS의 `primary_monitor()`는 화면이 하나도 없어도 항상 Some을 준다.
+        // 걸러내지 않으면 경계가 한 점으로 무너져 **펭귄이 원점에 붙고 자리를 잃는다.**
+        // 이 갈래가 없으면 위의 "둘 다 못 읽으면"이 도달할 수 없는 갈래가 된다.
+        assert!(bounds_of_work_area((0, 0), (0, 0), 1.0).is_none());
+        assert!(bounds_of_work_area((0, 0), (1_440, 0), 2.0).is_none());
+        assert!(bounds_of_work_area((0, 0), (0, 900), 2.0).is_none());
+        assert!(
+            bounds_of_work_area((0, 0), (2_880, 1_800), 2.0).is_some(),
+            "멀쩡한 모니터는 통과해야 한다"
+        );
+    }
 
     /// 등록을 빠뜨리면 컴파일도 되고 테스트도 통과하는데 런타임에서 모든 IPC가
     /// reject된다 — 커맨드는 `pub`이라 dead_code 경고도 안 뜬다. 실제로 한 번

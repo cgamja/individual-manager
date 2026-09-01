@@ -165,6 +165,44 @@ export const playSquawk = (
   squawkBurst(ctx, out, ctx.currentTime, 750 * ratio(semitones), 0.35, 1.6);
 };
 
+/**
+ * 퐁 — 물고기를 잡았다. 물방울 하강 스윕 + 작은 반짝. ≈250ms.
+ *
+ * **다른 소리보다 작게 잡는다** — 보상이지 알림이 아니다. 자격 규칙의 예외로
+ * 들어온 소리라(플랜 018 KTD1), 커지는 순간 예외의 근거가 무너진다.
+ */
+export const playCatch = (
+  ctx: BaseAudioContext,
+  out: AudioNode,
+  semitones: number,
+): void => {
+  const r = ratio(semitones);
+  const t0 = ctx.currentTime;
+
+  // 물방울 "퐁" — 사인이 위에서 아래로 떨어진다
+  const plop = ctx.createOscillator();
+  plop.type = "sine";
+  plop.frequency.setValueAtTime(420 * r, t0);
+  plop.frequency.exponentialRampToValueAtTime(150 * r, t0 + 0.09);
+  const pg = ctx.createGain();
+  envelope(pg, t0, 0.6, 0.005, 0.09);
+  plop.connect(pg);
+  pg.connect(out);
+  plop.start(t0);
+  plop.stop(t0 + 0.1);
+
+  // 반짝 — 높은 블립 하나, 살짝 늦게
+  const spark = ctx.createOscillator();
+  spark.type = "sine";
+  spark.frequency.setValueAtTime(1900 * r, t0 + 0.1);
+  const sg = ctx.createGain();
+  envelope(sg, t0 + 0.1, 0.35, 0.005, 0.12);
+  spark.connect(sg);
+  sg.connect(out);
+  spark.start(t0 + 0.1);
+  spark.stop(t0 + 0.25);
+};
+
 /** 광란 — 빽을 짧게 줄여 여섯 발, 음높이를 계단식으로 올리며. ≈700ms. */
 export const playFreakout = (
   ctx: BaseAudioContext,

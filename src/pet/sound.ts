@@ -1,14 +1,15 @@
 import type { PetSnapshot } from "../lib/pet";
-import { playFreakout, playSquawk, playWhack, playWhoosh } from "./synth";
+import { playCatch, playFreakout, playSquawk, playWhack, playWhoosh } from "./synth";
 
 /**
- * 펭귄이 낼 수 있는 소리 넷. 이게 전부다 — 걷기·헤엄·착지·졸기는 무음이다.
+ * 펭귄이 낼 수 있는 소리 다섯. 이게 전부다 — 걷기·헤엄·착지·졸기는 무음이다.
  *
  * 기준은 "사용자가 방금 한 짓의 결과이거나, 시간당 한 번보다 드물거나"다.
  * 저절로 나면서 자주 나는 소리(착지 3종은 시간당 150회가 넘는다)는 상주 앱을
- * 고문으로 만든다 — 눈은 감을 수 있지만 귀는 못 감는다.
+ * 고문으로 만든다 — 눈은 감을 수 있지만 귀는 못 감는다. 예외는 잡았다(catch)
+ * 하나뿐이고, 그 근거는 `soundsFor` 안에 적혀 있다.
  */
-export type SoundName = "whack" | "whoosh" | "squawk" | "freakout";
+export type SoundName = "whack" | "whoosh" | "squawk" | "freakout" | "catch";
 
 /**
  * 직전 스냅샷과 비교해 이번에 낼 소리를 판정한다. 순수 함수 — Web Audio가
@@ -41,6 +42,16 @@ export const soundsFor = (
   const wasDash = prev.behavior.kind === "freakout" && prev.behavior.freakout === "dash";
   const isDash = next.behavior.kind === "freakout" && next.behavior.freakout === "dash";
   if (!wasDash && isDash) out.push("freakout");
+  // 잡았다 — 자격 규칙("사용자 원인이거나 시간당 1회 미만")의 **첫 예외다**
+  // (플랜 018 KTD1, 사용자 지시). 잡음 ≈8회/h는 착지처럼 하루 종일 흩어지는 게
+  // 아니라 16분에 한 번 열리는 30~60초 판 안에만 몰려 있고, 서사의 보상
+  // 지점이라 소리가 그 순간을 찍는다. **꽝(miss)은 계속 무음이다** — 꽝까지
+  // 울리면 판마다 6~8초에 한 번 소리가 나서 이 예외의 근거가 무너진다
+  const wasCatch =
+    prev.behavior.kind === "ice_fishing" && prev.behavior.fishing === "catch";
+  const isCatch =
+    next.behavior.kind === "ice_fishing" && next.behavior.fishing === "catch";
+  if (!wasCatch && isCatch) out.push("catch");
   return out;
 };
 
@@ -58,6 +69,9 @@ export const SOUND_COOLDOWN_MS: Record<SoundName, number> = {
   squawk: 400,
   // 한 판에 한 번이면 충분하다
   freakout: 1000,
+  // Catch 국면(1.8초)보다 짧고 연속 잡음 간격(6초+)보다 훨씬 짧다 —
+  // 사실상 판정 중복만 거른다
+  catch: 1500,
 };
 
 /** 시각을 인자로 받아 시계 없이 테스트한다 (`pet.rs`가 `now_ms`를 받는 이유와 같다). */
@@ -108,6 +122,7 @@ const SYNTH: Record<
   whoosh: playWhoosh,
   squawk: playSquawk,
   freakout: playFreakout,
+  catch: playCatch,
 };
 
 /**

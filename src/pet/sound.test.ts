@@ -109,7 +109,7 @@ describe("soundsFor — 전이 검출", () => {
       { kind: "ice_fishing", fishing: "dig" },
       { kind: "ice_fishing", fishing: "wait" },
       { kind: "ice_fishing", fishing: "bite" },
-      { kind: "ice_fishing", fishing: "catch" },
+      // catch는 뺐다 — 잡는 순간은 소리가 난다 (자격 규칙의 첫 예외, 플랜 018 KTD1)
       { kind: "ice_fishing", fishing: "miss" },
       { kind: "ice_fishing", fishing: "pack" },
     ];
@@ -117,6 +117,38 @@ describe("soundsFor — 전이 검출", () => {
     for (const behavior of silent) {
       expect(soundsFor(prev, snap({ behavior })), JSON.stringify(behavior)).toEqual([]);
     }
+  });
+
+  it("잡으면_퐁이_난다", () => {
+    // 자격 규칙("사용자 원인이거나 시간당 1회 미만")의 첫 예외 — 잡음은 16분에
+    // 한 번 열리는 판 안에만 몰려 있고, 서사의 보상 지점이다 (플랜 018 KTD1)
+    const prev = snap({ behavior: { kind: "ice_fishing", fishing: "wait" } });
+    const next = snap({ behavior: { kind: "ice_fishing", fishing: "catch" } });
+    expect(soundsFor(prev, next)).toEqual(["catch"]);
+  });
+
+  it("잡는_국면이_이어지는_동안은_다시_안_난다", () => {
+    const prev = snap({ behavior: { kind: "ice_fishing", fishing: "catch" } });
+    const next = snap({
+      behavior: { kind: "ice_fishing", fishing: "catch" },
+      speech: { seq: 1, roll: 0 },
+    });
+    expect(soundsFor(prev, next)).toEqual([]);
+  });
+
+  it("꽝은_조용하다", () => {
+    // 꽝까지 울리면 판마다 6~8초에 한 번 소리가 나서 예외의 근거가 무너진다
+    const prev = snap({ behavior: { kind: "ice_fishing", fishing: "wait" } });
+    const next = snap({ behavior: { kind: "ice_fishing", fishing: "miss" } });
+    expect(soundsFor(prev, next)).toEqual([]);
+  });
+
+  it("드리우기와_입질은_조용하다", () => {
+    const dig = snap({ behavior: { kind: "ice_fishing", fishing: "dig" } });
+    const wait = snap({ behavior: { kind: "ice_fishing", fishing: "wait" } });
+    const bite = snap({ behavior: { kind: "ice_fishing", fishing: "bite" } });
+    expect(soundsFor(dig, wait)).toEqual([]);
+    expect(soundsFor(wait, bite)).toEqual([]);
   });
 
   it("첫_스냅샷에는_소리가_없다", () => {
@@ -127,14 +159,14 @@ describe("soundsFor — 전이 검출", () => {
 
 describe("passesCooldown — 소리별 최소 간격", () => {
   it("쿨다운_안에_다시_요청하면_버린다", () => {
-    const names: SoundName[] = ["whack", "whoosh", "squawk", "freakout"];
+    const names: SoundName[] = ["whack", "whoosh", "squawk", "freakout", "catch"];
     for (const name of names) {
       expect(passesCooldown(name, 1000, 1000 + SOUND_COOLDOWN_MS[name] - 1)).toBe(false);
     }
   });
 
   it("쿨다운이_지나면_다시_난다", () => {
-    const names: SoundName[] = ["whack", "whoosh", "squawk", "freakout"];
+    const names: SoundName[] = ["whack", "whoosh", "squawk", "freakout", "catch"];
     for (const name of names) {
       expect(passesCooldown(name, 1000, 1000 + SOUND_COOLDOWN_MS[name])).toBe(true);
     }

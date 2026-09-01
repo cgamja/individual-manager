@@ -125,8 +125,10 @@ pub fn run() {
 
             // 트레이는 setup()에서 동기 생성해야 마우스 이벤트를 받는다 (KTD3, tauri#11462)
             TrayIconBuilder::with_id(TRAY_ID)
+                // 템플릿 이미지(검정 + 알파) — 색은 우리가 아니라 메뉴바가 정한다.
+                // 다크/라이트에 따라 macOS가 흰/검으로 알아서 그린다
                 .icon(Image::from_bytes(include_bytes!("../icons/tray.png"))?)
-                .icon_as_template(false)
+                .icon_as_template(true)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| {

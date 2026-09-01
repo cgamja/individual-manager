@@ -166,7 +166,7 @@ export const playSquawk = (
 };
 
 /**
- * 첨벙 — 물고기를 꺼내는 물소리. 부딪힘 + 물 꼬리 + 물방울 셋. ≈450ms.
+ * 첨벙 — 물고기를 꺼내는 물소리. 부딪힘 + 물 꼬리 두 겹. ≈400ms.
  *
  * 처음엔 사인 "퐁"이었는데 물이 아니라 알림음으로 들렸다(사용자 피드백,
  * 2026-09-01) — 물소리의 정체는 음이 아니라 **노이즈**다. 퍽과 같은 노이즈
@@ -221,25 +221,8 @@ export const playCatch = (
   wob.start(t0);
   wob.stop(t0 + 0.4);
 
-  // 3) 흩어지는 물방울 셋 — 시차를 두고 서로 다른 높이로 "뽁뽁뽁".
-  // 물방울은 내려가는 음이 아니라 **올라가는 음**이다 (기포가 좁아지며 솟는다)
-  const drops: Array<[at: number, from: number, to: number, peak: number]> = [
-    [0.16, 520, 1400, 0.6],
-    [0.26, 380, 950, 0.5],
-    [0.34, 640, 1700, 0.45],
-  ];
-  for (const [at, from, to, peak] of drops) {
-    const drip = ctx.createOscillator();
-    drip.type = "sine";
-    drip.frequency.setValueAtTime(from * r, t0 + at);
-    drip.frequency.exponentialRampToValueAtTime(to * r, t0 + at + 0.07);
-    const dg = ctx.createGain();
-    envelope(dg, t0 + at, peak, 0.006, 0.09);
-    drip.connect(dg);
-    dg.connect(out);
-    drip.start(t0 + at);
-    drip.stop(t0 + at + 0.12);
-  }
+  // 물방울("뽁뽁뽁")도 얹어 봤지만 뺐다 — 물이 아니라 효과음 장식으로
+  // 들렸다 (2026-09-01 사용자 피드백). 첨벙은 부딪힘 + 물 꼬리 두 겹이면 된다
 };
 
 /** 광란 — 빽을 짧게 줄여 여섯 발, 음높이를 계단식으로 올리며. ≈700ms. */

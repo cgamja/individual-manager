@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { MotionCard, type Motion } from "./components/MotionCard";
 import { PetCountCard } from "./components/PetCountCard";
 import { SettingsCard } from "./components/SettingsCard";
@@ -7,6 +8,7 @@ import {
   addPet,
   fishPet,
   getPetSummary,
+  onPetSettings,
   removePet,
   setPetEnabled,
   setPetPinball,
@@ -84,6 +86,10 @@ function App() {
     // 창이 다시 보일 때 재동기화 (주기 폴링 없음). **우클릭 대상**도 함께 읽는다 —
     // 다른 펭귄을 우클릭해서 열 때마다 삭제 대상이 바뀌므로, 여기서 안 읽으면
     // 엉뚱한 펭귄이 지워진 것처럼 보인다.
+    //
+    // **펭귄 설정도 다시 읽는다.** 이 창 밖에서 바뀔 수 있다 — 핀볼 판에서 Esc를
+    // 누르면 저장소가 바뀌는데, 여기서 안 읽으면 설정 창은 켜진 것으로 보여
+    // 체크를 껐다 켜야 실제로 켜지는 꼴이 된다.
     const onVisibility = () => {
       if (!document.hidden) {
         // **맨 위로 되돌린다.** 이 창은 닫을 때 파괴되지 않고 숨겨질 뿐이라
@@ -93,13 +99,38 @@ function App() {
         getPetSummary()
           .then(setPetSummary)
           .catch(() => {});
+        loadPetSettings()
+          .then((saved) => {
+            setPetEnabledState(saved.enabled);
+            setSoundEnabledState(saved.sound);
+            setPinballEnabledState(saved.pinball);
+          })
+          .catch(() => {});
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
 
+    // **창이 열려 있는 채로도 바뀔 수 있다.** 핀볼 판에서 Esc를 누르면 저장소가
+    // 바뀌는데 그때는 `visibilitychange`가 안 뜬다 — 체크가 켜진 채로 남아
+    // 껐다 켜야 실제로 켜지는 꼴이 된다.
+    let unlisten: UnlistenFn | undefined;
+    void onPetSettings(({ pinball }) => {
+      setPinballEnabledState(pinball);
+      // 설정이 밖에서 바뀌었으면 마릿수·우클릭 대상도 같이 어긋났을 수 있다
+      getPetSummary()
+        .then(setPetSummary)
+        .catch(() => {});
+    })
+      .then((off) => {
+        if (cancelled) off();
+        else unlisten = off;
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", onVisibility);
+      unlisten?.();
     };
   }, []);
 

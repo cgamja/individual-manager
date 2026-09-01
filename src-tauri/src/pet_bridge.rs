@@ -28,6 +28,12 @@ pub fn now_ms() -> u64 {
 
 /// 웹뷰가 구독하는 상태 이벤트.
 pub const EVENT_PET_STATE: &str = "pet://state";
+/// 설정이 **이 창 밖에서** 바뀌었음을 설정 창에 알린다.
+///
+/// 핀볼 판에서 Esc를 누르면 저장소가 바뀌는데, 설정 창이 **열려 있는 채로**
+/// 그 일이 벌어지면 `visibilitychange`가 안 뜬다 — 체크는 켜진 채로 남고
+/// 사용자는 껐다 켜야 실제로 켜지는 꼴을 본다.
+pub const EVENT_PET_SETTINGS: &str = "pet://settings";
 
 /// 위치·동작 갱신 주기. 스프라이트 프레임은 CSS가 담당하므로 이 주기는
 /// "얼마나 부드럽게 이동하느냐"만 정한다. set_position은 매 호출이 IPC라
@@ -214,6 +220,14 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
             return Err(err);
         }
     }
+    // **저장된 핀볼이 켜짐이면 판도 깐다.** 플래그만 걸고 판을 안 만들면 다시
+    // 켠 앱은 "모드는 켜져 있는데 커서가 안 바뀌는" 상태가 된다 — 사용자가
+    // 보기에 그냥 고장이다.
+    if pet_pinball(app) {
+        if let Err(err) = create_field_window(app) {
+            eprintln!("[penguin] 시작 시 핀볼 판을 못 깔았다: {err}");
+        }
+    }
     Ok(())
 }
 
@@ -304,6 +318,186 @@ pub fn create_pet_window(app: &AppHandle, id: PetId, at: (f64, f64)) -> tauri::R
             // (tauri#5122 계열) — 명시적으로 한 번 더 띄운다. 포커스는 주지 않는다.
             let _ = window.show();
         })
+}
+
+/// 핀볼 덮개 창의 라벨. **`capabilities/default.json`의 `windows`에 있어야 한다** —
+/// 없으면 이 창이 부르는 커맨드가 컴파일·테스트를 다 통과하고 **런타임에서만
+/// 조용히 reject된다** (`docs/solutions/best-practices/tauri-command-registration-silent-failure.md`).
+pub const FIELD_LABEL_PREFIX: &str = "pinball-field-";
+
+/// 화면 `index`를 덮는 판의 라벨.
+pub fn field_label(index: usize) -> String {
+    format!("{FIELD_LABEL_PREFIX}{index}")
+}
+
+/// 화면 하나를 재서 넘기는 값 — (좌상단 물리 좌표, 물리 크기, 배율).
+///
+/// `tauri::Monitor`를 테스트에서 만들 수 없어서 판정에 필요한 셋만 떼어 낸다.
+pub type ScreenSpec = ((i32, i32), (u32, u32), f64);
+
+/// 화면 하나가 논리 좌표로 차지하는 사각형. 크기가 0이면 `None`이다 —
+/// `primary_monitor()`는 화면이 하나도 없어도 `Some`을 주면서 크기 0인 핸들을
+/// 내놓는다 ([`bounds_of_work_area`]와 같은 이유).
+///
+/// **작업 영역이 아니라 화면 전체다.** 작업 영역을 쓰면 메뉴바 높이만큼 띠가
+/// 남아 거기서만 커서가 화살표로 돌아온다. 메뉴바는 창 레벨이 더 높아
+/// (`NSMainMenuWindowLevel` 24 > `NSFloatingWindowLevel` 3) 덮개에 가려지지
+/// 않으므로, 전체를 덮어도 **트레이 아이콘은 그대로 눌린다** — 그게 나가는 문이다.
+fn screen_rect(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<(f64, f64, f64, f64)> {
+    if size.0 == 0 || size.1 == 0 || scale <= 0.0 {
+        return None;
+    }
+    Some((
+        f64::from(pos.0) / scale,
+        f64::from(pos.1) / scale,
+        f64::from(size.0) / scale,
+        f64::from(size.1) / scale,
+    ))
+}
+
+/// 덮개가 덮을 사각형들 — **화면 하나에 하나씩**이다.
+///
+/// **펭귄의 세계는 화면 하나지만**(PRD §5.2) **커서는 화면을 넘나든다.** 판을
+/// 한 화면만 덮게 만들었더니 다른 화면에서는 방망이가 아예 안 나왔다.
+///
+/// **창 하나로 전부 덮으려던 것도 실패했다.** 화면마다 배율이 다르면 논리
+/// 좌표의 단위가 화면마다 달라서, 합집합을 하나의 창에 넘기면 Tauri가 그 창이
+/// 놓인 화면의 배율 하나로 전부 환산해 크기가 어긋난다. **화면마다 창을 따로
+/// 만들면 각 창이 자기 화면의 배율만 쓰므로 이 문제가 사라진다.**
+///
+/// 크기가 0인 화면은 건너뛴다 — `primary_monitor()`는 화면이 하나도 없어도
+/// `Some`을 주면서 크기 0인 핸들을 내놓는다.
+///
+/// 순수 함수로 뺀 이유는 `tauri::Monitor`를 테스트에서 만들 수 없기 때문이다.
+pub fn field_rects_of(screens: &[ScreenSpec]) -> Vec<(f64, f64, f64, f64)> {
+    screens
+        .iter()
+        .filter_map(|(pos, size, scale)| screen_rect(*pos, *size, *scale))
+        .collect()
+}
+
+/// 핀볼 덮개 창을 만든다. 이미 있으면 그대로 둔다.
+///
+/// **펭귄 창과 같은 레벨이므로 순서를 명시적으로 정한다** — 만든 직후에 살아 있는
+/// 펭귄 창을 다시 앞으로 올린다. 덮개가 펭귄 위로 가면 클릭·드래그가 전부 덮개로
+/// 빨려 들어가 **펭귄을 만질 수 없다.**
+fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
+    // **연결된 화면을 전부 모은다.** 한 화면만 덮으면 다른 화면에서 방망이가
+    // 아예 안 나온다 — 커서는 펭귄과 달리 화면 경계를 넘어 다닌다.
+    let screens: Vec<ScreenSpec> = app
+        .available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| {
+            (
+                (m.position().x, m.position().y),
+                (m.size().width, m.size().height),
+                m.scale_factor(),
+            )
+        })
+        .collect();
+    let rects = field_rects_of(&screens);
+    if rects.is_empty() {
+        return Err(tauri::Error::WindowNotFound);
+    }
+
+    for (index, (x, y, w, h)) in rects.into_iter().enumerate() {
+        let label = field_label(index);
+        if app.get_webview_window(&label).is_some() {
+            continue;
+        }
+        // 설정은 펭귄 창을 그대로 따른다 — 투명·무장식·항상 위·첫 클릭 수용.
+        // **다른 점은 크기(화면 하나 전체)와, 그리는 게 없다는 것뿐이다.**
+        WebviewWindowBuilder::new(app, &label, WebviewUrl::App("field.html".into()))
+            .title("Pinball Field")
+            .inner_size(w, h)
+            .position(x, y)
+            .transparent(true)
+            .decorations(false)
+            .shadow(false)
+            .resizable(false)
+            // 여기서 켜는 것은 **창 종류**(떠 있는 창)이고, 정확한 레벨은 바로
+            // 아래 `sink_field_below_pets`가 다시 정한다 — 그쪽이 최종 값이다
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .visible_on_all_workspaces(true)
+            .accept_first_mouse(true)
+            .focused(false)
+            .visible(true)
+            .build()?
+            .show()?;
+    }
+
+    sink_field_below_pets(app);
+    Ok(())
+}
+
+/// 판을 펭귄보다 **한 레벨 아래**로 내린다.
+///
+/// **순서가 아니라 레벨이어야 한다.** 같은 레벨 안에서 창 순서는 클릭할 때마다
+/// 바뀐다 — Esc를 누르려고 판을 한 번 클릭하는 순간 판이 다시 펭귄 위로 올라온다.
+/// 그래서 만들 때 한 번 올려 두는 방식(`orderFrontRegardless`, `set_always_on_top`
+/// 껐다 켜기)은 **둘 다 실패했다.** 레벨은 클릭으로 안 바뀌므로 한 번 정하면 유지된다.
+///
+/// 값은 `NSFloatingWindowLevel`(3) **바로 아래**인 2다. 펭귄(3)보다는 아래여서
+/// 클릭이 펭귄에게 가고, 보통 창(0)보다는 위여서 다른 앱 위에서도 방망이가 보인다.
+/// 메뉴바(24)는 여전히 훨씬 위라 트레이 아이콘은 그대로 눌린다 — 나가는 문이다.
+#[cfg(target_os = "macos")]
+fn sink_field_below_pets(app: &AppHandle) {
+    use objc2_app_kit::NSWindow;
+
+    let labels: Vec<String> = app
+        .webview_windows()
+        .keys()
+        .filter(|label| label.starts_with(FIELD_LABEL_PREFIX))
+        .cloned()
+        .collect();
+    for label in labels {
+        let Some(window) = app.get_webview_window(&label) else {
+            continue;
+        };
+        let ptr = match window.ns_window() {
+            Ok(ptr) if !ptr.is_null() => ptr,
+            _ => {
+                // **조용히 넘기면 안 된다.** 레벨을 못 내리면 판이 펭귄 위에
+                // 남아 클릭을 전부 먹는데, 증상은 "펭귄이 안 날아간다" 하나뿐이라
+                // 사용자가 원인을 찾을 방법이 없다 (그 버그를 실제로 겪었다).
+                eprintln!("[penguin] 판({label})의 창 레벨을 못 내렸다 — 펭귄이 안 만져질 수 있다");
+                continue;
+            }
+        };
+        // SAFETY: `ns_window()`가 준 포인터는 살아 있는 NSWindow다. 방금
+        // 찾은 창이라 이 스코프 동안 닫히지 않는다.
+        unsafe {
+            let ns = &*(ptr as *const NSWindow);
+            ns.setLevel(FIELD_WINDOW_LEVEL);
+        }
+    }
+}
+
+/// 판의 창 레벨. `NSFloatingWindowLevel`(3, 펭귄이 쓰는 값) 바로 아래.
+#[cfg(target_os = "macos")]
+const FIELD_WINDOW_LEVEL: isize = 2;
+
+#[cfg(not(target_os = "macos"))]
+fn sink_field_below_pets(_app: &AppHandle) {}
+
+/// 핀볼 덮개 창을 닫는다.
+///
+/// **숨기지 않고 닫는다.** 화면 전체의 클릭을 먹는 창이 숨겨진 채로 남아 있을
+/// 이유가 없다 (펭귄 on/off가 창을 닫는 것과 같은 판단이다).
+fn close_field_window(app: &AppHandle) {
+    let labels: Vec<String> = app
+        .webview_windows()
+        .keys()
+        .filter(|label| label.starts_with(FIELD_LABEL_PREFIX))
+        .cloned()
+        .collect();
+    for label in labels {
+        if let Some(window) = app.get_webview_window(&label) {
+            let _ = window.close();
+        }
+    }
 }
 
 /// 펫 창 하나를 닫는다. 없으면 아무것도 하지 않는다.
@@ -785,8 +979,8 @@ pub fn pet_set_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
 /// 다시 띄워야 반영되면 설정이 고장 난 것으로 읽힌다. 저장은 웹뷰가 담당한다
 /// (`pet_set_enabled`와 같은 방식) — 다음에 태어나는 펭귄은 저장된 값을 읽는다.
 #[tauri::command]
-pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) {
-    let ids = {
+pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let apply = |on: bool| -> Vec<PetId> {
         let mut pets = state.pets.lock().unwrap();
         let ids = pets.ids();
         for id in &ids {
@@ -796,11 +990,36 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) {
         }
         ids
     };
+    let ids = apply(on);
+
+    // 판을 깐다/걷는다. **켜기가 실패하면 플래그를 되돌린다** — 판 없이 모드만
+    // 켜진 상태는 사용자가 고칠 수 없다(꺼 봐야 이미 꺼진 것처럼 동작한다).
+    if on {
+        if let Err(err) = create_field_window(&app) {
+            for id in apply(false) {
+                flush(&app, id);
+            }
+            return Err(format!("핀볼 판을 못 깔았어요: {err}"));
+        }
+    } else {
+        close_field_window(&app);
+    }
+
     // 겉모습(커서)이 달라졌으니 곧바로 알린다 — 다음 틱을 기다리면 졸고 있는
     // 펭귄은 최대 0.5초 뒤에야 바뀐다
     for id in ids {
         flush(&app, id);
     }
+    // 설정 창이 **열려 있는 채로** 판에서 Esc를 누를 수 있다. 그때는
+    // `visibilitychange`가 안 뜨므로 여기서 직접 알린다.
+    //
+    // **여기서는 `emit_to`가 아니라 `emit`이다.** 창별 이벤트인 `pet://state`와
+    // 달리 이건 설정 창 하나만 듣는 이벤트라, 대상을 좁혀 봐야 얻는 게 없고
+    // 라벨이 어긋나면 조용히 아무 데도 안 간다. 받는 쪽은 여전히 창에 묶인
+    // 리스너다 (전역 `listen`은 대상과 무관하게 전부 받는다 —
+    // `docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`).
+    let _ = app.emit(EVENT_PET_SETTINGS, serde_json::json!({ "pinball": on }));
+    Ok(())
 }
 
 /// 웹뷰가 처음 뜰 때 현재 상태를 한 번 받아 간다 (첫 틱을 기다리지 않게).
@@ -1011,6 +1230,65 @@ mod tests {
             bounds_of_work_area((0, 0), (2_880, 1_800), 2.0).is_some(),
             "멀쩡한 모니터는 통과해야 한다"
         );
+    }
+
+    #[test]
+    fn 덮개는_화면_전체를_배율로_나눈다() {
+        // **작업 영역이 아니라 전체다.** 작업 영역을 쓰면 메뉴바 높이만큼 띠가
+        // 남아 거기서만 커서가 화살표로 돌아온다.
+        let rects = field_rects_of(&[((0, 0), (2_880, 1_800), 2.0)]);
+        assert_eq!(rects, vec![(0.0, 0.0, 1_440.0, 900.0)]);
+    }
+
+    #[test]
+    fn 화면마다_판을_하나씩_깐다() {
+        // **실제로 겪은 버그 둘이 여기 걸려 있다.**
+        // (1) 펭귄이 있는 화면만 덮었더니 다른 화면에서 방망이가 안 나왔다 —
+        //     커서는 펭귄과 달리 화면을 넘어 다닌다.
+        // (2) 그래서 합집합 하나로 덮으려 했더니 **배율이 다른 화면에서 어긋났다.**
+        //     논리 좌표의 단위가 화면마다 다른데 창 하나는 배율 하나만 쓴다.
+        //     화면마다 창을 따로 만들면 각 창이 자기 배율만 쓴다.
+        let rects = field_rects_of(&[
+            ((0, 0), (2_880, 1_800), 2.0),
+            ((1_800, -333), (3_008, 1_692), 1.0),
+        ]);
+        assert_eq!(
+            rects,
+            vec![
+                (0.0, 0.0, 1_440.0, 900.0),
+                (1_800.0, -333.0, 3_008.0, 1_692.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn 크기가_0인_화면은_건너뛴다() {
+        // `primary_monitor()`는 화면이 하나도 없어도 Some을 주면서 크기 0인
+        // 핸들을 내놓는다 (`bounds_of_work_area`와 같은 이유). 그대로 만들면
+        // **클릭을 먹으면서 아무것도 안 덮는 창**이 생긴다
+        assert!(field_rects_of(&[]).is_empty());
+        assert!(field_rects_of(&[((0, 0), (0, 900), 2.0)]).is_empty());
+        assert!(field_rects_of(&[((0, 0), (1_440, 900), 0.0)]).is_empty());
+        assert_eq!(
+            field_rects_of(&[((0, 0), (0, 0), 1.0), ((100, 0), (200, 200), 1.0)]),
+            vec![(100.0, 0.0, 200.0, 200.0)],
+            "멀쩡한 화면 하나는 남는다"
+        );
+    }
+
+    /// 새 창의 라벨을 capabilities에 안 넣으면 그 창이 부르는 커맨드가
+    /// **런타임에서만 조용히 reject된다** — 아래 커맨드 등록 누락과 같은 부류다.
+    /// 덮개는 Esc로 `pet_set_pinball`을 부르므로 여기 걸리면 나가는 문 하나가 죽는다.
+    #[test]
+    fn 덮개_라벨이_capabilities에_등록되어_있다() {
+        let capabilities = include_str!("../capabilities/default.json");
+        // 화면마다 하나씩이라 글롭으로 등록해야 한다 — 접두어만 적으면
+        // `pinball-field-1`이 안 걸린다
+        assert!(
+            capabilities.contains(&format!("{FIELD_LABEL_PREFIX}*")),
+            "`{FIELD_LABEL_PREFIX}*` 글롭이 capabilities의 windows 목록에 없다"
+        );
+        assert_eq!(field_label(0), "pinball-field-0");
     }
 
     /// 등록을 빠뜨리면 컴파일도 되고 테스트도 통과하는데 런타임에서 모든 IPC가

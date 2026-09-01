@@ -96,9 +96,10 @@ describe("pet.css 커버리지", () => {
     // 모드를 켰는데 커서만 그대로일 뿐이라 눈으로만 잡힌다 (이 파일이 있는 이유)
     expect(petApp).toContain("pg-pinball");
     expect(css).toContain(".pg-pinball");
-    // 집어 드는 동안에는 방망이가 아니라 손이어야 한다 — 클래스가 겹칠 때
-    // 이쪽 특이도가 높아서 제외하지 않으면 방망이가 남는다
-    expect(css).toMatch(/\.pg-pinball:not\(\.pg--dragged\)/);
+    // **누르는 동안에도 방망이가 남아야 한다.** 프론트가 모든 pointerdown에서
+    // `drag_start`를 부르므로, `.pg--dragged`를 제외하면 칠 때마다 손 모양으로
+    // 깜빡인다 — 채를 들고 있다가 칠 때마다 놓는 꼴이다
+    expect(css).not.toMatch(/\.pg-pinball:not\(/);
   });
 
   it("CSS에_없어진_동작의_잔재가_남아있지_않다", () => {

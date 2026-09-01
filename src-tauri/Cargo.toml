@@ -26,6 +26,14 @@ tauri-plugin-store = "2.4.4"
 tauri-plugin-single-instance = "2"
 serde_json = "1.0.151"
 
+# **창 순서를 직접 잡으려고 넣었다.** Tauri의 `set_always_on_top`으로는
+# 같은 레벨 안의 순서를 못 바꾼다 — 이미 참이면 레벨이 안 바뀌고 순서도 그대로다.
+# 핀볼 판이 펭귄 위에 남으면 클릭이 전부 판으로 빨려 들어가 펭귄이 안 날아간다.
+# `orderFrontRegardless`는 앱을 활성화하지 않고 그 창만 맨 앞으로 보낸다
+# (`orderFront:`는 앱이 비활성이면 무시된다 — Accessory 앱이라 그 경우가 기본이다).
+[target."cfg(target_os = \"macos\")".dependencies]
+objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder"] }
+
 # v2.0에서 걷어낸 것 (앱이 서비스 API를 직접 부르지 않는다 — PRINCIPLE 1):
 #   reqwest·keyring·chrono·tokio, dev의 wiremock
 # serde_json은 되돌아왔다 — 설정 저장소(tauri-plugin-store)가 serde_json::Value로

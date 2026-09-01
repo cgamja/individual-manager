@@ -103,6 +103,18 @@ docs/solutions/       재발 방지용 학습 기록 — 셸을 건드리기 전
   정의가 그 이름에 대한 참조 **전부**를 가져간다. 굴러떨어지기 그림이 한 PR 내내 죽어
   있었고 두 러너·타입 검사·리뷰가 전부 통과했다. 이름은 **쓰는 클래스에서** 딴다
   (`pg-thrown-spin`). → `docs/solutions/ui-bugs/duplicate-keyframes-silently-kills-animation.md`
+- **창 순서는 클릭할 때마다 바뀐다 — 순서가 아니라 레벨로 잡는다.** 핀볼 판은 펭귄
+  창보다 아래여야 클릭이 펭귄에게 가는데, 만들 때 한 번 올려 두는 방식
+  (`set_always_on_top` 껐다 켜기, `orderFrontRegardless`)은 **전부 실패했다** —
+  판을 한 번 클릭하면 도로 올라온다. `ns_window()`로 판의 레벨을 펭귄(3)보다
+  낮은 2로 내린다. 증상은 "펭귄이 안 날아간다" 하나뿐이고 테스트·로그가 전부
+  깨끗해서 원인이 안 보인다. →
+  `docs/solutions/ui-bugs/macos-window-order-is-not-stable-level-is.md`
+- **화면을 넘나드는 좌표는 배율부터 의심한다.** 창 하나로 여러 화면을 덮으면 그 창은
+  배율 하나만 쓰므로 배율이 다른 화면에서 어긋난다. 화면마다 창을 따로 만든다.
+- **사용자를 막는 기능에는 나가는 문이 둘 있어야 한다.** 핀볼 판은 화면 전체의 클릭을
+  먹으므로 되돌리는 길이 우리 코드에만 있으면 그 코드가 망가졌을 때 맥을 못 쓴다.
+  트레이가 두 번째 문인 근거는 macOS의 창 레벨(메뉴바 24 > `always_on_top` 3)이다.
 - 전체 목록: `docs/solutions/best-practices/tauri-v2-macos-menubar-app-pitfalls.md`
 
 **Tauri 플러그인을 넣거나 뺄 때는 네 곳을 함께 고친다** — `src-tauri/Cargo.toml`,

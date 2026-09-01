@@ -215,6 +215,14 @@ export function PetApp() {
     })();
   }, []);
 
+  // **창 전체를 방망이로.** `.penguin`에만 걸면 창 여백(펭귄 둘레)에서 커서가
+  // 화살표로 되돌아와, 펭귄에 다가가는 동안 방망이가 한 번 끊긴다.
+  useEffect(() => {
+    const on = snapshot?.pinball ?? false;
+    document.body.classList.toggle("pg-pinball-mode", on);
+    return () => document.body.classList.remove("pg-pinball-mode");
+  }, [snapshot?.pinball]);
+
   const handlePointerLeave = useCallback(() => {
     // 커서가 떠나면 정면으로 돌아온다
     setGaze({ x: 0, y: 0 });

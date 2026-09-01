@@ -1,0 +1,49 @@
+/* 핀볼 판 — 화면 전체를 덮는 투명 창의 스타일.
+ *
+ * 이 창이 하는 일은 **둘뿐이다**: 커서를 방망이로 만드는 것과, 바탕화면으로 가는
+ * 클릭을 먹는 것. 그리는 것은 하나도 없다. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* **배경을 칠하지 않는다.** 조금이라도 칠하면 화면 전체에 막이 씌워진 것처럼
+   * 보인다. 판은 보이지 않아야 하고, 보이는 것은 커서뿐이다. */
+  background: transparent;
+  user-select: none;
+}
+
+/* 창 전체를 채워야 커서가 구석까지 바뀐다 — 높이를 안 주면 내용이 없어서 0이다.
+ *
+ * 방망이는 **`pet.css`와 같은 그림이어야 한다** — 판은 펭귄 창보다 아래에
+ * 깔리므로 커서가 두 창을 오가고, 그림이 갈라지면 펭귄에 올릴 때마다 방망이가
+ * 바뀌어 창 경계가 눈에 보인다. 갈라지는 것은 `field-css.test.ts`가 막는다. */
+#field-root {
+  width: 100%;
+  height: 100%;
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cg%3E%3Cpath d='M5 31 L12 24' stroke='%233a2a1a' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M10 26 C15 21 21 14 26 8 C28.5 5.5 31 8 28.5 10.5 C23 16 16 22 12 26 Z' fill='%23d59a55' stroke='%236b4520' stroke-width='2' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E")
+      28 8,
+    default;
+}
+
+/* **아래에서 위로 휘두른다.** 커서 이미지에는 CSS 애니메이션이 안 걸리므로
+ * 프레임 둘을 상태로 갈아 끼운다 — 누르면 위로 올라간 방망이, 떼면 다시 내려온
+ * 방망이다. 회전 중심은 방망이 **끝**(기준점과 같은 점)이라 손잡이가 아래에서
+ * 위로 훑고 지나간다.
+ *
+ * `:active`가 "누르고 있는 동안"이라 **되돌아오는 것이 저절로 맞는다** — 손을
+ * 떼는 순간이 곧 방망이가 내려오는 순간이다.
+ *
+ * 호를 그리며 도는 진짜 애니메이션은 커서로는 안 된다. 그러려면 판이 클릭을
+ * 전부 받아 방망이를 **그려야** 하는데, 그러면 펭귄 클릭·드래그를 화면 좌표로
+ * 다시 짜야 한다 (플랜 KTD1). */
+#field-root:active {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cg transform='rotate(-42 28 8)'%3E%3Cpath d='M5 31 L12 24' stroke='%233a2a1a' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M10 26 C15 21 21 14 26 8 C28.5 5.5 31 8 28.5 10.5 C23 16 16 22 12 26 Z' fill='%23d59a55' stroke='%236b4520' stroke-width='2' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E")
+      28 8,
+    default;
+}

@@ -160,14 +160,21 @@ const FREAKOUT_ONE_IN: u64 = 30_000;
 const FREAKOUT_MS: (u64, u64) = (2_000, 4_000);
 /// 바닥에서 숨을 고르는 시간. **고정이다** — CSS 길이와 대조한다.
 const FREAKOUT_PANT_MS: u64 = 700;
-/// 튀어 다니는 속도 (논리 px/초). 헤엄보다 확연히 빨라야 광란으로 읽힌다.
-const FREAKOUT_SPEED: f64 = 900.0;
+/// 튀어 다니는 속도 (논리 px/초).
+///
+/// **틱이 그릴 수 있는 속도여야 한다.** 창은 보간 없이 50ms마다 한 번 옮겨지므로
+/// (`pet_bridge`의 `TICK_MS`) 이 값을 20으로 나눈 것이 **한 프레임에 뛰는 거리**다 —
+/// 480이면 24px이고, 지금까지 가장 빠른 슬라이딩(340 → 17px)보다 반 뼘 크다.
+/// 900으로 잡았다가 45px이 되어 펭귄 몸통(140px)의 3분의 1씩 순간이동했다.
+/// 어차피 광란으로 읽히게 하는 건 속도가 아니라 **방향이 바뀌는 빈도**다.
+const FREAKOUT_SPEED: f64 = 480.0;
 /// 다음 목적지까지의 거리 (논리 px).
 ///
-/// **멀리 두지 않는 것이 핵심이다.** 광란으로 읽히게 하는 건 속도가 아니라
-/// 방향이 바뀌는 빈도다 — 이 거리면 0.17~0.4초마다 방향이 바뀌어 한 판에
-/// 예닐곱 번에서 스무 번까지 꺾인다.
-const FREAKOUT_HOP: (f64, f64) = (150.0, 350.0);
+/// **멀리 두지 않는 것이 핵심이다.** 속도와 함께 봐야 하는 값이다 — 이 거리면
+/// 0.2~0.46초마다 방향이 바뀌어 한 판에 네댓 번에서 스무 번까지 꺾인다.
+/// 속도를 낮추면서 같이 줄였다. 안 줄이면 한 번 뛰는 데 0.7초가 걸려
+/// "마구 튄다"가 "천천히 헤맨다"가 된다.
+const FREAKOUT_HOP: (f64, f64) = (100.0, 220.0);
 
 // 광란이 헤엄보다 느리면 광란이 아니다
 const _: () = assert!(FREAKOUT_SPEED > SWIM_SPEED);
@@ -957,33 +964,30 @@ impl Pet {
             }
             Behavior::Freakout { freakout } => match freakout {
                 FreakoutPhase::Dash => {
+                    let (tx, ty) = self.target;
+                    let (dx, dy) = (tx - self.x, ty - self.y);
+                    let dist = (dx * dx + dy * dy).sqrt();
                     if now_ms >= self.behavior_until_ms {
-                        // 안전판 — 목적지에 영영 못 닿아도 발작에 갇히지 않는다
-                        self.enter_freakout_pant(now_ms);
-                    } else {
-                        let (tx, ty) = self.target;
-                        let (dx, dy) = (tx - self.x, ty - self.y);
-                        let dist = (dx * dx + dy * dy).sqrt();
-                        if dist <= ARRIVE_EPSILON {
-                            if now_ms < self.freakout_until_ms {
-                                self.target = self.next_freakout_target(bounds);
-                            } else if self.y >= bounds.floor_y - ARRIVE_EPSILON {
-                                // 예산이 다 됐고 바닥이다 — 숨을 고른다
-                                self.enter_freakout_pant(now_ms);
-                            } else {
-                                // **바닥 복귀를 국면으로 만들지 않는다.** 곧장
-                                // `Pant`로 가면 `enter()`가 지상으로 바꾸고 다음
-                                // clamp가 y를 바닥으로 순간이동시킨다. 목적지만
-                                // 바닥으로 돌리면 같은 돌진으로 내려온다.
-                                self.target = (self.x, bounds.floor_y);
-                            }
+                        // 안전판 — 목적지에 영영 못 닿아도 발작에 갇히지 않는다.
+                        // **여기서 곧장 `Pant`로 가면 안 된다**: 공중이면 지상
+                        // 동작이 되어 같은 step의 clamp가 y를 바닥으로 순간이동
+                        // 시킨다. 상한을 미뤄 다음 틱부터 평소 경로로 내려온다.
+                        // (`dt`는 `MAX_STEP_MS`로 잘리지만 이 비교는 벽시계라,
+                        // 틱 스레드가 밀리면 거의 안 움직인 채 상한을 넘길 수 있다.)
+                        self.behavior_until_ms = now_ms + FREAKOUT_MS.1;
+                        self.freakout_go_home(now_ms, bounds);
+                    } else if dist <= ARRIVE_EPSILON {
+                        if now_ms < self.freakout_until_ms {
+                            self.target = self.next_freakout_target(bounds);
                         } else {
-                            let step = (FREAKOUT_SPEED * dt).min(dist);
-                            self.x += dx / dist * step;
-                            self.y += dy / dist * step;
-                            if dx.abs() > 1.0 {
-                                self.facing = if dx > 0.0 { Facing::Right } else { Facing::Left };
-                            }
+                            self.freakout_go_home(now_ms, bounds);
+                        }
+                    } else {
+                        let step = (FREAKOUT_SPEED * dt).min(dist);
+                        self.x += dx / dist * step;
+                        self.y += dy / dist * step;
+                        if dx.abs() > 1.0 {
+                            self.facing = if dx > 0.0 { Facing::Right } else { Facing::Left };
                         }
                     }
                 }
@@ -1407,6 +1411,22 @@ impl Pet {
         let ty = (self.y + angle.sin() * hop)
             .clamp(bounds.top.min(bounds.floor_y), bounds.floor_y);
         (tx, ty)
+    }
+
+    /// 판을 접는다 — 바닥이면 숨을 고르고, 공중이면 바닥을 목적지로 돌린다.
+    ///
+    /// **바닥 복귀를 국면으로 만들지 않는다.** 공중에서 곧장 `Pant`로 가면
+    /// `enter()`가 지상 동작으로 바꾸고 같은 step의 clamp가 y를 바닥으로
+    /// **순간이동**시킨다. 목적지만 바닥으로 돌리면 같은 돌진으로 내려온다.
+    ///
+    /// 예산 만료와 안전판이 **이 한 곳을 공유한다** — 두 벌이 되면 한쪽만
+    /// 고쳐지고 조용히 갈라진다.
+    fn freakout_go_home(&mut self, now_ms: u64, bounds: Bounds) {
+        if self.y >= bounds.floor_y - ARRIVE_EPSILON {
+            self.enter_freakout_pant(now_ms);
+        } else {
+            self.target = (self.x, bounds.floor_y);
+        }
     }
 
     /// 바닥에서 숨을 고른다. **모든 판이 이 국면으로 끝난다** — 곧장 유휴로 가면
@@ -3704,6 +3724,55 @@ mod tests {
             !matches!(p.behavior(), Behavior::Freakout { .. }),
             "발작에 갇혔다"
         );
+    }
+
+    #[test]
+    fn 상한을_넘겨도_공중에서_바닥으로_순간이동하지_않는다() {
+        // `dt`는 `MAX_STEP_MS`로 잘리지만 상한 비교는 **벽시계**다 — 틱 스레드가
+        // 밀리면(절전 복귀 등) 거의 안 움직인 채 상한을 넘긴다. 그때 곧장 숨
+        // 고르기로 가면 지상 동작이 되어 clamp가 y를 바닥으로 순간이동시킨다.
+        let (mut p, t) = 발작하는_펭귄();
+        // 공중에 있는 상태를 **직접 만든다** — 시드가 위로 뛰어 주기를 기다리면
+        // 검사 대상(안전판)이 아니라 난수에 딸린 테스트가 된다
+        p.y = BOUNDS.floor_y - 300.0;
+        p.target = (p.x, BOUNDS.floor_y - 300.0);
+
+        // 벽시계를 상한 한참 뒤로 건너뛴다
+        let s = p.step(t + FREAKOUT_MS.1 * 5, &world());
+        assert!(
+            matches!(
+                s.behavior,
+                Behavior::Freakout { freakout: FreakoutPhase::Dash }
+            ),
+            "아직 내려오는 중이어야 한다 (실제: {:?})",
+            s.behavior
+        );
+        assert!(
+            s.y < BOUNDS.floor_y,
+            "바닥으로 순간이동하면 안 된다 (실제: {})",
+            s.y
+        );
+
+        // 그다음 틱들에서 평소 경로로 내려와 숨을 고른다
+        let mut now = t + FREAKOUT_MS.1 * 5;
+        while now < t + FREAKOUT_MS.1 * 10
+            && matches!(
+                p.behavior(),
+                Behavior::Freakout { freakout: FreakoutPhase::Dash }
+            )
+        {
+            now += 50;
+            p.step(now, &world());
+        }
+        assert!(
+            matches!(
+                p.behavior(),
+                Behavior::Freakout { freakout: FreakoutPhase::Pant }
+            ),
+            "내려와서 숨을 골라야 한다 (실제: {:?})",
+            p.behavior()
+        );
+        assert_eq!(p.snapshot().y, BOUNDS.floor_y, "바닥까지 내려왔어야 한다");
     }
 
     #[test]

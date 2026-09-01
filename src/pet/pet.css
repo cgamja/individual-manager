@@ -1588,14 +1588,6 @@ body,
   }
 }
 
-/* 눈을 크게 뜬 채 유지한다 — 깜빡임을 덮어써야 놀란 표정이 남는다 */
-@keyframes pg-freakout-eye {
-  0%,
-  100% {
-    transform: scale(1.45);
-  }
-}
-
 /* 숨 고르기 — 어깨로 크게 두 번 들썩이고 가라앉는다.
  * 길이는 코어의 FREAKOUT_PANT_MS와 같아야 한다 (`pet-css.test.ts`가 대조한다) */
 @keyframes pg-freakout-pant {
@@ -1628,8 +1620,13 @@ body,
 .pg--freakout-dash .pg-head {
   animation: pg-freakout-head 0.12s linear infinite;
 }
+/* 눈동자를 키워 놀란 얼굴을 만든다. **값이 변하지 않는 애니메이션을 두지
+ * 않는다** — 깜빡임(`pg-blink`)을 덮어쓰는 게 목적이므로 `animation: none`이
+ * 의도를 그대로 말하고 컴포지터에 헛일도 안 남긴다 (`.pg--sleep .pg-eye`와 같다).
+ * `.pg-eye`는 흰 눈테 안의 **눈동자**라, 커지는 것은 동공이다. */
 .pg--freakout-dash .pg-eye {
-  animation: pg-freakout-eye 0.14s linear infinite;
+  animation: none;
+  transform: scale(1.45);
 }
 
 .pg--freakout-pant .pg-all {

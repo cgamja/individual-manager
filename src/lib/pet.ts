@@ -61,6 +61,8 @@ export interface PetSnapshot {
   speech: Speech | null;
   /** 빠따를 맞은 누적 횟수. 늘어날 때마다 방망이를 한 번 휘두른다. */
   whack_seq: number;
+  /** 핀볼 모드인가. 커서를 채로 바꾸는 데 쓴다. */
+  pinball: boolean;
   behavior: Behavior;
 }
 
@@ -281,6 +283,13 @@ export const throwVelocity = (
 /** 펭귄을 켜고 끈다 (R8). 끄면 창이 닫힌다. */
 export const setPetEnabled = (enabled: boolean): Promise<void> =>
   invoke("pet_set_enabled", { enabled });
+
+/**
+ * 핀볼 모드를 켜고 끈다. **살아 있는 전 마리에 즉시 걸린다** — 앱 전역
+ * 설정이라 마리마다 다를 이유가 없다. 저장은 `savePetSettings`가 따로 한다.
+ */
+export const setPetPinball = (on: boolean): Promise<void> =>
+  invoke("pet_set_pinball", { on });
 
 /**
  * 자기 창의 펭귄 상태만 구독한다.

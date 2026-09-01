@@ -15,11 +15,22 @@ export interface PetSettings {
    * 선택이어야 한다.
    */
   sound: boolean;
+  /**
+   * 핀볼 모드. **기본은 꺼짐이다.**
+   *
+   * 켜면 철푸덕·널브러짐이 가려지고 계속 튕기며, 클릭이 빠따 대신 채가 된다.
+   * 착지 4단계를 **지우는 게 아니라 가려두는** 모드라 끄면 그대로 돌아온다.
+   */
+  pinball: boolean;
 }
 
 /** 펭귄은 기본 켜짐(사용자가 직접 요청한 기능이라 opt-in으로 숨기지 않는다),
  * 소리는 기본 꺼짐(예고 없이 소리를 내면 사고가 난다). */
-export const DEFAULT_PET_SETTINGS: PetSettings = { enabled: true, sound: false };
+export const DEFAULT_PET_SETTINGS: PetSettings = {
+  enabled: true,
+  sound: false,
+  pinball: false,
+};
 
 /** 저장된 펭귄 설정을 로드한다. 깨진 값은 항목별로 기본값에 수렴시킨다 —
  * 한 항목이 깨졌다고 나머지까지 되돌리면 펭귄이 조용히 사라진다. */
@@ -29,6 +40,8 @@ export async function loadPetSettings(): Promise<PetSettings> {
   return {
     enabled: typeof value?.enabled === "boolean" ? value.enabled : DEFAULT_PET_SETTINGS.enabled,
     sound: typeof value?.sound === "boolean" ? value.sound : DEFAULT_PET_SETTINGS.sound,
+    pinball:
+      typeof value?.pinball === "boolean" ? value.pinball : DEFAULT_PET_SETTINGS.pinball,
   };
 }
 

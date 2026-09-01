@@ -37,18 +37,46 @@ function mockStore(initial: Record<string, unknown> = {}) {
 describe("펭귄 설정", () => {
   it("저장된_값이_없으면_켜짐이_기본이다", async () => {
     mockStore();
-    await expect(loadPetSettings()).resolves.toEqual({ enabled: true, sound: false });
+    await expect(loadPetSettings()).resolves.toEqual({
+      enabled: true,
+      sound: false,
+      pinball: false,
+    });
   });
 
   it("저장된_값을_그대로_읽는다", async () => {
     mockStore({ pet: { enabled: false } });
-    await expect(loadPetSettings()).resolves.toEqual({ enabled: false, sound: false });
+    await expect(loadPetSettings()).resolves.toEqual({
+      enabled: false,
+      sound: false,
+      pinball: false,
+    });
   });
 
   it("깨진_값은_켜짐으로_수렴한다", async () => {
     // 펭귄이 원인 모르게 사라지는 것보다 켜져 있는 편이 낫다
     mockStore({ pet: { enabled: "yes" } });
-    await expect(loadPetSettings()).resolves.toEqual({ enabled: true, sound: false });
+    await expect(loadPetSettings()).resolves.toEqual({
+      enabled: true,
+      sound: false,
+      pinball: false,
+    });
+  });
+
+  it("핀볼은_저장된_적이_없으면_꺼짐이다", async () => {
+    // **`enabled`와 반대 방향의 기본값이다.** 뒤집히면 착지 4단계가 통째로
+    // 가려진 채로 처음 실행된다. Rust의 `핀볼_설정이_없으면_꺼짐이다`와 짝이다
+    mockStore({ pet: { enabled: true } });
+    await expect(loadPetSettings()).resolves.toMatchObject({ pinball: false });
+  });
+
+  it("핀볼만_저장해도_마릿수가_남는다", async () => {
+    // 같은 `pet` 키 아래에 Rust가 쓰는 마릿수가 함께 산다 — 통째로 덮어쓰면
+    // 모드를 켜는 것만으로 펭귄이 한 마리로 줄어든다 (이미 한 번 겪은 버그다)
+    const data = mockStore();
+    data.set("pet", { enabled: true, count: 4 });
+    await savePetSettings({ pinball: true });
+    expect(data.get("pet")).toMatchObject({ enabled: true, count: 4, pinball: true });
   });
 
   it("Rust가_읽는_키에_저장한다", async () => {
@@ -77,7 +105,7 @@ describe("펭귄 설정", () => {
     const data = mockStore();
     data.set("pet", { enabled: false, sound: "네" });
     const loaded = await loadPetSettings();
-    expect(loaded).toEqual({ enabled: false, sound: false });
+    expect(loaded).toEqual({ enabled: false, sound: false, pinball: false });
   });
 });
 

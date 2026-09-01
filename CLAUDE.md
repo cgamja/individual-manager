@@ -103,6 +103,13 @@ docs/solutions/       재발 방지용 학습 기록 — 셸을 건드리기 전
   정의가 그 이름에 대한 참조 **전부**를 가져간다. 굴러떨어지기 그림이 한 PR 내내 죽어
   있었고 두 러너·타입 검사·리뷰가 전부 통과했다. 이름은 **쓰는 클래스에서** 딴다
   (`pg-thrown-spin`). → `docs/solutions/ui-bugs/duplicate-keyframes-silently-kills-animation.md`
+- **같은 `always_on_top` 레벨의 창끼리는 나중에 앞으로 보내진 쪽이 위다.** 핀볼 판은
+  펭귄 창보다 **아래**여야 클릭·드래그가 펭귄에게 간다 — 판을 만든 뒤 펭귄 창마다
+  `set_always_on_top(true)`를 다시 걸어 순서를 잡는다. 순서가 뒤집히면 아무것도
+  실패하지 않고 **펭귄만 안 만져진다.**
+- **사용자를 막는 기능에는 나가는 문이 둘 있어야 한다.** 핀볼 판은 화면 전체의 클릭을
+  먹으므로 되돌리는 길이 우리 코드에만 있으면 그 코드가 망가졌을 때 맥을 못 쓴다.
+  트레이가 두 번째 문인 근거는 macOS의 창 레벨(메뉴바 24 > `always_on_top` 3)이다.
 - 전체 목록: `docs/solutions/best-practices/tauri-v2-macos-menubar-app-pitfalls.md`
 
 **Tauri 플러그인을 넣거나 뺄 때는 네 곳을 함께 고친다** — `src-tauri/Cargo.toml`,

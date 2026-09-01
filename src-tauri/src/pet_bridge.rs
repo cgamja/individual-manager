@@ -456,10 +456,16 @@ fn sink_field_below_pets(app: &AppHandle) {
         let Some(window) = app.get_webview_window(&label) else {
             continue;
         };
-        let Ok(ptr) = window.ns_window() else { continue };
-        if ptr.is_null() {
-            continue;
-        }
+        let ptr = match window.ns_window() {
+            Ok(ptr) if !ptr.is_null() => ptr,
+            _ => {
+                // **조용히 넘기면 안 된다.** 레벨을 못 내리면 판이 펭귄 위에
+                // 남아 클릭을 전부 먹는데, 증상은 "펭귄이 안 날아간다" 하나뿐이라
+                // 사용자가 원인을 찾을 방법이 없다 (그 버그를 실제로 겪었다).
+                eprintln!("[penguin] 판({label})의 창 레벨을 못 내렸다 — 펭귄이 안 만져질 수 있다");
+                continue;
+            }
+        };
         // SAFETY: `ns_window()`가 준 포인터는 살아 있는 NSWindow다. 방금
         // 찾은 창이라 이 스코프 동안 닫히지 않는다.
         unsafe {

@@ -85,6 +85,8 @@ export function PetApp() {
    * `lastClassRef`가 되감기 판정을 같은 방식으로 하고 있다.
    */
   const prevSnapRef = useRef<PetSnapshot | null>(null);
+  /** 핀볼 여부 — 클릭 정산은 `useCallback([])`이라 스냅샷 상태를 못 본다. */
+  const pinballRef = useRef(false);
 
   useEffect(() => {
     // 컨텍스트는 미리 만든다 — suspended여도 괜찮고, 제스처마다 깨운다 (KTD4).
@@ -250,6 +252,11 @@ export function PetApp() {
       }
       // 거의 안 움직였으면 옮길 의도가 아니라 클릭이다 (R5)
       if (track.moved < DRAG_THRESHOLD_PX) {
+        // 핀볼의 공중 재타격은 Thrown→Thrown이라 전이 검출(soundsFor)이 못
+        // 본다 — 랠리가 첫 타 이후 전부 무음이 된다 (리뷰 #1). 핀볼에서
+        // 펭귄 창 클릭은 곧 채 타격이므로 스냅샷을 기다리지 않고 재생한다.
+        // 지상 첫 타는 전이 검출과 겹치는데, 쿨다운(150ms)이 둘째를 거른다
+        if (pinballRef.current) playerRef.current?.play("whoosh", performance.now());
         // 거의 안 움직였으면 옮길 의도가 아니라 빠따다
         await whackPet(track.hitX, track.hitY).catch(() => {});
       } else {
@@ -264,6 +271,7 @@ export function PetApp() {
   // 화살표로 되돌아와, 펭귄에 다가가는 동안 방망이가 한 번 끊긴다.
   useEffect(() => {
     const on = snapshot?.pinball ?? false;
+    pinballRef.current = on;
     document.body.classList.toggle("pg-pinball-mode", on);
     return () => document.body.classList.remove("pg-pinball-mode");
   }, [snapshot?.pinball]);

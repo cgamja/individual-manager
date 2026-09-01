@@ -97,6 +97,13 @@ describe("soundsFor — 전이 검출", () => {
       { kind: "tumble" },
       { kind: "slide" },
       { kind: "freakout", freakout: "pant" },
+      // 반응(sassy)은 착지·굴러떨어지기 뒤 70%로 **저절로** 나온다(get_up) —
+      // 맞은 반응처럼 보여도 whack_seq가 안 늘었으면 소리가 없어야 한다
+      { kind: "sassy", sassy: "turn_away" },
+      { kind: "sassy", sassy: "head_flick" },
+      { kind: "sassy", sassy: "wing_flick" },
+      { kind: "sassy", sassy: "eye_roll" },
+      { kind: "sassy", sassy: "butt_wiggle" },
       { kind: "ice_fishing", fishing: "dig" },
       { kind: "ice_fishing", fishing: "wait" },
       { kind: "ice_fishing", fishing: "bite" },

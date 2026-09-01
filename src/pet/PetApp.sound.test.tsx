@@ -182,4 +182,49 @@ describe("PetApp 소리 배선", () => {
     await flush();
     expect(h.players[0].label).toBe("pet-1");
   });
+
+  it("언마운트하면_컨텍스트를_닫는다", async () => {
+    const { unmount } = render(<PetApp />);
+    await flush();
+    unmount();
+    expect(h.players[0].closed).toBe(1);
+  });
+
+  it("핀볼_클릭은_낙관적으로_휙을_재생한다", async () => {
+    // 핀볼에서 공중 재타격은 Thrown→Thrown이라 전이 검출이 못 본다 (리뷰 #1).
+    // 클릭이 곧 타격이므로 스냅샷을 기다리지 않고 재생한다
+    render(<PetApp />);
+    await flush();
+    h.stateCb?.(snap({ pinball: true }));
+    // 스냅샷이 effect(pinballRef 갱신)까지 반영된 뒤에 클릭해야 한다 —
+    // 실제 앱에서도 클릭은 언제나 스냅샷 뒤에 온다
+    await flush();
+    const el = screen.getByRole("img", { name: "펭귄" });
+    Object.assign(el, { setPointerCapture: () => {}, releasePointerCapture: () => {} });
+    const down = new Event("pointerdown", { bubbles: true });
+    Object.assign(down, { pointerId: 1, button: 0, screenX: 0, screenY: 0 });
+    el.dispatchEvent(down);
+    const up = new Event("pointerup", { bubbles: true });
+    Object.assign(up, { pointerId: 1, button: 0, screenX: 0, screenY: 0 });
+    el.dispatchEvent(up);
+    await flush();
+    expect(h.players[0].played).toContain("whoosh");
+  });
+
+  it("핀볼이_아니면_클릭으로_휙이_안_난다", async () => {
+    // 평소의 빠따 소리는 whack_seq 스냅샷이 낸다 — 클릭 자체는 조용하다
+    render(<PetApp />);
+    await flush();
+    h.stateCb?.(snap({ pinball: false }));
+    const el = screen.getByRole("img", { name: "펭귄" });
+    Object.assign(el, { setPointerCapture: () => {}, releasePointerCapture: () => {} });
+    const down = new Event("pointerdown", { bubbles: true });
+    Object.assign(down, { pointerId: 1, button: 0, screenX: 0, screenY: 0 });
+    el.dispatchEvent(down);
+    const up = new Event("pointerup", { bubbles: true });
+    Object.assign(up, { pointerId: 1, button: 0, screenX: 0, screenY: 0 });
+    el.dispatchEvent(up);
+    await flush();
+    expect(h.players[0].played).not.toContain("whoosh");
+  });
 });

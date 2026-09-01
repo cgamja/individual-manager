@@ -55,6 +55,8 @@ describe("behaviorClass", () => {
       { kind: "ice_fishing", fishing: "pack" },
       { kind: "slide" },
       { kind: "squawk" },
+      { kind: "freakout", freakout: "dash" },
+      { kind: "freakout", freakout: "pant" },
     ];
     const classes = all.map(behaviorClass);
     expect(new Set(classes).size).toBe(all.length);
@@ -111,6 +113,13 @@ describe("shouldRestart", () => {
     // 코어가 연타 중의 클릭을 흡수하므로 연달아 오지는 않지만, 한 판이
     // 재생되고 끝나는 동작이라 되감기 대상이다
     expect(isOneShot("pg--squawk")).toBe(true);
+  });
+
+  it("숨_고르기는_한_번짜리고_광란은_아니다", () => {
+    // 돌진은 판 길이가 난수라 무한 반복이다 — 되감으면 매 스냅샷마다 끊긴다.
+    // 드리우기(pg--fishing-wait)를 뺀 것과 같은 이유다
+    expect(isOneShot("pg--freakout-pant")).toBe(true);
+    expect(isOneShot("pg--freakout-dash")).toBe(false);
   });
 
   it("반복_애니메이션은_되감지_않는다", () => {

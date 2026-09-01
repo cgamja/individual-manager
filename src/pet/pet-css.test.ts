@@ -50,6 +50,8 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "tumble" },
   { kind: "slide" },
   { kind: "squawk" },
+  { kind: "freakout", freakout: "dash" },
+  { kind: "freakout", freakout: "pant" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },
   { kind: "ice_fishing", fishing: "bite" },
@@ -158,8 +160,8 @@ describe("동작 길이 동기화", () => {
     expect(a).toBe(b);
   });
 
-  // 드리우기(wait)는 입질을 기다리는 무한 반복이라 대조 대상이 아니다 —
-  // 길이가 코어의 4~9초 추첨값이지 고정 상수가 아니다.
+  // 드리우기(wait)와 발작의 돌진(dash)은 무한 반복이라 대조 대상이 아니다 —
+  // 길이가 코어의 추첨값이지 고정 상수가 아니다.
   it.each([
     ["pg--fishing-dig", "FISHING_DIG_MS"],
     ["pg--fishing-bite", "FISHING_BITE_MS"],
@@ -168,6 +170,7 @@ describe("동작 길이 동기화", () => {
     ["pg--fishing-pack", "FISHING_PACK_MS"],
     ["pg--slide", "SLIDE_MS"],
     ["pg--squawk", "SQUAWK_MS"],
+    ["pg--freakout-pant", "FREAKOUT_PANT_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
     const b = rustMs(konst);

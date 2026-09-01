@@ -78,9 +78,11 @@ body,
  * 기준점(hotspot)은 방망이 **끝**이다. 코어가 맞은 지점으로 방향을 정하므로
  * 손잡이에 두면 실제로 미는 지점과 그림이 어긋난다.
  *
- * `:not(.pg--dragged)`가 필요하다 — 클래스 둘이 겹치면 이쪽 특이도가 높아서,
- * 없으면 핀볼일 때 집어 드는 동안에도 방망이가 남는다. */
-.penguin.pg-pinball:not(.pg--dragged) {
+ * **`.pg--dragged`를 제외하지 않는다.** 프론트는 **모든 pointerdown에서**
+ * `drag_start`를 부르므로, 제외하면 그냥 한 번 치는 동안에도 방망이가 손
+ * 모양으로 깜빡인다 — 채를 들고 있다가 칠 때마다 놓는 꼴이다. 핀볼에서는
+ * 집는 게 아니라 치는 것이므로 누르고 있는 동안에도 방망이가 남아야 한다. */
+.penguin.pg-pinball {
   cursor:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M3 25 L10 18' stroke='%233a2a1a' stroke-width='3.5' stroke-linecap='round'/%3E%3Cpath d='M8 20 C12 16 17 10 21 5 C23 3 25 5 23 8 C19 13 13 18 9 21 Z' fill='%23d59a55' stroke='%236b4520' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E")
       22 6,

@@ -186,6 +186,7 @@ pub fn run() {
             pet_bridge::pet_fish,
             pet_bridge::pet_slide,
             pet_bridge::pet_squawk,
+            pet_bridge::pet_freakout,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

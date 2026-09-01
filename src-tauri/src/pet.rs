@@ -149,6 +149,37 @@ const SLIDE_AFTER_WALK_PERCENT: u64 = 20;
 // 회전이 다 돌기도 전에 미끄러짐이 끝나면 자세가 튄다
 const _: () = assert!(SLIDE_MS > TURN_MS);
 
+/// **N번에 한 번** 발작한다. `range((0, N-1)) == 0`이 문자 그대로 그 뜻이다.
+///
+/// 천분율(얼음낚시)로는 이 등급을 표현할 수 없고, 백만분율은 값을 읽어도 빈도를
+/// 가늠할 수 없다. 걷기·유휴 한 사이클이 평균 4초쯤이므로 30,000 사이클 = **깨어
+/// 있는 33시간**이고, 하루 열 시간쯤 켜 둔다면 **사흘에 한 번꼴**이다
+/// (`MOTIONS.md` 빈도 표의 "며칠에 한 번. 봤으면 운이 좋은 것").
+const FREAKOUT_ONE_IN: u64 = 30_000;
+/// 한 판의 예산. 이 시간이 지나면 바닥으로 돌아가 숨을 고른다.
+const FREAKOUT_MS: (u64, u64) = (2_000, 4_000);
+/// 바닥에서 숨을 고르는 시간. **고정이다** — CSS 길이와 대조한다.
+const FREAKOUT_PANT_MS: u64 = 700;
+/// 튀어 다니는 속도 (논리 px/초).
+///
+/// **틱이 그릴 수 있는 속도여야 한다.** 창은 보간 없이 50ms마다 한 번 옮겨지므로
+/// (`pet_bridge`의 `TICK_MS`) 이 값을 20으로 나눈 것이 **한 프레임에 뛰는 거리**다 —
+/// 480이면 24px이고, 지금까지 가장 빠른 슬라이딩(340 → 17px)보다 반 뼘 크다.
+/// 900으로 잡았다가 45px이 되어 펭귄 몸통(140px)의 3분의 1씩 순간이동했다.
+/// 어차피 광란으로 읽히게 하는 건 속도가 아니라 **방향이 바뀌는 빈도**다.
+const FREAKOUT_SPEED: f64 = 480.0;
+/// 다음 목적지까지의 거리 (논리 px).
+///
+/// **멀리 두지 않는 것이 핵심이다.** 속도와 함께 봐야 하는 값이다 — 이 거리면
+/// 0.2~0.46초마다 방향이 바뀌어 한 판에 네댓 번에서 스무 번까지 꺾인다.
+/// 속도를 낮추면서 같이 줄였다. 안 줄이면 한 번 뛰는 데 0.7초가 걸려
+/// "마구 튄다"가 "천천히 헤맨다"가 된다.
+const FREAKOUT_HOP: (f64, f64) = (100.0, 220.0);
+
+// 광란이 헤엄보다 느리면 광란이 아니다
+const _: () = assert!(FREAKOUT_SPEED > SWIM_SPEED);
+const _: () = assert!(FREAKOUT_MS.1 >= FREAKOUT_MS.0);
+
 /// 걷기·유휴가 끝났을 때 얼음낚시를 시작할 확률 (천분율).
 ///
 /// **백분율이 아니라 천분율인 이유**: 걷기·유휴 **한 사이클**이 평균 4초쯤이라
@@ -277,6 +308,21 @@ pub enum FishingPhase {
     Pack,
 }
 
+/// 발작 한 판이 거쳐 가는 국면.
+///
+/// **얼음낚시와 같은 구조다.** 국면을 둘로 나누면 두 문제가 한 번에 풀린다 —
+/// 판 길이가 2~4초 난수라 CSS 길이 대조를 쓸 수 없는데 `Dash`는 무한 반복이라
+/// 대조 대상이 아니고, 떨던 자세에서 곧장 유휴로 가면 `.pg-all`에 걸린 변형이
+/// 한 프레임에 사라져 펭귄이 튀는 것을 `Pant`가 막는다.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FreakoutPhase {
+    /// 사방으로 마구 튄다
+    Dash,
+    /// 바닥에서 숨을 고른다 — 모든 판이 이 국면으로 끝난다
+    Pant,
+}
+
 const SASSY_KINDS: [SassyKind; 5] = [
     SassyKind::TurnAway,
     SassyKind::HeadFlick,
@@ -328,6 +374,10 @@ pub enum Behavior {
     /// 슬라이딩 — 배를 깔고 미끄러진다. 걷기보다 빠르고 멀리 가며,
     /// 멈출 때 바로 서지 않고 주르륵 밀린다. 지상 이동에 완급을 준다.
     Slide,
+    /// 발작 — 며칠에 한 번 이유 없이 터지는 광란. 사방으로 마구 튀다가 바닥으로
+    /// 돌아와 숨을 고르고 **아무 일 없었다는 듯** 평소로 돌아간다.
+    /// 원인이 없는 것이 이 동작의 정의다 — 원인이 있으면 화(`Squawk`)다.
+    Freakout { freakout: FreakoutPhase },
     /// 얼음낚시 — 바닥에 앉아 구멍을 뚫고 드리운다. 30~60초로 이 앱에서
     /// 가장 긴 동작이고, **안에서 갈래가 갈리는 첫 동작**이다 (잡음/꽝).
     IceFishing { fishing: FishingPhase },
@@ -347,7 +397,15 @@ impl Behavior {
 
     /// 스스로 고도를 만드는 동작인가 (진입하면 공중 상태가 된다).
     pub fn is_airborne(self) -> bool {
-        matches!(self, Behavior::Swim | Behavior::Falling | Behavior::Thrown)
+        matches!(
+            self,
+            Behavior::Swim
+                | Behavior::Falling
+                | Behavior::Thrown
+                // 사방으로 튀려면 떠 있어야 한다. 숨 고르기는 바닥이므로 빠진다 —
+                // 그러면 `enter()`의 기본 갈래가 국면마다 옳게 동작한다.
+                | Behavior::Freakout { freakout: FreakoutPhase::Dash }
+        )
     }
 }
 
@@ -569,6 +627,12 @@ pub struct Pet {
     /// 이번 슬라이딩의 출발 속도 (논리 px/초). 진입할 때 한 번 뽑는다 —
     /// 길이는 고정이고 이 값이 거리를 정한다.
     slide_speed: f64,
+    /// 지금 하는 발작 한 판이 끝나는 시각.
+    ///
+    /// **빽빽거리기의 `squawk_until_ms`와 달리 무효화가 필요 없다.** 그쪽은
+    /// `whack()`이 동작 밖에서 읽기 때문에 다른 동작으로 나갈 때 지워야 했지만,
+    /// 이 값은 `Freakout` 팔 안에서만 읽으므로 새지 않는다.
+    freakout_until_ms: u64,
     /// 지금 하는 얼음낚시 한 판이 끝나는 시각. **절대 시각 하나로 갖는다** —
     /// 국면마다 남은 시간을 빼 나가면 국면이 늘 때마다 계산이 갈라진다.
     fishing_until_ms: u64,
@@ -747,6 +811,7 @@ impl Pet {
             target: (x, bounds.floor_y),
             last_y: bounds.floor_y,
             slide_speed: 0.0,
+            freakout_until_ms: 0,
             fishing_until_ms: 0,
             rng: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
         };
@@ -897,6 +962,43 @@ impl Pet {
                     }
                 }
             }
+            Behavior::Freakout { freakout } => match freakout {
+                FreakoutPhase::Dash => {
+                    let (tx, ty) = self.target;
+                    let (dx, dy) = (tx - self.x, ty - self.y);
+                    let dist = (dx * dx + dy * dy).sqrt();
+                    if now_ms >= self.behavior_until_ms {
+                        // 안전판 — 목적지에 영영 못 닿아도 발작에 갇히지 않는다.
+                        // **여기서 곧장 `Pant`로 가면 안 된다**: 공중이면 지상
+                        // 동작이 되어 같은 step의 clamp가 y를 바닥으로 순간이동
+                        // 시킨다. 상한을 미뤄 다음 틱부터 평소 경로로 내려온다.
+                        // (`dt`는 `MAX_STEP_MS`로 잘리지만 이 비교는 벽시계라,
+                        // 틱 스레드가 밀리면 거의 안 움직인 채 상한을 넘길 수 있다.)
+                        self.behavior_until_ms = now_ms + FREAKOUT_MS.1;
+                        self.freakout_go_home(now_ms, bounds);
+                    } else if dist <= ARRIVE_EPSILON {
+                        if now_ms < self.freakout_until_ms {
+                            self.target = self.next_freakout_target(bounds);
+                        } else {
+                            self.freakout_go_home(now_ms, bounds);
+                        }
+                    } else {
+                        let step = (FREAKOUT_SPEED * dt).min(dist);
+                        self.x += dx / dist * step;
+                        self.y += dy / dist * step;
+                        if dx.abs() > 1.0 {
+                            self.facing = if dx > 0.0 { Facing::Right } else { Facing::Left };
+                        }
+                    }
+                }
+                FreakoutPhase::Pant => {
+                    if now_ms >= self.behavior_until_ms {
+                        // **`get_up`을 쓰지 않는다** — 70% 약올리기는 "아무 일
+                        // 없었다는 듯"과 정반대다 (얼음낚시와 같은 판단이다).
+                        self.enter_idle(now_ms);
+                    }
+                }
+            },
             Behavior::Land | Behavior::Splat | Behavior::Sprawl => {
                 if now_ms >= self.behavior_until_ms {
                     self.get_up(now_ms);
@@ -1284,6 +1386,73 @@ impl Pet {
         self.enter(Behavior::Slide, now_ms + SLIDE_MS);
     }
 
+    /// 발작 한 판을 시작한다.
+    ///
+    /// **첫 목적지를 여기서 뽑지 않는다.** 제자리를 목적지로 두면 첫 틱이 곧바로
+    /// "도착"으로 판정해 목적지를 뽑는데, 그러면 이 함수가 `bounds`를 받을 필요가
+    /// 없어져 `start_fishing`·`start_slide`와 시그니처가 같아진다.
+    fn enter_freakout(&mut self, now_ms: u64) {
+        self.freakout_until_ms = now_ms + self.range(FREAKOUT_MS);
+        self.target = (self.x, self.y);
+        // 이 시각은 **안전판이다.** 정상 경로는 `freakout_until_ms`로 끝나고,
+        // 이 값은 어떤 이유로든 목적지에 영영 못 닿았을 때만 쓰인다
+        // (헤엄이 상한을 두는 것과 같은 이유).
+        let until = self.freakout_until_ms + FREAKOUT_MS.1;
+        self.enter(Behavior::Freakout { freakout: FreakoutPhase::Dash }, until);
+    }
+
+    /// 다음으로 튈 곳. 방향은 균등, 거리는 [`FREAKOUT_HOP`]에서 뽑고 **경계 안으로
+    /// 자른다** — 세계는 화면 하나이고 경계는 벽이다 (PRINCIPLE 2).
+    fn next_freakout_target(&mut self, bounds: Bounds) -> (f64, f64) {
+        let angle = self.fraction() * std::f64::consts::TAU;
+        let (lo, hi) = FREAKOUT_HOP;
+        let hop = lo + self.fraction() * (hi - lo);
+        let tx = (self.x + angle.cos() * hop).clamp(bounds.left, bounds.right.max(bounds.left));
+        let ty = (self.y + angle.sin() * hop)
+            .clamp(bounds.top.min(bounds.floor_y), bounds.floor_y);
+        (tx, ty)
+    }
+
+    /// 판을 접는다 — 바닥이면 숨을 고르고, 공중이면 바닥을 목적지로 돌린다.
+    ///
+    /// **바닥 복귀를 국면으로 만들지 않는다.** 공중에서 곧장 `Pant`로 가면
+    /// `enter()`가 지상 동작으로 바꾸고 같은 step의 clamp가 y를 바닥으로
+    /// **순간이동**시킨다. 목적지만 바닥으로 돌리면 같은 돌진으로 내려온다.
+    ///
+    /// 예산 만료와 안전판이 **이 한 곳을 공유한다** — 두 벌이 되면 한쪽만
+    /// 고쳐지고 조용히 갈라진다.
+    fn freakout_go_home(&mut self, now_ms: u64, bounds: Bounds) {
+        if self.y >= bounds.floor_y - ARRIVE_EPSILON {
+            self.enter_freakout_pant(now_ms);
+        } else {
+            self.target = (self.x, bounds.floor_y);
+        }
+    }
+
+    /// 바닥에서 숨을 고른다. **모든 판이 이 국면으로 끝난다** — 곧장 유휴로 가면
+    /// `.pg-all`에 걸린 변형이 한 프레임에 사라져 펭귄이 튄다 (얼음낚시의 `Pack`).
+    fn enter_freakout_pant(&mut self, now_ms: u64) {
+        self.enter(
+            Behavior::Freakout { freakout: FreakoutPhase::Pant },
+            now_ms + FREAKOUT_PANT_MS,
+        );
+    }
+
+    /// 사용자가 시켜서 발작한다 (설정 창의 "발작").
+    ///
+    /// 저절로 나오는 발작은 바닥 전용이지만(`pick_next`가 지상에서만 부른다)
+    /// 시켜서 하는 것은 공중도 허용한다 — 돌진이 어차피 공중 동작이다.
+    /// 거절은 들려 있을 때와 **이미 발작 중일 때**뿐이다 (`start_squawk`와 같은
+    /// 이유 — 재진입하면 웹뷰가 애니메이션을 되감지 못한다).
+    pub fn start_freakout(&mut self, now_ms: u64) -> bool {
+        if matches!(self.behavior, Behavior::Dragged | Behavior::Freakout { .. }) {
+            return false;
+        }
+        self.last_stimulus_ms = now_ms;
+        self.enter_freakout(now_ms);
+        true
+    }
+
     /// 얼음낚시 한 판을 시작한다. 구멍 뚫기부터다.
     ///
     /// 예산을 **여기서 한 번만** 뽑아 절대 시각으로 들고 있는다 — 국면이
@@ -1370,6 +1539,16 @@ impl Pet {
             self.last_idle = Some(IdleKind::Stretch);
             let until = now_ms + self.range(IDLE_MS);
             self.enter(Behavior::Idle { idle: IdleKind::Stretch }, until);
+            return;
+        }
+        // **이유 없이 터진다.** 다른 모든 동작은 원인이 설명되는데, 설명이 안 되는
+        // 것이 하나도 없으면 결국 예측 가능해진다 (PRINCIPLE 1).
+        //
+        // **얼음낚시보다 앞이다.** 뒤에 두면 앞 갈래 확률에 한 번 더 깎여 체감이
+        // 계산과 어긋나고, 둘 다 뽑혔을 때는 더 드문 쪽이 이겨야 본 보람이 있다.
+        // 졸기보다는 뒤다 — 5분 무자극이라는 훨씬 강한 조건이다.
+        if !self.air && self.range((0, FREAKOUT_ONE_IN - 1)) == 0 {
+            self.enter_freakout(now_ms);
             return;
         }
         // 아주 드물게 낚시를 한다 — 십 분에 한 번쯤 (MOTIONS "빈도 설계").
@@ -3339,6 +3518,303 @@ mod tests {
         );
     }
 
+    // ── 발작 ───────────────────────────────────────────────────────
+
+    /// `pick_next`를 그 자리에서 여러 번 굴려 어떤 동작이 몇 번 나오는지 센다.
+    ///
+    /// **`step`을 거치지 않는다.** 1/30000짜리 갈래를 실제 시간으로 재현하려면
+    /// 며칠치를 돌려야 하는데, 다음 동작을 고르는 것은 `pick_next` 한 번이므로
+    /// 그것만 반복하면 같은 확률을 훨씬 싸게 확인할 수 있다.
+    ///
+    /// **펭귄 하나의 난수열을 계속 쓴다.** 시드를 매번 바꾸면 xorshift의 첫 출력만
+    /// 보게 되어 분포가 시드 배열에 딸린다.
+    fn 굴려_세기(횟수: u32, air: bool) -> (u32, u32) {
+        let mut p = pet();
+        let (mut 발작, mut 낚시) = (0, 0);
+        for _ in 0..횟수 {
+            p.behavior = Behavior::Walk;
+            p.air = air;
+            p.last_stimulus_ms = 0;
+            p.pick_next(0, BOUNDS);
+            match p.behavior {
+                Behavior::Freakout { .. } => 발작 += 1,
+                Behavior::IceFishing { .. } => 낚시 += 1,
+                _ => {}
+            }
+        }
+        (발작, 낚시)
+    }
+
+    /// 시켜서 발작 중인 펭귄.
+    fn 발작하는_펭귄() -> (Pet, u64) {
+        let mut p = pet();
+        p.step(1_000, &world());
+        assert!(p.start_freakout(1_000), "시키면 시작해야 한다");
+        (p, 1_000)
+    }
+
+    /// 발작이 끝날 때까지 진행시키며 스냅샷을 모은다.
+    fn 발작_끝까지(p: &mut Pet, from: u64) -> Vec<Snapshot> {
+        let mut out = Vec::new();
+        let mut t = from;
+        // 예산 + 바닥 복귀 + 숨 고르기를 넉넉히 덮는다
+        let 한계 = from + FREAKOUT_MS.1 * 3 + FREAKOUT_PANT_MS + 5_000;
+        while t < 한계 {
+            t += 50;
+            let s = p.step(t, &world());
+            let 끝났다 = !matches!(s.behavior, Behavior::Freakout { .. });
+            out.push(s);
+            if 끝났다 {
+                break;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn 저절로_발작이_나온다() {
+        // 며칠에 한 번이라도 **도달할 수는 있어야** 한다. 기대값은
+        // 200_000 / FREAKOUT_ONE_IN ≈ 6.7회다.
+        let (발작, _) = 굴려_세기(200_000, false);
+        assert!(발작 > 0, "20만 번을 굴려도 발작이 한 번도 안 나온다");
+    }
+
+    #[test]
+    fn 발작은_얼음낚시보다_훨씬_드물다() {
+        // 값을 하드코딩하지 않는다 — 상수를 고치면 같이 따라와야 한다
+        let (발작, 낚시) = 굴려_세기(200_000, false);
+        assert!(
+            낚시 > 발작 * 10,
+            "발작({발작})이 얼음낚시({낚시})와 비슷하면 '희귀' 등급이 아니다"
+        );
+    }
+
+    #[test]
+    fn 발작은_공중에서_저절로_시작하지_않는다() {
+        let (발작, _) = 굴려_세기(200_000, true);
+        assert_eq!(발작, 0, "공중에는 발작할 자리가 없다");
+    }
+
+    #[test]
+    fn 발작하는_동안_방향이_여러_번_바뀐다() {
+        // 광란으로 읽히게 하는 건 속도가 아니라 **방향이 바뀌는 빈도**다
+        let (mut p, t) = 발작하는_펭귄();
+        let 전체 = 발작_끝까지(&mut p, t);
+        let mut 뒤집힘 = 0;
+        let mut 직전: Option<f64> = None;
+        for w in 전체.windows(2) {
+            let dx = w[1].x - w[0].x;
+            if dx.abs() < 0.5 {
+                continue;
+            }
+            if let Some(prev) = 직전 {
+                if (dx > 0.0) != (prev > 0.0) {
+                    뒤집힘 += 1;
+                }
+            }
+            직전 = Some(dx);
+        }
+        assert!(뒤집힘 >= 3, "방향이 {뒤집힘}번밖에 안 바뀌었다");
+    }
+
+    #[test]
+    fn 발작은_헤엄보다_빠르다() {
+        let (mut p, t) = 발작하는_펭귄();
+        let 전체 = 발작_끝까지(&mut p, t);
+        let 최대 = 전체
+            .windows(2)
+            .map(|w| ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt())
+            .fold(0.0f64, f64::max);
+        let 헤엄_한_틱 = SWIM_SPEED * 0.05;
+        assert!(
+            최대 > 헤엄_한_틱,
+            "한 틱 최대 이동({최대:.1})이 헤엄 한 틱({헤엄_한_틱:.1})보다 크지 않다"
+        );
+    }
+
+    #[test]
+    fn 발작하는_동안_경계를_넘지_않는다() {
+        // 세계는 화면 하나이고 경계는 벽이다 (PRINCIPLE 2)
+        let (mut p, t) = 발작하는_펭귄();
+        for s in 발작_끝까지(&mut p, t) {
+            assert!(
+                s.x >= BOUNDS.left && s.x <= BOUNDS.right,
+                "가로 경계를 넘었다: {}",
+                s.x
+            );
+            assert!(
+                s.y >= BOUNDS.top && s.y <= BOUNDS.floor_y,
+                "세로 경계를 넘었다: {}",
+                s.y
+            );
+        }
+    }
+
+    #[test]
+    fn 발작이_끝나면_바닥에서_숨을_고른다() {
+        let (mut p, t) = 발작하는_펭귄();
+        let mut 봤다 = false;
+        let mut now = t;
+        let 한계 = t + FREAKOUT_MS.1 * 3 + 5_000;
+        while now < 한계 {
+            now += 50;
+            let s = p.step(now, &world());
+            if matches!(
+                s.behavior,
+                Behavior::Freakout { freakout: FreakoutPhase::Pant }
+            ) {
+                assert_eq!(s.y, BOUNDS.floor_y, "숨은 바닥에서 고른다");
+                assert!(!s.air, "숨 고르기는 지상 동작이다");
+                봤다 = true;
+                break;
+            }
+        }
+        assert!(봤다, "숨 고르기 국면을 한 번도 못 봤다");
+    }
+
+    #[test]
+    fn 발작은_철푸덕이나_널브러짐으로_끝나지_않는다() {
+        // "아무 일 없었다는 듯 돌아온다"가 이 동작의 정의다
+        let (mut p, t) = 발작하는_펭귄();
+        for s in 발작_끝까지(&mut p, t) {
+            assert!(
+                !s.behavior.is_landing(),
+                "착지 단계가 나왔다: {:?}",
+                s.behavior
+            );
+        }
+    }
+
+    #[test]
+    fn 숨_고르기가_끝나면_유휴로_간다() {
+        // 약을 올리며 나가지 않는다 — 아무 일 없었다는 듯 돌아가야 한다
+        let (mut p, t) = 발작하는_펭귄();
+        let 마지막 = 발작_끝까지(&mut p, t).pop().expect("스냅샷이 있어야 한다");
+        assert!(
+            matches!(마지막.behavior, Behavior::Idle { .. }),
+            "유휴로 나가야 한다 (실제: {:?})",
+            마지막.behavior
+        );
+    }
+
+    #[test]
+    fn 발작_한_판은_예산_안에_끝난다() {
+        let (mut p, t) = 발작하는_펭귄();
+        let 전체 = 발작_끝까지(&mut p, t);
+        let 걸린_시간 = 전체.len() as u64 * 50;
+        assert!(
+            걸린_시간 <= FREAKOUT_MS.1 * 3 + FREAKOUT_PANT_MS + 1_000,
+            "발작이 {걸린_시간}ms나 이어졌다"
+        );
+    }
+
+    #[test]
+    fn 걸을_폭이_없는_화면에서도_발작이_갇히지_않는다() {
+        // 좌우가 겹치면 목적지가 한 점이라 영원히 도착만 반복할 수 있다
+        let 좁은 = World::single(Bounds { left: 0.0, right: 0.0, top: 800.0, floor_y: 800.0 });
+        let mut p = Pet::new(42, 0, &좁은);
+        assert!(p.start_freakout(1_000));
+        let mut t = 1_000;
+        let 한계 = t + FREAKOUT_MS.1 * 3 + FREAKOUT_PANT_MS + 5_000;
+        while t < 한계 && matches!(p.behavior(), Behavior::Freakout { .. }) {
+            t += 50;
+            p.step(t, &좁은);
+        }
+        assert!(
+            !matches!(p.behavior(), Behavior::Freakout { .. }),
+            "발작에 갇혔다"
+        );
+    }
+
+    #[test]
+    fn 상한을_넘겨도_공중에서_바닥으로_순간이동하지_않는다() {
+        // `dt`는 `MAX_STEP_MS`로 잘리지만 상한 비교는 **벽시계**다 — 틱 스레드가
+        // 밀리면(절전 복귀 등) 거의 안 움직인 채 상한을 넘긴다. 그때 곧장 숨
+        // 고르기로 가면 지상 동작이 되어 clamp가 y를 바닥으로 순간이동시킨다.
+        let (mut p, t) = 발작하는_펭귄();
+        // 공중에 있는 상태를 **직접 만든다** — 시드가 위로 뛰어 주기를 기다리면
+        // 검사 대상(안전판)이 아니라 난수에 딸린 테스트가 된다
+        p.y = BOUNDS.floor_y - 300.0;
+        p.target = (p.x, BOUNDS.floor_y - 300.0);
+
+        // 벽시계를 상한 한참 뒤로 건너뛴다
+        let s = p.step(t + FREAKOUT_MS.1 * 5, &world());
+        assert!(
+            matches!(
+                s.behavior,
+                Behavior::Freakout { freakout: FreakoutPhase::Dash }
+            ),
+            "아직 내려오는 중이어야 한다 (실제: {:?})",
+            s.behavior
+        );
+        assert!(
+            s.y < BOUNDS.floor_y,
+            "바닥으로 순간이동하면 안 된다 (실제: {})",
+            s.y
+        );
+
+        // 그다음 틱들에서 평소 경로로 내려와 숨을 고른다
+        let mut now = t + FREAKOUT_MS.1 * 5;
+        while now < t + FREAKOUT_MS.1 * 10
+            && matches!(
+                p.behavior(),
+                Behavior::Freakout { freakout: FreakoutPhase::Dash }
+            )
+        {
+            now += 50;
+            p.step(now, &world());
+        }
+        assert!(
+            matches!(
+                p.behavior(),
+                Behavior::Freakout { freakout: FreakoutPhase::Pant }
+            ),
+            "내려와서 숨을 골라야 한다 (실제: {:?})",
+            p.behavior()
+        );
+        assert_eq!(p.snapshot().y, BOUNDS.floor_y, "바닥까지 내려왔어야 한다");
+    }
+
+    #[test]
+    fn 발작_중에_클릭하면_방망이를_휘두른다() {
+        let (mut p, t) = 발작하는_펭귄();
+        클릭(&mut p, t + 100);
+        assert_eq!(p.behavior(), Behavior::Swing);
+    }
+
+    #[test]
+    fn 발작_중에_들어_올릴_수_있다() {
+        let (mut p, t) = 발작하는_펭귄();
+        p.drag_start(t + 100);
+        assert_eq!(p.behavior(), Behavior::Dragged);
+    }
+
+    #[test]
+    fn 발작은_국면마다_고도가_다르다() {
+        let 돌진 = Behavior::Freakout { freakout: FreakoutPhase::Dash };
+        let 숨 = Behavior::Freakout { freakout: FreakoutPhase::Pant };
+        assert!(돌진.is_airborne(), "사방으로 튀려면 떠 있어야 한다");
+        assert!(!숨.is_airborne(), "숨은 바닥에서 고른다");
+        assert!(!돌진.is_landing() && !숨.is_landing());
+        assert!(돌진.moves_window() && 숨.moves_window());
+    }
+
+    #[test]
+    fn 시키면_바로_발작한다() {
+        let (p, _) = 발작하는_펭귄();
+        assert!(matches!(p.behavior(), Behavior::Freakout { .. }));
+    }
+
+    #[test]
+    fn 들려_있거나_이미_발작_중이면_시켜도_안_한다() {
+        let mut p = pet();
+        p.drag_start(1_000);
+        assert!(!p.start_freakout(1_050), "손에 쥔 채로는 안 된다");
+
+        let (mut q, t) = 발작하는_펭귄();
+        assert!(!q.start_freakout(t + 100), "재진입하면 웹뷰가 되감지 못한다");
+    }
+
     #[test]
     fn 세계가_좁아지면_밖에_있던_펭귄이_끌려_들어온다() {
         // **모니터를 뽑았을 때 펭귄을 되찾는 것이 이 clamp에 달려 있다.**
@@ -3374,8 +3850,9 @@ mod tests {
         // 결국 같은 화면으로 떨어지기 때문이다. 그래서 **수열을 통째로 못박는다.**
         //
         // 값은 **확률 갈래가 하나 늘 때마다** 다시 뜬다. 갈래는 난수를 하나 더
-        // 뽑고, 그러면 그 뒤가 통째로 밀린다. 지금까지 세 번 재기준화했다 —
-        // 벽 굴림(`hit_wall`), 얼음낚시, 슬라이딩(둘 다 `pick_next`). 전부 의도한 변경이다.
+        // 뽑고, 그러면 그 뒤가 통째로 밀린다. 지금까지 **네 번** 재기준화했다 —
+        // 벽 굴림(`hit_wall`), 얼음낚시, 슬라이딩, 발작(뒤 셋은 `pick_next`).
+        // 전부 의도한 변경이다.
         // **동작을 늘리지 않았는데 이 배열이 흔들리면 그건 의도하지 않은 변경이다.**
         let w = world();
         let mut p = Pet::new(42, 0, &w);
@@ -3385,18 +3862,18 @@ mod tests {
         // (인덱스, 동작, x, y)
         let golden = [
             (0_usize, "Turn", 0.0, 800.0),
-            (97, "Swim", 206.4, 701.8),
-            (194, "Swim", 502.8, 349.1),
-            (291, "Sprawl", 643.4, 800.0),
-            (388, "Walk", 716.9, 800.0),
-            (485, "Walk", 960.1, 800.0),
-            (582, "Idle { idle: LookAround }", 848.8, 800.0),
-            (679, "Walk", 670.3, 800.0),
-            (776, "Swim", 296.9, 567.4),
-            (873, "Sassy { sassy: HeadFlick }", 121.6, 800.0),
-            (970, "Idle { idle: Stretch }", 121.6, 800.0),
-            (1067, "Walk", 77.5, 800.0),
-            (1164, "Walk", 115.5, 800.0),
+            (97, "Slide", 408.5, 800.0),
+            (194, "Swim", 459.2, 701.3),
+            (291, "Falling", 394.8, 266.2),
+            (388, "Idle { idle: ShiftFeet }", 394.8, 800.0),
+            (485, "Walk", 195.3, 800.0),
+            (582, "Walk", 111.3, 800.0),
+            (679, "Walk", 81.9, 800.0),
+            (776, "Idle { idle: LookAround }", 128.1, 800.0),
+            (873, "Swim", 140.9, 472.5),
+            (970, "Idle { idle: Shake }", 147.2, 800.0),
+            (1067, "Walk", 182.9, 800.0),
+            (1164, "Idle { idle: Shake }", 304.7, 800.0),
         ];
         for (i, behavior, x, y) in golden {
             let s = seq[i];

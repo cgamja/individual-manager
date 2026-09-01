@@ -11,6 +11,7 @@ import {
   setPetEnabled,
   slidePet,
   squawkPet,
+  freakoutPet,
   type PetSummary,
 } from "./lib/pet";
 import {
@@ -46,6 +47,11 @@ const MOTIONS: readonly Motion[] = [
     name: "빽빽거리기",
     note: "1.4초 동안 부풀리고 퍼덕이며 화내요. 더 때려도 안 끊겨요. 소리는 안 나요.",
     run: squawkPet,
+  },
+  {
+    name: "발작",
+    note: "2~4초 동안 사방으로 튀고, 바닥까지 내려와 0.7초 숨을 고르고 끝나요 — 높이 떠 있었으면 전체가 7초쯤 갈 수 있어요. 저절로는 며칠에 한 번 나와요.",
+    run: freakoutPet,
   },
 ];
 

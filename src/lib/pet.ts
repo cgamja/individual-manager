@@ -12,6 +12,9 @@ export type IdleKind = "look_around" | "stretch" | "shake" | "shift_feet";
 /** 얼음낚시 한 판이 거쳐 가는 국면. 어느 국면인지는 코어가 정한다. */
 export type FishingPhase = "dig" | "wait" | "bite" | "catch" | "miss" | "pack";
 
+/** 발작 한 판이 거쳐 가는 국면. 어느 국면인지는 코어가 정한다. */
+export type FreakoutPhase = "dash" | "pant";
+
 /** 클릭했을 때의 반응 — 놀라지 않고 싸가지 없게 군다. */
 export type SassyKind =
   | "turn_away"
@@ -29,6 +32,7 @@ export type Behavior =
   | { kind: "sassy"; sassy: SassyKind }
   | { kind: "swing" }
   | { kind: "squawk" }
+  | { kind: "freakout"; freakout: FreakoutPhase }
   | { kind: "dragged" }
   | { kind: "falling" }
   | { kind: "thrown" }
@@ -125,6 +129,8 @@ export const behaviorClass = (behavior: Behavior): string => {
   if (behavior.kind === "sassy") return `pg--sassy-${kebab(behavior.sassy)}`;
   // 국면을 클래스에 싣지 않으면 30초 내내 한 그림으로 굳는다
   if (behavior.kind === "ice_fishing") return `pg--fishing-${kebab(behavior.fishing)}`;
+  // 발작도 같다 — 돌진과 숨 고르기가 같은 클래스면 헐떡임이 안 보인다
+  if (behavior.kind === "freakout") return `pg--freakout-${kebab(behavior.freakout)}`;
   return `pg--${kebab(behavior.kind)}`;
 };
 
@@ -141,6 +147,9 @@ export const isOneShot = (cls: string): boolean =>
   // `pg--dragged`를 거치므로(프론트가 모든 pointerdown에서 `drag_start`를
   // 부른다) 같은 클래스가 연달아 오지 않는다 — 아래 전제가 유지된다
   cls === "pg--squawk" ||
+  // 숨 고르기는 한 번 재생되고 끝난다. **돌진은 아니다** — 판 길이가 난수라
+  // 무한 반복이고, 되감으면 스냅샷이 올 때마다 처음으로 돌아간다
+  cls === "pg--freakout-pant" ||
   cls.startsWith("pg--sassy-") ||
   // 드리우기만 빼고 낚시 국면은 전부 한 번짜리다 — 드리우기는 입질이 올
   // 때까지 찌가 계속 까딱거려야 하므로 되감으면 끊긴다
@@ -205,6 +214,14 @@ export const slidePet = (): Promise<void> => invoke("pet_slide");
  * 미끄러지기와 달리 바닥을 요구하지 않는다 — 고도를 물려받는 반응이다.
  */
 export const squawkPet = (): Promise<void> => invoke("pet_squawk");
+
+/**
+ * 우클릭해서 연 그 펭귄을 발작시킨다.
+ *
+ * 저절로는 **며칠에 한 번** 나오는 동작이라 기다려서는 못 본다.
+ * 공중에서도 된다 — 돌진이 어차피 공중 동작이다.
+ */
+export const freakoutPet = (): Promise<void> => invoke("pet_freakout");
 
 /** 빠따 — 왼쪽 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로). */
 export const whackPet = (): Promise<void> => invoke("pet_whack");

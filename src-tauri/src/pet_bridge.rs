@@ -847,6 +847,25 @@ pub fn pet_squawk(window: WebviewWindow, state: State<'_, PetState>, app: AppHan
     Ok(())
 }
 
+/// 설정 창의 "발작". 대상 규칙은 [`pet_fish`]와 같다.
+///
+/// **공중을 거절하지 않는다** — 돌진이 어차피 공중 동작이다.
+#[tauri::command]
+pub fn pet_freakout(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let id = target_pet(&window, &state).ok_or("발작시킬 펭귄을 우클릭해서 열어 주세요")?;
+    let started = state
+        .pets
+        .lock()
+        .unwrap()
+        .get_mut(id)
+        .is_some_and(|pet| pet.start_freakout(now_ms()));
+    if !started {
+        return Err("이미 발작하는 중이거나 들고 계세요".into());
+    }
+    flush(&app, id);
+    Ok(())
+}
+
 /// 우클릭한 펭귄을 삭제한다. **마지막 한 마리는 거부한다** (PRD §5.5).
 #[tauri::command]
 pub fn pet_remove(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {

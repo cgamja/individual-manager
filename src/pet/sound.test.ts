@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Behavior, PetSnapshot } from "../lib/pet";
 import {
   SOUND_COOLDOWN_MS,
+  SoundPlayer,
   passesCooldown,
   soundsFor,
   voiceOffsetFor,
@@ -132,6 +133,115 @@ describe("passesCooldown — 소리별 최소 간격", () => {
 
   it("처음_내는_소리는_바로_난다", () => {
     expect(passesCooldown("whack", undefined, 0)).toBe(true);
+  });
+});
+
+/** 소리 그래프의 최소 표면만 흉내 낸 스텁 — 만든 노드의 종류를 기록한다. */
+const stubContext = () => {
+  const created: string[] = [];
+  const param = {
+    value: 0,
+    setValueAtTime() {},
+    linearRampToValueAtTime() {},
+    exponentialRampToValueAtTime() {},
+    setTargetAtTime() {},
+  };
+  const node = () => ({
+    connect(target: unknown) {
+      return target;
+    },
+    disconnect() {},
+    start() {},
+    stop() {},
+    gain: { ...param },
+    frequency: { ...param },
+    detune: { ...param },
+    Q: { ...param },
+    buffer: null as unknown,
+    type: "",
+  });
+  const ctx = {
+    created,
+    state: "running" as AudioContextState,
+    sampleRate: 48000,
+    currentTime: 0,
+    destination: node(),
+    resume: () => Promise.resolve(),
+    close: () => Promise.resolve(),
+    createGain() {
+      created.push("gain");
+      return node();
+    },
+    createOscillator() {
+      created.push("oscillator");
+      return node();
+    },
+    createBiquadFilter() {
+      created.push("filter");
+      return node();
+    },
+    createBufferSource() {
+      created.push("source");
+      return node();
+    },
+    createBuffer(_ch: number, len: number) {
+      created.push("buffer");
+      return { getChannelData: () => new Float32Array(len) };
+    },
+  };
+  return ctx as typeof ctx & AudioContext;
+};
+
+describe("SoundPlayer", () => {
+  it("오디오가_없는_환경에서도_터지지_않는다", () => {
+    // jsdom에는 AudioContext가 없다 — 소리 없는 무해한 상태로 남는다 (R11)
+    const player = new SoundPlayer("pet-1");
+    player.setEnabled(true);
+    expect(() => player.play("whack", 0)).not.toThrow();
+    expect(() => player.nudge()).not.toThrow();
+    expect(() => player.close()).not.toThrow();
+  });
+
+  it("꺼져_있으면_아무것도_재생하지_않는다", () => {
+    const ctx = stubContext();
+    const player = new SoundPlayer("pet-1", () => ctx);
+    // 기본은 꺼짐이다 (PRD Q6) — setEnabled(true) 없이 재생을 시도한다
+    player.play("squawk", 0);
+    expect(ctx.created.filter((k) => k !== "gain")).toEqual([]);
+  });
+
+  it("켜져_있으면_소리_그래프를_만든다", () => {
+    const ctx = stubContext();
+    const player = new SoundPlayer("pet-1", () => ctx);
+    player.setEnabled(true);
+    player.play("squawk", 0);
+    expect(ctx.created.filter((k) => k === "oscillator").length).toBeGreaterThan(0);
+  });
+
+  it("쿨다운_안의_재생은_버린다", () => {
+    const ctx = stubContext();
+    const player = new SoundPlayer("pet-1", () => ctx);
+    player.setEnabled(true);
+    player.play("squawk", 1000);
+    const after = ctx.created.length;
+    player.play("squawk", 1000 + SOUND_COOLDOWN_MS.squawk - 1);
+    expect(ctx.created.length).toBe(after);
+  });
+
+  it("컨텍스트가_잠겨_있으면_버리고_깨우기만_시도한다", () => {
+    const ctx = stubContext();
+    let resumed = 0;
+    ctx.state = "suspended";
+    ctx.resume = () => {
+      resumed += 1;
+      return Promise.resolve();
+    };
+    const player = new SoundPlayer("pet-1", () => ctx);
+    player.setEnabled(true);
+    player.play("whack", 0);
+    // 그 소리는 버려진다 — 3초 뒤의 퍽은 없느니만 못하다 (KTD4)
+    expect(ctx.created.filter((k) => k !== "gain")).toEqual([]);
+    expect(resumed).toBe(1);
   });
 });
 

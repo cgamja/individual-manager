@@ -1,4 +1,5 @@
 import type { PetSnapshot } from "../lib/pet";
+import { playFreakout, playSquawk, playWhack, playWhoosh } from "./synth";
 
 /**
  * 펭귄이 낼 수 있는 소리 넷. 이게 전부다 — 걷기·헤엄·착지·졸기는 무음이다.
@@ -79,3 +80,97 @@ export const voiceOffsetFor = (label: string): number => {
   if (!m) return 0;
   return ((Number(m[1]) * 7) % 12) - 5;
 };
+
+/**
+ * 마스터 게인 ≈ -18 dBFS (KTD9). 시스템 볼륨 100%에서 1.0으로 울리면
+ * 헤드폰을 낀 사람이 놀란다. 더 듣고 싶으면 시스템 볼륨이 있다 —
+ * 볼륨 슬라이더를 만들지 않는 이유다 (설정은 늘리지 않는다, PRINCIPLE 5).
+ */
+const MASTER_GAIN = 0.12;
+
+const SYNTH: Record<
+  SoundName,
+  (ctx: BaseAudioContext, out: AudioNode, semitones: number) => void
+> = {
+  whack: playWhack,
+  whoosh: playWhoosh,
+  squawk: playSquawk,
+  freakout: playFreakout,
+};
+
+/**
+ * 한 펭귄 창의 소리 전부 — 컨텍스트 수명, 켜짐/꺼짐, 쿨다운을 소유한다.
+ *
+ * **컨텍스트는 미리 만들고(suspended여도 괜찮다), 제스처마다 깨우고, 안
+ * 깨어나면 그 소리는 버린다** (KTD4). WKWebView는 사용자 제스처 밖의
+ * `AudioContext`를 `suspended`로 시작시키고 Tauri에는 그걸 끌 방법이 없다.
+ * 큐에 쌓지 않는 이유: 3초 뒤에 도착하는 퍽은 자기 손짓과 연결되지 않아
+ * 없느니만 못하다.
+ *
+ * jsdom에는 `AudioContext`가 없으므로 생성은 전부 생성자 안에 있고, 없는
+ * 환경이면 소리 없는 무해한 상태로 남는다 (R11). 두 번째 인자는 테스트가
+ * 스텁 컨텍스트를 주입하는 통로다.
+ */
+export class SoundPlayer {
+  private ctx: AudioContext | null = null;
+  private out: GainNode | null = null;
+  private enabled = false;
+  private lastAt: Partial<Record<SoundName, number>> = {};
+  private readonly semitones: number;
+
+  constructor(label: string, createContext?: () => AudioContext) {
+    this.semitones = voiceOffsetFor(label);
+    try {
+      if (createContext) this.ctx = createContext();
+      else if (typeof AudioContext !== "undefined") this.ctx = new AudioContext();
+      if (this.ctx) {
+        this.out = this.ctx.createGain();
+        this.out.gain.value = MASTER_GAIN;
+        this.out.connect(this.ctx.destination);
+      }
+    } catch {
+      // 오디오가 없어도 펭귄은 산다 — 소리만 조용히 포기한다
+      this.ctx = null;
+      this.out = null;
+    }
+  }
+
+  /** 효과음 설정. 꺼지면 어떤 상황에서도 소리가 나지 않는다 (R1). */
+  setEnabled(on: boolean): void {
+    this.enabled = on;
+  }
+
+  /**
+   * 사용자 제스처에서 부른다 — suspended 컨텍스트를 깨울 유일한 기회다.
+   * 실패는 무시한다: 다음 제스처가 또 온다.
+   */
+  nudge(): void {
+    if (this.ctx && this.ctx.state !== "running") {
+      this.ctx.resume().catch(() => {});
+    }
+  }
+
+  /** 게이트(켜짐 → 쿨다운 → 컨텍스트 상태)를 통과하면 합성해서 재생한다. */
+  play(name: SoundName, now: number): void {
+    if (!this.enabled || !this.ctx || !this.out) return;
+    if (!passesCooldown(name, this.lastAt[name], now)) return;
+    if (this.ctx.state !== "running") {
+      // 한 번 더 깨워 보고, 그래도 아니면 이 소리는 버린다 (KTD4)
+      this.ctx.resume().catch(() => {});
+      if ((this.ctx.state as AudioContextState) !== "running") return;
+    }
+    this.lastAt[name] = now;
+    try {
+      SYNTH[name](this.ctx, this.out, this.semitones);
+    } catch {
+      // 소리 하나가 못 나는 것이 펭귄을 멈추는 이유가 되면 안 된다 (R11)
+    }
+  }
+
+  /** 언마운트에서 부른다 — 컨텍스트를 OS에 돌려준다. */
+  close(): void {
+    this.ctx?.close().catch(() => {});
+    this.ctx = null;
+    this.out = null;
+  }
+}

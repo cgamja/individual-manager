@@ -618,6 +618,9 @@ pub struct Snapshot {
     /// 빠따를 맞은 횟수. 늘어날 때마다 웹뷰가 방망이를 한 번 휘두른다.
     /// 연타해도 매번 보이려면 상태가 아니라 **횟수**여야 한다.
     pub whack_seq: u64,
+    /// 핀볼 모드인가. 웹뷰는 이걸로 **커서를 채로 바꾼다** — 저장소를 다시
+    /// 읽게 하면 토글이 즉시 반영되지 않는다.
+    pub pinball: bool,
     pub behavior: Behavior,
 }
 
@@ -895,6 +898,7 @@ impl Pet {
             air: self.air,
             speech: self.speech,
             whack_seq: self.whack_seq,
+            pinball: self.pinball,
             behavior: self.behavior,
         }
     }

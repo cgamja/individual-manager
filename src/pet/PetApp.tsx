@@ -27,6 +27,11 @@ interface DragTrack {
   screenX: number;
   screenY: number;
   moved: number;
+  /** **누른 지점**을 펭귄 기준으로 정규화한 값(-0.5~0.5). 핀볼 모드에서
+   * 채가 어디를 쳤는지가 된다. 뗀 지점이 아니라 누른 지점을 쓴다 — 클릭으로
+   * 판정되는 범위(4px)라 값은 거의 같지만 "어디를 쳤나"의 의미는 누른 쪽에 있다. */
+  hitX: number;
+  hitY: number;
   /** 최근 궤적 — 놓는 순간의 속도를 재는 데 쓴다 (던지기 세기). */
   samples: { x: number; y: number; t: number }[];
 }
@@ -109,11 +114,15 @@ export function PetApp() {
     if (dragRef.current) return;
     // 포인터를 캡처해야 커서가 펭귄 밖으로 나가도 드래그가 끊기지 않는다
     e.currentTarget.setPointerCapture(e.pointerId);
+    const rect = e.currentTarget.getBoundingClientRect();
     const track: DragTrack = {
       pointerId: e.pointerId,
       screenX: e.screenX,
       screenY: e.screenY,
       moved: 0,
+      // 창이 0×0으로 잡히는 순간(첫 페인트 전 등)에는 중앙으로 친 것으로 본다
+      hitX: rect.width > 0 ? (e.clientX - rect.left) / rect.width - 0.5 : 0,
+      hitY: rect.height > 0 ? (e.clientY - rect.top) / rect.height - 0.5 : 0,
       samples: [{ x: e.screenX, y: e.screenY, t: performance.now() }],
     };
     dragRef.current = track;
@@ -197,7 +206,7 @@ export function PetApp() {
       // 거의 안 움직였으면 옮길 의도가 아니라 클릭이다 (R5)
       if (track.moved < DRAG_THRESHOLD_PX) {
         // 거의 안 움직였으면 옮길 의도가 아니라 빠따다
-        await whackPet().catch(() => {});
+        await whackPet(track.hitX, track.hitY).catch(() => {});
       } else {
         // 놓는 순간의 속도가 던지는 세기다 (R12)
         const { vx, vy } = throwVelocity(track.samples);
@@ -221,6 +230,9 @@ export function PetApp() {
     // 그림자는 동작이 아니라 "떠 있는가"로 지운다 — 공중에서 클릭하면 지상
     // 동작(반응)을 하면서도 떠 있어서, 동작으로 판정하면 그림자가 되살아난다
     snapshot?.air ? "pg-air" : "",
+    // 핀볼이면 커서가 채가 된다. **저장소를 다시 읽지 않는다** — 스냅샷으로
+    // 오므로 설정을 켠 순간 반영된다 (`Look`에 들어 있는 이유가 이것이다)
+    snapshot?.pinball ? "pg-pinball" : "",
   ]
     .filter(Boolean)
     .join(" ");

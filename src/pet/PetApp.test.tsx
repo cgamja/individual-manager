@@ -52,7 +52,14 @@ function mockPet(): Call[] {
 function pointer(
   type: string,
   target: Element,
-  init: { screenX?: number; screenY?: number; pointerId?: number; button?: number } = {},
+  init: {
+    screenX?: number;
+    screenY?: number;
+    clientX?: number;
+    clientY?: number;
+    pointerId?: number;
+    button?: number;
+  } = {},
 ) {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.assign(event, {
@@ -60,6 +67,8 @@ function pointer(
     button: init.button ?? 0,
     screenX: init.screenX ?? 0,
     screenY: init.screenY ?? 0,
+    clientX: init.clientX ?? 0,
+    clientY: init.clientY ?? 0,
   });
   target.dispatchEvent(event);
   return event;
@@ -97,6 +106,43 @@ describe("펭귄 드래그", () => {
     expect(drag).toBeDefined();
     // 화면 좌표 기준의 증분이어야 한다 — 절대 좌표를 보내면 펭귄이 순간이동한다
     expect(drag?.args).toMatchObject({ dx: 30, dy: -10 });
+  });
+
+  it("클릭은_맞은_지점을_같이_보낸다", async () => {
+    // 핀볼 모드에서 이 값이 **채가 어디를 쳤는지**가 된다. 모드를 프론트가
+    // 보지 않으므로 좌표는 늘 보낸다.
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    const el = penguin();
+    // jsdom은 레이아웃이 없어 모든 사각형이 0이다 — 펭귄 크기를 심어 준다
+    el.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 200, height: 200 }) as DOMRect;
+
+    // 왼쪽 위 사분면(50, 40)을 누른다 → nx = -0.25, ny = -0.3
+    pointer("pointerdown", el, { screenX: 100, screenY: 100, clientX: 50, clientY: 40 });
+    await flush();
+    pointer("pointerup", el, { screenX: 100, screenY: 100, clientX: 50, clientY: 40 });
+    await flush();
+
+    const whack = calls.find((c) => c.cmd === "pet_whack");
+    expect(whack?.args).toMatchObject({ nx: -0.25, ny: -0.3 });
+  });
+
+  it("펭귄_크기를_못_재면_정중앙으로_친_것으로_본다", async () => {
+    // 첫 페인트 전 등으로 사각형이 0×0이면 0으로 나누게 된다 — NaN이 코어까지
+    // 흘러가면 펭귄이 좌표계 밖으로 사라진다
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    const el = penguin();
+
+    pointer("pointerdown", el, { screenX: 100, screenY: 100, clientX: 50, clientY: 40 });
+    await flush();
+    pointer("pointerup", el, { screenX: 100, screenY: 100, clientX: 50, clientY: 40 });
+    await flush();
+
+    expect(calls.find((c) => c.cmd === "pet_whack")?.args).toMatchObject({ nx: 0, ny: 0 });
   });
 
   it("클릭은_드래그가_아니라_빠따로_해석된다", async () => {

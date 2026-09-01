@@ -180,6 +180,7 @@ pub fn run() {
             pet_bridge::pet_drag_end,
             pet_bridge::pet_get_state,
             pet_bridge::pet_set_enabled,
+            pet_bridge::pet_set_pinball,
             pet_bridge::pet_summary,
             pet_bridge::pet_add,
             pet_bridge::pet_remove,

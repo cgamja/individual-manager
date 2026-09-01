@@ -85,7 +85,7 @@ pub struct PetSummary {
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
 /// **CSS 클래스에 영향을 주는 값은 빠짐없이 들어가야 한다.** 하나라도 빠지면
 /// 그 값만 바뀌는 전이가 웹뷰에 영영 도달하지 않는다(조용한 실패).
-pub type Look = (Behavior, Facing, Vertical, bool, Option<u64>, u64);
+pub type Look = (Behavior, Facing, Vertical, bool, Option<u64>, u64, bool);
 
 pub fn look_of(snapshot: &Snapshot) -> Look {
     (
@@ -97,6 +97,8 @@ pub fn look_of(snapshot: &Snapshot) -> Look {
         // 말이 안 뜨거나 방망이가 한 번만 보인다
         snapshot.speech.map(|s| s.seq),
         snapshot.whack_seq,
+        // 커서 모양이 여기 달렸다 — 빠뜨리면 토글이 웹뷰에 영영 도달하지 않는다
+        snapshot.pinball,
     )
 }
 
@@ -118,6 +120,40 @@ pub fn pet_enabled(app: &AppHandle) -> bool {
         .and_then(|store| store.get(PET_KEY))
         .and_then(|value| value.get("enabled").and_then(|v| v.as_bool()))
         .unwrap_or(true)
+}
+
+/// 저장된 값에서 핀볼 여부를 꺼낸다. **없으면 꺼짐이다** — `enabled`가 켜짐으로
+/// 떨어지는 것과 반대다. 새 모드는 사용자가 켜기 전에는 아무것도 바꾸지 않아야 한다.
+///
+/// 저장소를 받지 않고 값을 받는 이유는 **테스트 때문**이다. 기본값이 반대로
+/// 뒤집히는 것은 조용한 사고라 가드가 있어야 하는데, `AppHandle`을 받으면
+/// Tauri 앱 없이는 부를 수 없다.
+pub fn pinball_from(stored: Option<&serde_json::Value>) -> bool {
+    stored
+        .and_then(|value| value.get("pinball"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// 저장된 핀볼 모드 여부.
+pub fn pet_pinball(app: &AppHandle) -> bool {
+    pinball_from(
+        app.store(SETTINGS_FILE)
+            .ok()
+            .and_then(|store| store.get(PET_KEY))
+            .as_ref(),
+    )
+}
+
+/// 새로 만든 펭귄에 저장된 설정을 건다.
+///
+/// **추가 경로가 둘(시작 시·우클릭)이라 한 곳에 모은다.** 한쪽만 고쳐지면
+/// 나중에 부른 펭귄만 안 튀는데, 그건 눈으로만 잡힌다.
+fn apply_saved_settings(app: &AppHandle, id: PetId) {
+    let pinball = pet_pinball(app);
+    if let Some(pet) = app.state::<PetState>().pets.lock().unwrap().get_mut(id) {
+        pet.set_pinball(pinball);
+    }
 }
 
 /// 저장된 마릿수. 없으면 한 마리, 범위를 벗어나면 조인다 —
@@ -172,6 +208,7 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
         else {
             break;
         };
+        apply_saved_settings(app, id);
         if let Err(err) = create_pet_window(app, id, window_origin(start_x, bounds.floor_y)) {
             app.state::<PetState>().pets.lock().unwrap().forget(id);
             return Err(err);
@@ -566,12 +603,23 @@ fn target_pet(window: &WebviewWindow, state: &PetState) -> Option<PetId> {
 }
 
 /// 빠따 — 왼쪽 클릭 한 번에 펭귄이 한 번 날아간다 (R14).
+/// 왼쪽 클릭. `nx`/`ny`는 **맞은 지점**을 펭귄 기준으로 정규화한 값(-0.5~0.5)이다.
+///
+/// 모드와 무관하게 프론트는 늘 같은 값을 보내고, **빠따냐 채냐는 코어가 정한다** —
+/// 커맨드를 둘로 나누면 프론트가 핀볼 설정을 알아야 하고 그러면 설정이 웹뷰로
+/// 새어 나간다 (PRINCIPLE 4).
 #[tauri::command]
-pub fn pet_whack(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
+pub fn pet_whack(
+    nx: f64,
+    ny: f64,
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) {
     let Some(id) = caller_pet(&window) else { return };
     let world = world_or_flat(&app, id);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
-        pet.whack(now_ms(), &world);
+        pet.whack(now_ms(), &world, nx, ny);
     }
     flush(&app, id);
 }
@@ -731,6 +779,30 @@ pub fn pet_set_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
     }
 }
 
+/// 핀볼 모드를 켜고 끈다 (R8).
+///
+/// **살아 있는 전 마리에 즉시 건다.** 앱 전역 설정이라 마리마다 다를 이유가 없고,
+/// 다시 띄워야 반영되면 설정이 고장 난 것으로 읽힌다. 저장은 웹뷰가 담당한다
+/// (`pet_set_enabled`와 같은 방식) — 다음에 태어나는 펭귄은 저장된 값을 읽는다.
+#[tauri::command]
+pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) {
+    let ids = {
+        let mut pets = state.pets.lock().unwrap();
+        let ids = pets.ids();
+        for id in &ids {
+            if let Some(pet) = pets.get_mut(*id) {
+                pet.set_pinball(on);
+            }
+        }
+        ids
+    };
+    // 겉모습(커서)이 달라졌으니 곧바로 알린다 — 다음 틱을 기다리면 졸고 있는
+    // 펭귄은 최대 0.5초 뒤에야 바뀐다
+    for id in ids {
+        flush(&app, id);
+    }
+}
+
 /// 웹뷰가 처음 뜰 때 현재 상태를 한 번 받아 간다 (첫 틱을 기다리지 않게).
 #[tauri::command]
 pub fn pet_get_state(window: WebviewWindow, state: State<'_, PetState>) -> Option<Snapshot> {
@@ -775,6 +847,7 @@ pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle
         .add(now, now, &world, start_x)
         .ok_or_else(|| format!("펭귄은 {MAX_PETS}마리까지예요"))?;
 
+    apply_saved_settings(&app, id);
     let at = window_origin(start_x, bounds.floor_y);
     if let Err(err) = create_pet_window(&app, id, at) {
         // 창을 못 만들면 상태에만 남은 유령이 된다 — 되돌린다
@@ -1087,24 +1160,49 @@ mod tests {
 
     #[test]
     fn 겉모습이_그대로면_다시_알리지_않는다() {
-        let look = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0);
+        let look = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, false);
         assert!(!should_notify(Some(look), look));
         assert!(should_notify(None, look), "처음에는 알려야 한다");
+    }
+
+    #[test]
+    fn 겉모습_비교에_핀볼이_들어간다() {
+        // 핀볼 토글은 **동작을 하나도 바꾸지 않는다** — 커서 모양만 달라진다.
+        // `Look`에서 빠뜨리면 그 전이가 웹뷰에 영영 도달하지 않아, 켜도 커서가
+        // 그대로다(조용한 실패).
+        let 꺼짐 = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, false);
+        let 켜짐 = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, true);
+        assert!(should_notify(Some(꺼짐), 켜짐));
+    }
+
+    #[test]
+    fn 핀볼_설정이_없으면_꺼짐이다() {
+        // **`enabled`와 반대 방향의 기본값이다.** 새 모드는 사용자가 켜기
+        // 전에는 아무것도 바꾸지 않아야 한다 — 뒤집히면 착지 4단계가 통째로
+        // 사라진 채로 배포된다.
+        assert!(!pinball_from(None));
+        assert!(!pinball_from(Some(&serde_json::json!({}))));
+        assert!(!pinball_from(Some(&serde_json::json!({ "enabled": true, "count": 3 }))));
+        assert!(
+            !pinball_from(Some(&serde_json::json!({ "pinball": "true" }))),
+            "문자열은 켜짐으로 읽지 않는다"
+        );
+        assert!(pinball_from(Some(&serde_json::json!({ "pinball": true }))));
     }
 
     #[test]
     fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
         // 헤엄 중 오름→내림은 동작도 좌우 방향도 그대로다. 이걸 놓치면
         // 몸 기울기가 영영 갱신되지 않는다
-        let up = (Behavior::Swim, Facing::Right, Vertical::Up, true, None, 0);
-        let down = (Behavior::Swim, Facing::Right, Vertical::Down, true, None, 0);
+        let up = (Behavior::Swim, Facing::Right, Vertical::Up, true, None, 0, false);
+        let down = (Behavior::Swim, Facing::Right, Vertical::Down, true, None, 0, false);
         assert!(should_notify(Some(up), down));
     }
 
     #[test]
     fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
-        let right = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0);
-        let left = (Behavior::Walk, Facing::Left, Vertical::Level, false, None, 0);
+        let right = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, false);
+        let left = (Behavior::Walk, Facing::Left, Vertical::Level, false, None, 0, false);
         assert!(should_notify(Some(right), left));
     }
 
@@ -1112,8 +1210,8 @@ mod tests {
     fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
         // 공중에서 클릭하면 동작·방향은 그대로인 채 air만 달라지는 순간이 있다.
         // 놓치면 그림자가 공중에 떠 있는 채로 남는다
-        let ground = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, false, None, 0);
-        let air = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, true, None, 0);
+        let ground = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, false, None, 0, false);
+        let air = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, true, None, 0, false);
         assert!(should_notify(Some(ground), air));
     }
 
@@ -1126,6 +1224,7 @@ mod tests {
             false,
             None,
             0,
+            false,
         );
         let b = (
             Behavior::Idle { idle: IdleKind::Shake },
@@ -1134,6 +1233,7 @@ mod tests {
             false,
             None,
             0,
+            false,
         );
         assert!(should_notify(Some(a), b));
     }

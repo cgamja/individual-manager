@@ -9,6 +9,7 @@ import {
   getPetSummary,
   removePet,
   setPetEnabled,
+  setPetPinball,
   slidePet,
   squawkPet,
   freakoutPet,
@@ -59,6 +60,7 @@ function App() {
   const [saveFailed, setSaveFailed] = useState(false);
   const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
   const [soundEnabled, setSoundEnabledState] = useState(DEFAULT_PET_SETTINGS.sound);
+  const [pinballEnabled, setPinballEnabledState] = useState(DEFAULT_PET_SETTINGS.pinball);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
   /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
   const [petSummary, setPetSummary] = useState<PetSummary>({ count: 1, max: 8, focused: null });
@@ -71,6 +73,7 @@ function App() {
       if (!cancelled) {
         setPetEnabledState(savedPet.enabled);
         setSoundEnabledState(savedPet.sound);
+        setPinballEnabledState(savedPet.pinball);
       }
       const savedTaunts = await loadTaunts().catch(() => []);
       if (!cancelled) setTaunts(savedTaunts);
@@ -137,6 +140,28 @@ function App() {
     }
   }, []);
 
+  /** 핀볼 on/off — **거는 것과 저장하는 것 둘 다 한다.** 거는 쪽은 지금 떠 있는
+   * 펭귄들에게, 저장은 다음에 태어날 펭귄을 위해. 어느 한쪽이 실패하면 표시를
+   * 되돌린다 — 켜졌다고 보이는데 안 튀는 상태를 만들지 않게 (`handlePetEnabledChange`와
+   * 같은 규칙이다). */
+  const handlePinballEnabledChange = useCallback(async (next: boolean) => {
+    setPinballEnabledState(next);
+    try {
+      await setPetPinball(next);
+    } catch (err) {
+      console.error("핀볼 모드 변경 실패:", err);
+      setPinballEnabledState(!next);
+      return;
+    }
+    try {
+      await savePetSettings({ pinball: next });
+    } catch (err) {
+      console.error("핀볼 설정 저장 실패:", err);
+      await setPetPinball(!next).catch(() => {});
+      setPinballEnabledState(!next);
+    }
+  }, []);
+
   /** 펭귄 추가·삭제 — 결과를 낙관적으로 그리지 않고 **다시 읽는다.** 상한이나
    * 마지막 한 마리에 걸려 거부될 수 있고, 그때 화면만 늘어나면 거짓말이 된다. */
   const refreshPets = useCallback(async () => {
@@ -187,6 +212,8 @@ function App() {
         onPetEnabledChange={(next) => void handlePetEnabledChange(next)}
         soundEnabled={soundEnabled}
         onSoundEnabledChange={(next) => void handleSoundEnabledChange(next)}
+        pinballEnabled={pinballEnabled}
+        onPinballEnabledChange={(next) => void handlePinballEnabledChange(next)}
       />
       {saveFailed && (
         <p className="notif-hint" role="status">

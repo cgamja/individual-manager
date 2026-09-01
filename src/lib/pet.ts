@@ -61,6 +61,8 @@ export interface PetSnapshot {
   speech: Speech | null;
   /** 빠따를 맞은 누적 횟수. 늘어날 때마다 방망이를 한 번 휘두른다. */
   whack_seq: number;
+  /** 핀볼 모드인가. 커서를 채로 바꾸는 데 쓴다. */
+  pinball: boolean;
   behavior: Behavior;
 }
 
@@ -224,7 +226,16 @@ export const squawkPet = (): Promise<void> => invoke("pet_squawk");
 export const freakoutPet = (): Promise<void> => invoke("pet_freakout");
 
 /** 빠따 — 왼쪽 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로). */
-export const whackPet = (): Promise<void> => invoke("pet_whack");
+/**
+ * 왼쪽 클릭을 코어에 넘긴다. `nx`/`ny`는 **맞은 지점**을 펭귄 기준으로
+ * 정규화한 값(-0.5~0.5)이다.
+ *
+ * 평소에는 코어가 이 값을 쓰지 않지만(제자리에서 방망이를 휘두른다), 핀볼
+ * 모드에서는 이게 채로 어디를 쳤는지가 된다. **모드를 여기서 보지 않는다** —
+ * 빠따냐 채냐는 코어가 정한다.
+ */
+export const whackPet = (nx: number, ny: number): Promise<void> =>
+  invoke("pet_whack", { nx, ny });
 
 /** 오른쪽 클릭 — 펭귄 옆에서 타이머·설정 창을 연다. 왼쪽은 빠따가 가져갔다. */
 export const openPetPopover = (): Promise<void> => invoke("pet_open_popover");
@@ -272,6 +283,13 @@ export const throwVelocity = (
 /** 펭귄을 켜고 끈다 (R8). 끄면 창이 닫힌다. */
 export const setPetEnabled = (enabled: boolean): Promise<void> =>
   invoke("pet_set_enabled", { enabled });
+
+/**
+ * 핀볼 모드를 켜고 끈다. **살아 있는 전 마리에 즉시 걸린다** — 앱 전역
+ * 설정이라 마리마다 다를 이유가 없다. 저장은 `savePetSettings`가 따로 한다.
+ */
+export const setPetPinball = (on: boolean): Promise<void> =>
+  invoke("pet_set_pinball", { on });
 
 /**
  * 자기 창의 펭귄 상태만 구독한다.

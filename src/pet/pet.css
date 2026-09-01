@@ -106,6 +106,27 @@ body,
     grab;
 }
 
+/* **핀볼 중에는 창 전체가 방망이다.**
+ *
+ * `.penguin`에만 걸면 창의 여백(펭귄 둘레)에서 커서가 화살표로 되돌아온다 —
+ * 창은 244×220인데 펭귄은 140×140이라, 다가가는 동안 방망이가 한 번 끊긴다.
+ * 판(`field.css`)과 이어 붙어 있어야 "계속 방망이를 들고 있다"로 읽힌다.
+ *
+ * 클래스는 웹뷰가 스냅샷의 `pinball`을 보고 `body`에 건다 (`PetApp`). */
+body.pg-pinball-mode {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg transform='rotate(55 10 30)'%3E%3Cpath d='M10 30 L17 23' stroke='%233a2a1a' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M15 25 C20 20 25 14 29 9 C31.5 6.5 34 9 31.5 11.5 C27 17 21 22 17 25 Z' fill='%23d59a55' stroke='%236b4520' stroke-width='2' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E")
+      10 30,
+    grab;
+}
+
+body.pg-pinball-mode:active {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg transform='rotate(-40 10 30)'%3E%3Cpath d='M10 30 L17 23' stroke='%233a2a1a' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M15 25 C20 20 25 14 29 9 C31.5 6.5 34 9 31.5 11.5 C27 17 21 22 17 25 Z' fill='%23d59a55' stroke='%236b4520' stroke-width='2' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E")
+      10 30,
+    grab;
+}
+
 
 /* 뒤에 깔린 도형 한 벌을 통째로 한 색으로 칠하고 조금 부풀린다.
  * 부풀리기는 stroke로 한다 — 도형을 키우면 부위마다 축이 어긋난다. */

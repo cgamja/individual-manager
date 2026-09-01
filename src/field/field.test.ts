@@ -59,6 +59,10 @@ describe("핀볼 판", () => {
     // **저장도 해야 한다** — 안 하면 다음 실행에 다시 켜진 채로 뜬다
     const saved = calls.find((c) => c.cmd === "plugin:store|set");
     expect(saved?.args.value).toMatchObject({ pinball: false });
+
+    // **저장이 커맨드보다 먼저다.** 뒤집으면 판 창이 닫히는 순간 설정 창이
+    // 저장소를 다시 읽는데 저장이 아직 안 끝나 있어 체크가 도로 켜진다
+    expect(calls.indexOf(saved!)).toBeLessThan(calls.indexOf(off!));
   });
 
   it("다른_키는_아무것도_안_한다", async () => {

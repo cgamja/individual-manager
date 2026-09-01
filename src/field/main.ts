@@ -17,10 +17,15 @@ import "./field.css";
 /** 핀볼을 끈다 — **거는 것과 저장을 둘 다** 한다.
  *
  * 저장을 빠뜨리면 다음 실행에 다시 켜진 채로 뜬다. 설정 창의 토글이 둘 다 하는
- * 것과 같은 규칙이다. */
+ * 것과 같은 규칙이다.
+ *
+ * **저장이 먼저다.** 순서를 뒤집으면 경쟁이 생긴다: `setPetPinball`이 판 창을
+ * 닫는 순간 설정 창이 다시 보이면서 저장소를 다시 읽는데, 그때 저장이 아직
+ * 안 끝나 있어서 **켜짐을 읽고 체크를 도로 켠다.** 실제로 겪었다 —
+ * 알림은 제대로 도착하는데도 체크가 안 풀렸다. */
 async function turnOff(): Promise<void> {
-  await setPetPinball(false).catch(() => {});
   await savePetSettings({ pinball: false }).catch(() => {});
+  await setPetPinball(false).catch(() => {});
 }
 
 /**

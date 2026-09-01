@@ -114,7 +114,13 @@ function App() {
     // 바뀌는데 그때는 `visibilitychange`가 안 뜬다 — 체크가 켜진 채로 남아
     // 껐다 켜야 실제로 켜지는 꼴이 된다.
     let unlisten: UnlistenFn | undefined;
-    void onPetSettings(({ pinball }) => setPinballEnabledState(pinball))
+    void onPetSettings(({ pinball }) => {
+      setPinballEnabledState(pinball);
+      // 설정이 밖에서 바뀌었으면 마릿수·우클릭 대상도 같이 어긋났을 수 있다
+      getPetSummary()
+        .then(setPetSummary)
+        .catch(() => {});
+    })
       .then((off) => {
         if (cancelled) off();
         else unlisten = off;

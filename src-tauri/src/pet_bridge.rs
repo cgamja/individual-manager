@@ -566,12 +566,23 @@ fn target_pet(window: &WebviewWindow, state: &PetState) -> Option<PetId> {
 }
 
 /// 빠따 — 왼쪽 클릭 한 번에 펭귄이 한 번 날아간다 (R14).
+/// 왼쪽 클릭. `nx`/`ny`는 **맞은 지점**을 펭귄 기준으로 정규화한 값(-0.5~0.5)이다.
+///
+/// 모드와 무관하게 프론트는 늘 같은 값을 보내고, **빠따냐 채냐는 코어가 정한다** —
+/// 커맨드를 둘로 나누면 프론트가 핀볼 설정을 알아야 하고 그러면 설정이 웹뷰로
+/// 새어 나간다 (PRINCIPLE 4).
 #[tauri::command]
-pub fn pet_whack(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
+pub fn pet_whack(
+    nx: f64,
+    ny: f64,
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) {
     let Some(id) = caller_pet(&window) else { return };
     let world = world_or_flat(&app, id);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
-        pet.whack(now_ms(), &world);
+        pet.whack(now_ms(), &world, nx, ny);
     }
     flush(&app, id);
 }

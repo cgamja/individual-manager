@@ -145,6 +145,13 @@ const FLOOR_BOUNCE_DAMPING: f64 = 0.45;
 /// 0.95면 35번). **1.0으로 두면 안 된다** — 영원히 튀어서 펭귄이 다시는 걷지
 /// 않고 20Hz 틱이 영영 안 쉰다.
 const PINBALL_DAMPING: f64 = 0.92;
+/// **핀볼 모드에서 채로 쳤을 때의 속도** — 초당 세계를 몇 번 가로지르는가.
+/// 던지기 상한(`THROW_MAX_WORLDS_PER_SEC`)과 같은 근거다: 절대 px/s로 두면
+/// 좁은 화면에서 눈 깜짝할 새 가로지르고 넓은 화면에서는 답답하다.
+///
+/// 던지기 상한보다 얌전하다 — 채로 툭 치는 것이 팔로 뿌리는 것보다 세면 이상하다.
+const PINBALL_HIT_WORLDS_PER_SEC: f64 = 0.55;
+const _: () = assert!(PINBALL_HIT_WORLDS_PER_SEC < THROW_MAX_WORLDS_PER_SEC);
 const _: () = assert!(PINBALL_DAMPING < 1.0);
 const _: () = assert!(PINBALL_DAMPING > BOUNCE_DAMPING);
 /// 마지막 자극(클릭·드래그) 이후 이만큼 지나면 졸기로 넘어간다.
@@ -1275,8 +1282,18 @@ impl Pet {
     /// 그 클릭에서 스윙을 건너뛰고 곧바로 터뜨린다 — 스윙 뒤로 미루면 연타
     /// 중에는 매 클릭이 스윙을 다시 걸기 때문에 **연타를 멈춘 뒤에야** 터져서
     /// 자기 손짓과 연결이 안 된다.
-    pub fn whack(&mut self, now_ms: u64, _world: &World) {
+    ///
+    /// **핀볼 모드에서는 채다.** 펭귄이 공이 되고 커서가 채가 되어, 맞은
+    /// 지점(`nx`/`ny`, 펭귄 기준 -0.5~0.5)의 반대 방향으로 날아간다.
+    /// 커맨드를 둘로 나누지 않은 이유는 **빠따냐 채냐를 코어가 정해야**
+    /// 하기 때문이다 — 프론트가 모드를 알면 설정이 웹뷰로 새어 나간다
+    /// (PRINCIPLE 4).
+    pub fn whack(&mut self, now_ms: u64, world: &World, nx: f64, ny: f64) {
         self.last_stimulus_ms = now_ms;
+        if self.pinball {
+            self.flip(now_ms, world, nx, ny);
+            return;
+        }
         self.whack_seq += 1;
         // 제자리에서 맞는다 — 속도를 주지 않는다
         self.vx = 0.0;
@@ -1314,6 +1331,33 @@ impl Pet {
         }
         // 치켜드는 단계를 두지 않는다 — 클릭하면 바로 휘두른다
         self.enter(Behavior::Swing, now_ms + SWING_MS);
+    }
+
+    /// 채로 후려친다 (핀볼 모드).
+    ///
+    /// **방향은 맞은 지점에서 펭귄 중심을 잇는 벡터다.** 아래를 치면 위로,
+    /// 왼쪽을 치면 오른쪽으로 간다. 정확히 중심을 치면 길이가 0이라 그대로
+    /// 나누면 NaN이 되고 펭귄이 좌표계 밖으로 사라지므로, 그때는 **바로 위**로 띄운다.
+    ///
+    /// **`whack_seq`를 올리지 않는다.** 그 값이 늘면 웹뷰가 방망이를 휘두르는데,
+    /// 핀볼에서 방망이는 펭귄이 아니라 커서가 들고 있다.
+    ///
+    /// **연타 카운터도 세지 않는다.** 핀볼에서 스무 번 치는 것은 정상적인
+    /// 랠리고, 거기서 제자리에 멈춰 빽빽대면 판이 끊긴다.
+    fn flip(&mut self, now_ms: u64, world: &World, nx: f64, ny: f64) {
+        let len = (nx * nx + ny * ny).sqrt();
+        let (dx, dy) = if len > f64::EPSILON {
+            (-nx / len, -ny / len)
+        } else {
+            (0.0, -1.0)
+        };
+        let speed = (world.width() * PINBALL_HIT_WORLDS_PER_SEC).max(THROW_MIN_SPEED);
+        self.vx = dx * speed;
+        self.vy = dy * speed;
+        if self.vx.abs() > 1.0 {
+            self.facing = if self.vx > 0.0 { Facing::Right } else { Facing::Left };
+        }
+        self.enter(Behavior::Thrown, now_ms);
     }
 
     /// 사용자가 시켜서 빽빽거린다 (설정 창의 "빽빽거리기").
@@ -1975,7 +2019,7 @@ mod tests {
     #[test]
     fn 굴러떨어지는_중에_클릭하면_방망이를_휘두른다() {
         let mut p = 굴러떨어지는_펭귄();
-        p.whack(300, &world());
+        p.whack(300, &world(), 0.0, 0.0);
         assert_eq!(p.behavior(), Behavior::Swing);
     }
 
@@ -2191,6 +2235,92 @@ mod tests {
             핀볼 > 평소 * 1.5,
             "핀볼({핀볼:.0})이 평소({평소:.0})보다 훨씬 덜 죽어야 한다"
         );
+    }
+
+    /// 핀볼 펭귄을 한 지점에서 친다. 반환은 그 직후 스냅샷.
+    fn 쳐본다(nx: f64, ny: f64) -> (Pet, Snapshot) {
+        let w = world();
+        let mut p = 핀볼_펫();
+        p.step(0, &w);
+        p.whack(1_000, &w, nx, ny);
+        let s = p.snapshot();
+        (p, s)
+    }
+
+    #[test]
+    fn 핀볼에서_아래를_치면_위로_날아간다() {
+        // 채는 맞은 지점에서 **중심 쪽으로** 민다 — 아래를 치면 위로 뜬다.
+        let (p, s) = 쳐본다(0.0, 0.4);
+        assert_eq!(s.behavior, Behavior::Thrown, "쳤으면 날아가야 한다");
+        assert!(p.vy < 0.0, "아래를 쳤는데 위로 안 간다 (vy={})", p.vy);
+    }
+
+    #[test]
+    fn 핀볼에서_왼쪽을_치면_오른쪽으로_간다() {
+        let (p, _) = 쳐본다(-0.4, 0.0);
+        assert!(p.vx > 0.0, "왼쪽을 쳤는데 오른쪽으로 안 간다 (vx={})", p.vx);
+        assert_eq!(p.snapshot().facing, Facing::Right, "가는 쪽을 봐야 한다");
+    }
+
+    #[test]
+    fn 핀볼에서_정중앙을_치면_위로_뜬다() {
+        // 방향 벡터의 길이가 0이다 — 0으로 나누면 NaN이 되어 펭귄이 사라진다.
+        let (p, s) = 쳐본다(0.0, 0.0);
+        assert_eq!(s.behavior, Behavior::Thrown);
+        assert!(p.vy < 0.0, "정중앙을 쳤는데 안 뜬다 (vy={})", p.vy);
+        assert!(p.vx.is_finite() && p.vy.is_finite(), "속도가 NaN이다");
+    }
+
+    #[test]
+    fn 핀볼에서_치는_세기는_세계_폭을_따른다() {
+        // 던지기 상한과 같은 근거다(KTD7) — 좁은 화면에서 눈 깜짝할 새
+        // 가로지르면 안 된다.
+        let 세기 = |폭: f64| {
+            let w = World::single(Bounds { left: 0.0, right: 폭, top: 0.0, floor_y: 800.0 });
+            let mut p = Pet::new(42, 0, &w);
+            p.set_pinball(true);
+            p.step(0, &w);
+            p.whack(1_000, &w, 0.0, 0.4);
+            p.vy.abs()
+        };
+        assert!(세기(2_000.0) > 세기(500.0) * 2.0, "세계가 넓으면 더 세게 쳐야 한다");
+    }
+
+    #[test]
+    fn 핀볼에서는_방망이를_휘두르지_않는다() {
+        // 핀볼에서 방망이는 펭귄이 아니라 **커서**가 들고 있다.
+        let w = world();
+        let mut p = 핀볼_펫();
+        p.step(0, &w);
+        let 전 = p.snapshot().whack_seq;
+        p.whack(1_000, &w, 0.0, 0.4);
+        assert_eq!(p.snapshot().whack_seq, 전, "핀볼인데 스윙 횟수가 늘었다");
+    }
+
+    #[test]
+    fn 핀볼에서_스무_번_쳐도_빽빽대지_않는다() {
+        // 핀볼에서 연타는 **정상적인 랠리**다. 제자리에 멈춰 화를 내면 판이 끊긴다.
+        let w = world();
+        let mut p = 핀볼_펫();
+        p.step(0, &w);
+        let mut t = 1_000;
+        for _ in 0..(SQUAWK_WHACK_COUNT + 5) {
+            p.whack(t, &w, 0.0, 0.4);
+            assert_ne!(p.behavior(), Behavior::Squawk, "핀볼인데 빽빽댄다");
+            t += 300;
+        }
+    }
+
+    #[test]
+    fn 핀볼을_끄면_클릭이_빠따다() {
+        // 좌표를 줘도 모드가 꺼져 있으면 제자리에서 휘두른다 (회귀 가드).
+        let w = world();
+        let mut p = pet();
+        p.step(0, &w);
+        p.whack(1_000, &w, -0.4, 0.4);
+        assert_eq!(p.behavior(), Behavior::Swing, "빠따가 아니다");
+        assert_eq!((p.vx, p.vy), (0.0, 0.0), "빠따는 날아가지 않는다");
+        assert_eq!(p.snapshot().whack_seq, 1, "스윙 횟수가 안 늘었다");
     }
 
     #[test]
@@ -2523,7 +2653,7 @@ mod tests {
     fn 얼음낚시_중에_클릭하면_방망이를_휘두른다() {
         let mut p = pet();
         p.enter_ice_fishing(0);
-        p.whack(300, &world());
+        p.whack(300, &world(), 0.0, 0.0);
         assert_eq!(p.behavior(), Behavior::Swing);
     }
 
@@ -2886,7 +3016,7 @@ mod tests {
     #[test]
     fn 미끄러지는_중에_클릭하면_방망이를_휘두른다() {
         let (mut p, t) = 미끄러지는_펭귄();
-        p.whack(t + 100, &world());
+        p.whack(t + 100, &world(), 0.0, 0.0);
         assert_eq!(p.behavior(), Behavior::Swing);
     }
 
@@ -3027,7 +3157,7 @@ mod tests {
         let mut p = pet();
         p.step(1_000, &world());
         let before = p.snapshot();
-        p.whack(1_000, &world());
+        p.whack(1_000, &world(), 0.0, 0.0);
         assert_eq!(p.behavior(), Behavior::Swing, "클릭하면 바로 휘두른다");
 
         let mut t = 1_000;
@@ -3044,7 +3174,7 @@ mod tests {
     fn 휘두르고_나면_약을_올린다() {
         let mut p = pet();
         p.step(1_000, &world());
-        p.whack(1_000, &world());
+        p.whack(1_000, &world(), 0.0, 0.0);
         assert_eq!(p.behavior(), Behavior::Swing, "클릭 즉시 휘두른다");
         let after = p.step(1_000 + SWING_MS + 20, &world());
         assert!(
@@ -3060,7 +3190,7 @@ mod tests {
         let mut p = pet();
         assert_eq!(p.snapshot().whack_seq, 0);
         for i in 1..=5u64 {
-            p.whack(1_000 + i * 100, &world());
+            p.whack(1_000 + i * 100, &world(), 0.0, 0.0);
             assert_eq!(p.snapshot().whack_seq, i, "{i}번째 빠따가 안 세어졌다");
         }
     }
@@ -3084,7 +3214,7 @@ mod tests {
         assert_eq!(p.behavior(), Behavior::Thrown, "아직 나는 중이어야 한다");
         assert!(p.snapshot().air, "공중 상태여야 한다");
 
-        p.whack(t, &world());
+        p.whack(t, &world(), 0.0, 0.0);
         let hit_y = p.snapshot().y;
         assert_eq!(p.behavior(), Behavior::Swing);
         t += 50;
@@ -3105,7 +3235,7 @@ mod tests {
             t += 250;
         }
         assert_eq!(p.behavior(), Behavior::Sleep);
-        p.whack(t, &world());
+        p.whack(t, &world(), 0.0, 0.0);
         assert_eq!(p.behavior(), Behavior::Swing, "클릭 즉시 휘두른다");
     }
 
@@ -3113,10 +3243,10 @@ mod tests {
     fn 휘두른다고_말하지는_않는다() {
         // 말은 클릭이 아니라 시간에 맞춰 나온다 — 때릴 때마다 떠들면 시끄럽다
         let mut p = pet();
-        p.whack(1_000, &world());
+        p.whack(1_000, &world(), 0.0, 0.0);
         assert!(p.snapshot().speech.is_none(), "클릭으로 말이 나오면 안 된다");
-        p.whack(1_100, &world());
-        p.whack(1_200, &world());
+        p.whack(1_100, &world(), 0.0, 0.0);
+        p.whack(1_200, &world(), 0.0, 0.0);
         assert!(p.snapshot().speech.is_none(), "연타해도 마찬가지다");
     }
 
@@ -3127,7 +3257,7 @@ mod tests {
     /// 지나지 않는 경로를 테스트하게 된다.
     fn 클릭(p: &mut Pet, now_ms: u64) {
         p.drag_start(now_ms);
-        p.whack(now_ms, &world());
+        p.whack(now_ms, &world(), 0.0, 0.0);
     }
 
     /// 연타로 빽빽거리게 만든 펭귄과 터진 시각.
@@ -3255,7 +3385,7 @@ mod tests {
         let mut t = 1_100;
         for _ in 0..SQUAWK_WHACK_COUNT {
             t += 150;
-            p.whack(t, &world());
+            p.whack(t, &world(), 0.0, 0.0);
         }
         assert_eq!(p.behavior(), Behavior::Squawk, "공중에서도 터진다");
         assert!(p.snapshot().air, "고도를 물려받아야 한다");

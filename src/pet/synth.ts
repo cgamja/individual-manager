@@ -166,10 +166,11 @@ export const playSquawk = (
 };
 
 /**
- * 퐁 — 물고기를 잡았다. 물방울 하강 스윕 + 작은 반짝. ≈250ms.
+ * 첨벙 — 물고기를 꺼내는 물소리. 노이즈 스플래시 + 물방울 하나. ≈350ms.
  *
- * **다른 소리보다 작게 잡는다** — 보상이지 알림이 아니다. 자격 규칙의 예외로
- * 들어온 소리라(플랜 018 KTD1), 커지는 순간 예외의 근거가 무너진다.
+ * 처음엔 사인 "퐁"이었는데 물이 아니라 알림음으로 들렸다(사용자 피드백,
+ * 2026-09-01) — 물소리의 정체는 음이 아니라 **노이즈**다. 퍽과 같은 노이즈
+ * 버퍼를 밴드패스로 물길처럼 쓸어내린다.
  */
 export const playCatch = (
   ctx: BaseAudioContext,
@@ -179,30 +180,35 @@ export const playCatch = (
   const r = ratio(semitones);
   const t0 = ctx.currentTime;
 
-  // 물방울 "퐁" — 사인이 위에서 아래로 떨어진다. **게인이 퍽·빽보다 커
-  // 보이는 것은 착시다**: 저역 사인은 같은 게인에서 훨씬 작게 들리고(등청감),
-  // 필터 감쇠도 없다. 처음 0.6으로 잡았더니 실청에서 거의 안 들렸다
-  const plop = ctx.createOscillator();
-  plop.type = "sine";
-  plop.frequency.setValueAtTime(520 * r, t0);
-  plop.frequency.exponentialRampToValueAtTime(170 * r, t0 + 0.12);
-  const pg = ctx.createGain();
-  envelope(pg, t0, 1.4, 0.005, 0.12);
-  plop.connect(pg);
-  pg.connect(out);
-  plop.start(t0);
-  plop.stop(t0 + 0.14);
-
-  // 반짝 — 높은 블립 하나, 살짝 늦게
-  const spark = ctx.createOscillator();
-  spark.type = "sine";
-  spark.frequency.setValueAtTime(2100 * r, t0 + 0.11);
+  // 첨벙 — 노이즈를 밴드패스에 넣고 중심주파수를 아래로 쓸어내린다
+  // (수면을 뚫고 나오는 순간 → 물이 가라앉는 순간)
+  const splash = ctx.createBufferSource();
+  splash.buffer = noiseBuffer(ctx, 0.3);
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.Q.value = 0.9;
+  bp.frequency.setValueAtTime(2600 * r, t0);
+  bp.frequency.exponentialRampToValueAtTime(700 * r, t0 + 0.26);
   const sg = ctx.createGain();
-  envelope(sg, t0 + 0.11, 0.8, 0.005, 0.13);
-  spark.connect(sg);
+  envelope(sg, t0, 1.1, 0.01, 0.26);
+  splash.connect(bp);
+  bp.connect(sg);
   sg.connect(out);
-  spark.start(t0 + 0.11);
-  spark.stop(t0 + 0.26);
+  splash.start(t0);
+  splash.stop(t0 + 0.3);
+
+  // 물방울 "뽁" — 떨어진 물이 튀어 오른다. 물방울은 내려가는 음이 아니라
+  // **올라가는 음**이다 (기포가 좁아지며 음이 솟는다)
+  const drip = ctx.createOscillator();
+  drip.type = "sine";
+  drip.frequency.setValueAtTime(420 * r, t0 + 0.22);
+  drip.frequency.exponentialRampToValueAtTime(1150 * r, t0 + 0.3);
+  const dg = ctx.createGain();
+  envelope(dg, t0 + 0.22, 0.9, 0.008, 0.11);
+  drip.connect(dg);
+  dg.connect(out);
+  drip.start(t0 + 0.22);
+  drip.stop(t0 + 0.36);
 };
 
 /** 광란 — 빽을 짧게 줄여 여섯 발, 음높이를 계단식으로 올리며. ≈700ms. */

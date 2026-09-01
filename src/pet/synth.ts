@@ -166,7 +166,7 @@ export const playSquawk = (
 };
 
 /**
- * 첨벙 — 물고기를 꺼내는 물소리. 꾸르륵대는 노이즈 한 겹. ≈400ms.
+ * 첨벙 — 물고기를 꺼내는 물소리. 꾸르륵대는 노이즈 한 겹. ≈480ms.
  *
  * 처음엔 사인 "퐁"이었는데 물이 아니라 알림음으로 들렸다(사용자 피드백,
  * 2026-09-01) — 물소리의 정체는 음이 아니라 **노이즈**다. 퍽과 같은 노이즈
@@ -183,29 +183,31 @@ export const playCatch = (
   // 물이 갈라지는 "촤아" — 필터를 LFO로 흔들어 꾸르륵대는 물의 질감을
   // 만든다 (고정 필터면 그냥 바람 소리다). 고역 부딪힘("촤")도 앞에 얹어
   // 봤지만 뺐다 — 이 한 겹이 제일 물답게 들렸다 (2026-09-01 사용자 피드백)
+  // 부드럽게: 어택을 길게(훅 하고 차오르게), Q를 낮춰 쏘는 공명을 빼고,
+  // 시작 주파수와 흔들림 폭도 내렸다 (2026-09-01 사용자 피드백)
   const body = ctx.createBufferSource();
-  body.buffer = noiseBuffer(ctx, 0.4);
+  body.buffer = noiseBuffer(ctx, 0.5);
   const bp = ctx.createBiquadFilter();
   bp.type = "bandpass";
-  bp.Q.value = 1.3;
-  bp.frequency.setValueAtTime(1600 * r, t0);
-  bp.frequency.exponentialRampToValueAtTime(450 * r, t0 + 0.36);
+  bp.Q.value = 0.9;
+  bp.frequency.setValueAtTime(1200 * r, t0);
+  bp.frequency.exponentialRampToValueAtTime(400 * r, t0 + 0.44);
   const wob = ctx.createOscillator();
   wob.type = "sine";
-  wob.frequency.value = 13;
+  wob.frequency.value = 10;
   const wobGain = ctx.createGain();
-  wobGain.gain.value = 280 * r;
+  wobGain.gain.value = 170 * r;
   wob.connect(wobGain);
   wobGain.connect(bp.frequency);
   const bg = ctx.createGain();
-  envelope(bg, t0, 1.0, 0.02, 0.34);
+  envelope(bg, t0, 0.85, 0.07, 0.4);
   body.connect(bp);
   bp.connect(bg);
   bg.connect(out);
   body.start(t0);
-  body.stop(t0 + 0.4);
+  body.stop(t0 + 0.5);
   wob.start(t0);
-  wob.stop(t0 + 0.4);
+  wob.stop(t0 + 0.5);
 
   // 물방울("뽁뽁뽁")도 얹어 봤지만 뺐다 — 물이 아니라 효과음 장식으로
   // 들렸다 (2026-09-01 사용자 피드백). 첨벙은 이 한 겹이면 된다

@@ -152,9 +152,12 @@ const _: () = assert!(SLIDE_MS > TURN_MS);
 /// **N번에 한 번** 발작한다. `range((0, N-1)) == 0`이 문자 그대로 그 뜻이다.
 ///
 /// 천분율(얼음낚시)로는 이 등급을 표현할 수 없고, 백만분율은 값을 읽어도 빈도를
-/// 가늠할 수 없다. 걷기·유휴 한 사이클이 평균 4초쯤이므로 30,000 사이클 = **깨어
-/// 있는 33시간**이고, 하루 열 시간쯤 켜 둔다면 **사흘에 한 번꼴**이다
+/// 가늠할 수 없다.
+///
+/// **실측 기준 `pick_next`는 6.8초마다 불린다** — 30,000 사이클 = 깨어 있는
+/// **약 57시간**이고, 하루 열 시간쯤 켜 둔다면 **엿새에 한 번꼴**이다
 /// (`MOTIONS.md` 빈도 표의 "며칠에 한 번. 봤으면 운이 좋은 것").
+/// 처음에는 한 사이클을 4초로 잡아 33시간으로 적었는데, 그 4초가 틀렸다.
 const FREAKOUT_ONE_IN: u64 = 30_000;
 /// 한 판의 예산. 이 시간이 지나면 바닥으로 돌아가 숨을 고른다.
 const FREAKOUT_MS: (u64, u64) = (2_000, 4_000);
@@ -182,10 +185,14 @@ const _: () = assert!(FREAKOUT_MS.1 >= FREAKOUT_MS.0);
 
 /// 걷기·유휴가 끝났을 때 얼음낚시를 시작할 확률 (천분율).
 ///
-/// **백분율이 아니라 천분율인 이유**: 걷기·유휴 **한 사이클**이 평균 4초쯤이라
-/// 십 분에 한 번은 대략 0.7%다 (아래 `FISHING_SESSION_MS`의 "한 판"과는 다른
-/// 단위다 — 그쪽은 낚시 세션 전체다). `range((0, 99))`로는 최소가 1%라
-/// 이 등급을 표현할 수 없다.
+/// **백분율이 아니라 천분율인 이유**: `range((0, 99))`로는 최소가 1%라 이 등급을
+/// 표현할 수 없다. (아래 `FISHING_SESSION_MS`의 "한 판"과는 다른 단위다 —
+/// 그쪽은 낚시 세션 전체다.)
+///
+/// **실측은 16분에 한 번이다.** 이 값을 정할 때 "한 사이클 4초"로 계산해 십 분에
+/// 한 번으로 적었지만, `pick_next`가 실제로 불리는 간격은 **6.8초**다 — 걷기가
+/// 벽에 닿아 끝나면 `hit_wall`로 빠져 이 함수를 안 거치는 것이 컸다.
+/// 값은 그대로 두고 문서를 실측에 맞췄다 (`빈도_측정` 테스트로 다시 뜰 수 있다).
 /// 자주 나오면 "가끔 보여서 반가운" 동작이 아니라 기본 동작이 된다.
 const ICE_FISHING_PERMILLE: u64 = 7;
 
@@ -1897,6 +1904,55 @@ mod tests {
         let w = world();
         let mut p = Pet::new(seed, 0, &w);
         drive(&mut p, 100, 30 * 60_000, 100, &w)
+    }
+
+    #[test]
+    fn 빈도_등급이_순서대로다() {
+        // **모션이 늘어날수록 하나하나가 희석된다** — 등급이 조용히 뒤집히는 것을
+        // 막는 가드다 (`MOTIONS.md` "빈도 설계"). 절대값이 아니라 **순서**를 잰다:
+        // 값은 취향이라 바뀌지만 "기본 > 자주 > 가끔"은 등급의 정의 자체다.
+        //
+        // 실측 근거는 `빈도_측정`(`#[ignore]`)으로 다시 뜰 수 있다.
+        let mut 기본 = 0; // Walk·Idle
+        let mut 자주 = 0; // Swim
+        let mut 가끔 = 0; // IceFishing
+        for seed in 1u64..5 {
+            let 전체 = 삼십분(seed);
+            let mut 직전 = String::new();
+            for s in 전체 {
+                let 이름 = match s.behavior {
+                    Behavior::Walk | Behavior::Idle { .. } => "기본",
+                    Behavior::Swim => "자주",
+                    Behavior::IceFishing { .. } => "가끔",
+                    _ => "",
+                }
+                .to_string();
+                if !이름.is_empty() && 이름 != 직전 {
+                    match 이름.as_str() {
+                        "기본" => 기본 += 1,
+                        "자주" => 자주 += 1,
+                        _ => 가끔 += 1,
+                    }
+                }
+                직전 = 이름;
+            }
+        }
+        assert!(기본 > 자주, "기본({기본})이 자주({자주})보다 잦아야 한다");
+        assert!(자주 > 가끔, "자주({자주})가 가끔({가끔})보다 잦아야 한다");
+    }
+
+    #[test]
+    fn 희귀는_가끔보다_두_자릿수_드물다() {
+        // 발작은 시뮬레이션으로 재기엔 너무 드물어서(수십 시간) 상수로 비교한다.
+        // 얼음낚시는 `range((0,999)) < 7`이므로 사이클당 7/1000이다.
+        let 가끔 = ICE_FISHING_PERMILLE as f64 / 1_000.0;
+        let 희귀 = 1.0 / FREAKOUT_ONE_IN as f64;
+        assert!(
+            가끔 / 희귀 >= 100.0,
+            "발작(1/{})이 얼음낚시({}‰)보다 두 자릿수 드물지 않다",
+            FREAKOUT_ONE_IN,
+            ICE_FISHING_PERMILLE
+        );
     }
 
     #[test]
@@ -3838,6 +3894,64 @@ mod tests {
             s.x,
             BOUNDS.right
         );
+    }
+
+    #[test]
+    #[ignore]
+    fn 빈도_측정() {
+        // 등급이 체감상 구분되는지 재 본다 (TODO "빈도 설계 재조정").
+        // `cargo test --release 빈도_측정 -- --ignored --nocapture`
+        let w = world();
+        let 시간 = 4 * 60 * 60 * 1000u64; // 4시간
+        let 시드들 = [1u64, 7, 42, 99, 12345];
+        let mut 진입: std::collections::BTreeMap<String, u32> = Default::default();
+        let mut 틱: std::collections::BTreeMap<String, u32> = Default::default();
+        let mut 총틱 = 0u32;
+        let mut 출처: std::collections::BTreeMap<String, u32> = Default::default();
+        for seed in 시드들 {
+            let mut p = Pet::new(seed, 0, &w);
+            let mut 직전 = String::new();
+            let mut 직전전 = String::new();
+            let mut t = 0u64;
+            while t < 시간 {
+                t += 50;
+                let s = p.step(t, &w);
+                let 이름 = match s.behavior {
+                    Behavior::Idle { .. } => "Idle".to_string(),
+                    Behavior::Sassy { .. } => "Sassy".to_string(),
+                    Behavior::IceFishing { .. } => "IceFishing".to_string(),
+                    Behavior::Freakout { .. } => "Freakout".to_string(),
+                    other => format!("{other:?}"),
+                };
+                *틱.entry(이름.clone()).or_default() += 1;
+                총틱 += 1;
+                if 이름 != 직전 {
+                    *진입.entry(이름.clone()).or_default() += 1;
+                    if matches!(s.behavior, Behavior::Splat | Behavior::Sprawl | Behavior::Land) {
+                        *출처.entry(format!("{} ← {}", 이름, 직전전)).or_default() += 1;
+                    }
+                    직전전 = 직전.clone();
+                    직전 = 이름;
+                }
+            }
+        }
+        let 총_시간 = 시간 as f64 / 3_600_000.0 * 시드들.len() as f64;
+        println!("\n=== {총_시간:.0}시간 (시드 {}개 × 4시간) ===", 시드들.len());
+        println!("{:<12} {:>8} {:>12} {:>9}", "동작", "진입", "시간당", "화면비율");
+        let mut 줄: Vec<_> = 진입.iter().collect();
+        줄.sort_by_key(|(_, n)| std::cmp::Reverse(**n));
+        for (이름, n) in 줄 {
+            let 시간당 = *n as f64 / 총_시간;
+            let 간격 = if 시간당 > 0.0 { 3600.0 / 시간당 } else { f64::INFINITY };
+            let 비율 = *틱.get(이름).unwrap_or(&0) as f64 / 총틱 as f64 * 100.0;
+            println!("{이름:<12} {n:>8} {시간당:>9.1}/h {비율:>8.1}%   (평균 {간격:.0}초에 한 번)");
+        }
+        println!("\n--- 착지는 무엇 다음에 오나 ---");
+        let mut 줄2: Vec<_> = 출처.iter().collect();
+        줄2.sort_by_key(|(_, n)| std::cmp::Reverse(**n));
+        for (경로, n) in 줄2.iter().take(10) {
+            println!("{경로:<28} {n:>6}회  ({:.1}/h)", **n as f64 / 총_시간);
+        }
     }
 
     #[test]

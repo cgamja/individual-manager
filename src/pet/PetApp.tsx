@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Penguin } from "./Penguin";
-import { loadTaunts } from "../lib/settings";
+import { loadPetSettings, loadTaunts } from "../lib/settings";
+import { SoundPlayer, soundsFor } from "./sound";
 import {
   DRAG_THRESHOLD_PX,
   behaviorClass,
@@ -11,6 +13,7 @@ import {
   dragPetBy,
   endPetDrag,
   getPetState,
+  onPetSound,
   onPetState,
   openPetPopover,
   startPetDrag,
@@ -74,6 +77,35 @@ export function PetApp() {
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
   /** 사용자가 팝오버에서 고칠 수 있으므로 저장소가 원천이다. */
   const [taunts, setTaunts] = useState<readonly string[]>(DEFAULT_TAUNTS);
+  /** 이 창의 소리 전부 — 켜짐/꺼짐·쿨다운·컨텍스트 수명을 소유한다. */
+  const playerRef = useRef<SoundPlayer | null>(null);
+  /**
+   * 소리 판정용 직전 스냅샷. **`useEffect`로 `snapshot` 변화를 보면 안 된다** —
+   * React가 렌더를 배칭하면 중간 스냅샷이 통째로 스킵돼 소리가 샌다.
+   * `lastClassRef`가 되감기 판정을 같은 방식으로 하고 있다.
+   */
+  const prevSnapRef = useRef<PetSnapshot | null>(null);
+
+  useEffect(() => {
+    // 컨텍스트는 미리 만든다 — suspended여도 괜찮고, 제스처마다 깨운다 (KTD4).
+    // 라벨은 목소리의 시드다: 같은 펭귄은 껐다 켜도 같은 목소리다 (R10)
+    const player = new SoundPlayer(getCurrentWebviewWindow().label);
+    playerRef.current = player;
+    let unlisten: UnlistenFn | undefined;
+    let cancelled = false;
+    (async () => {
+      // 시작 값은 저장소에서 — 설정 창의 방송은 그 뒤의 변경만 실어 나른다
+      const settings = await loadPetSettings().catch(() => null);
+      if (!cancelled && settings) player.setEnabled(settings.sound);
+      unlisten = await onPetSound((on) => player.setEnabled(on));
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      player.close();
+      playerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
@@ -81,11 +113,21 @@ export function PetApp() {
     (async () => {
       // 첫 틱을 기다리지 않고 현재 상태부터 그린다
       const initial = await getPetState().catch(() => null);
-      if (!cancelled && initial) setSnapshot(initial);
+      if (!cancelled && initial) {
+        setSnapshot(initial);
+        // 첫 스냅샷은 소리 판정의 기준점으로만 쓴다 — `soundsFor`가 prev
+        // 없음(null)을 무음으로 치는 것과 같은 이유로, 여기서 재생하지 않는다
+        prevSnapRef.current = initial;
+      }
       const saved = await loadTaunts().catch(() => null);
       if (!cancelled && saved) setTaunts(saved);
       unlisten = await onPetState((next) => {
         setSnapshot(next);
+        // 소리는 여기(콜백 안)에서 판정한다 — 스냅샷을 하나도 흘리지 않는다
+        for (const name of soundsFor(prevSnapRef.current, next)) {
+          playerRef.current?.play(name, performance.now());
+        }
+        prevSnapRef.current = next;
         // 새 대사가 나올 때마다 목록을 다시 읽는다. 팝오버는 다른 웹뷰라
         // 여기서 직접 알 방법이 없고, 몇 초에 한 번이라 비용도 미미하다
         if (next.speech) loadTaunts().then(setTaunts).catch(() => {});
@@ -101,6 +143,9 @@ export function PetApp() {
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    // 어떤 버튼이든 제스처다 — suspended 오디오 컨텍스트를 깨울 유일한
+    // 기회라 버튼 분기보다 앞에서 부른다 (KTD4)
+    playerRef.current?.nudge();
     // 주 버튼만 드래그를 시작한다 — 우클릭까지 받으면 놓을 때 클릭으로 해석돼
     // 팝오버가 열린다. 이미 드래그 중이면 두 번째 포인터는 무시한다: 기준점을
     // 덮어쓰면 원래 포인터의 다음 이동량이 엉뚱한 값이 돼 펭귄이 순간이동한다.

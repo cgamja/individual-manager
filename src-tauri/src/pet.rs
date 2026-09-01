@@ -149,8 +149,13 @@ const PINBALL_DAMPING: f64 = 0.92;
 /// 던지기 상한(`THROW_MAX_WORLDS_PER_SEC`)과 같은 근거다: 절대 px/s로 두면
 /// 좁은 화면에서 눈 깜짝할 새 가로지르고 넓은 화면에서는 답답하다.
 ///
-/// 던지기 상한보다 얌전하다 — 채로 툭 치는 것이 팔로 뿌리는 것보다 세면 이상하다.
-const PINBALL_HIT_WORLDS_PER_SEC: f64 = 0.55;
+/// **0.55로 시작했다가 0.8로 올렸다** (2026-09-01, 써 보고). 계산상으로는
+/// 던지기보다 얌전한 게 맞아 보였는데, 실제로 쳐 보니 랠리가 안 살았다 —
+/// 핀볼은 공이 빨라야 판이 굴러간다.
+///
+/// 던지기 상한(0.9)은 넘지 않는다. 채로 한 번 치는 것이 팔로 힘껏 뿌리는 것보다
+/// 세면 던지기가 무의미해진다 — 아래 단언이 그 선을 지킨다.
+const PINBALL_HIT_WORLDS_PER_SEC: f64 = 0.8;
 const _: () = assert!(PINBALL_HIT_WORLDS_PER_SEC < THROW_MAX_WORLDS_PER_SEC);
 const _: () = assert!(PINBALL_DAMPING < 1.0);
 const _: () = assert!(PINBALL_DAMPING > BOUNCE_DAMPING);

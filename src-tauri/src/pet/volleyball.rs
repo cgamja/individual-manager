@@ -93,6 +93,7 @@ impl Court {
         })
     }
 
+    #[cfg(test)]
     pub(super) fn net_cx(&self) -> f64 {
         self.net_cx
     }
@@ -299,11 +300,6 @@ impl Volleyball {
         self.players.get(&id).map(|(side, _)| *side)
     }
 
-    /// 이 마리의 자리 (`Pet::x`/`Pet::y` 기준).
-    pub(super) fn spot_of(&self, id: PetId) -> Option<(f64, f64)> {
-        self.players.get(&id).map(|(_, spot)| *spot)
-    }
-
     /// 한 팀의 마리들. id 오름차순이다.
     pub(super) fn ids_on(&self, side: Side) -> Vec<PetId> {
         self.players
@@ -323,6 +319,8 @@ impl Volleyball {
         self.receiver
     }
 
+    /// 방금 계획한 왕복의 체공. 리듬이 실제로 갈리는지 테스트가 확인한다.
+    #[cfg(test)]
     pub(super) fn last_flight_ms(&self) -> u64 {
         self.last_flight_ms
     }

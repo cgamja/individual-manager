@@ -161,6 +161,21 @@ pub struct Pets {
     /// 지금 도는 볼링 판. 없으면 볼링 중이 아니다. **`Pet`이 아니라 여기가
     /// 소유한다** — 지우기와 판 정합성을 한 자리에서 원자적으로 처리해야 한다 (KTD2).
     bowling: Option<Bowling>,
+    /// 지금 도는 비치발리볼 판. 볼링과 같은 이유로 여기가 소유한다.
+    /// **둘은 서로를 배제한다** — 동시에 열리면 한쪽이 상대 판의 마리를 끌어간다.
+    volleyball: Option<Volleyball>,
+}
+
+/// 비치발리볼 판을 못 여는 이유. 버튼이 눌렸는데 아무 일도 안 일어나면 고장으로
+/// 읽히므로, 설정 창이 이유를 그대로 보여 준다.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum VolleyRefusal {
+    /// 이미 볼링이나 비치발리볼 판이 돌고 있다.
+    BoardBusy,
+    /// 화면이 좁아 코트가 안 들어간다.
+    NoRoom,
+    /// 참여할 마리가 둘이 안 된다.
+    TooFew,
 }
 
 impl Pets {
@@ -196,6 +211,7 @@ impl Pets {
         let removed = self.pets.remove(&id).is_some();
         if removed {
             self.leave_bowling(id);
+            self.leave_volleyball(id);
         }
         removed
     }
@@ -205,6 +221,7 @@ impl Pets {
     pub fn forget(&mut self, id: PetId) {
         self.pets.remove(&id);
         self.leave_bowling(id);
+        self.leave_volleyball(id);
     }
 
     pub fn get_mut(&mut self, id: PetId) -> Option<&mut Pet> {
@@ -232,6 +249,7 @@ impl Pets {
     pub fn clear(&mut self) {
         self.pets.clear();
         self.bowling = None;
+        self.volleyball = None;
     }
 
     /// 한 마리를 볼링 판에서 뺀다. 마지막 참여 마리가 빠지면 판을 접는다 (R11).
@@ -254,7 +272,9 @@ impl Pets {
     /// 도는 중이면 무시한다 (A3). 들려 있는 마리는 빠지고, 아무도 못 서면
     /// 판을 열지 않는다.
     pub fn start_bowling(&mut self, now_ms: u64, lane: Bounds) -> bool {
-        if self.bowling.is_some() {
+        // **비치발리볼과 서로를 배제한다.** 둘 다 전 마리를 모는 판이라, 동시에
+        // 열리면 이쪽이 랠리 중인 마리를 핀 자세로 끌어가고 코트만 남는다.
+        if self.bowling.is_some() || self.volleyball.is_some() {
             return false;
         }
         let ids = self.ids();
@@ -492,6 +512,211 @@ impl Pets {
         }
     }
 
+    /// 지금 도는 비치발리볼 판. 브릿지가 코트·공 창을 만들지 정하는 데 쓴다.
+    pub fn volleyball(&self) -> Option<&Volleyball> {
+        self.volleyball.as_ref()
+    }
+
+    /// 한 마리를 비치발리볼 판에서 뺀다. 남은 마리가 둘 미만이면 판을 접는다 —
+    /// **혼자서는 랠리가 성립하지 않는다** (R3).
+    fn leave_volleyball(&mut self, id: PetId) {
+        let Some(board) = self.volleyball.as_mut() else {
+            return;
+        };
+        board.leave(id);
+        if board.phase() != CourtPhase::Point && board.player_count() < VOLLEY_MIN_PETS {
+            self.volleyball = None;
+        }
+    }
+
+    /// 비치발리볼 한 판을 연다 — **화면의 펭귄 전부**가 참여한다 (R2).
+    ///
+    /// 거절하는 경우 셋: 이미 어느 판이든 돌고 있다(KTD9), 코트가 화면에 안
+    /// 들어간다, 참여 마리가 둘 미만이다(R3). `seed`는 랠리의 원천이라 브릿지가
+    /// `now_ms()`를, 테스트가 고정값을 넘긴다.
+    pub fn start_volleyball(
+        &mut self,
+        now_ms: u64,
+        bounds: Bounds,
+        seed: u64,
+    ) -> Result<(), VolleyRefusal> {
+        if self.volleyball.is_some() || self.bowling.is_some() {
+            return Err(VolleyRefusal::BoardBusy);
+        }
+        let Some(court) = Court::new(bounds) else {
+            return Err(VolleyRefusal::NoRoom);
+        };
+        let ids = self.ids();
+        if ids.len() < VOLLEY_MIN_PETS {
+            return Err(VolleyRefusal::TooFew);
+        }
+
+        let sides = assign_sides(ids.len());
+        let 좌수 = sides.iter().filter(|s| **s == Side::Left).count();
+        let 우수 = ids.len() - 좌수;
+        let (mut 좌, mut 우) = (0usize, 0usize);
+        let mut players = std::collections::BTreeMap::new();
+        for (id, side) in ids.iter().zip(sides) {
+            let (k, total) = if side == Side::Left {
+                좌 += 1;
+                (좌 - 1, 좌수)
+            } else {
+                우 += 1;
+                (우 - 1, 우수)
+            };
+            let spot = court.spot_of(side, k, total);
+            let (lo, hi) = court.span_of(side);
+            // 마리가 쓰는 좌표는 좌상단이라 몸통 가운데 범위를 옮겨 넘긴다.
+            let span = (lo - PET_SIZE / 2.0, hi - PET_SIZE / 2.0);
+            // 네트를 본다 — 왼쪽 팀은 오른쪽을, 오른쪽 팀은 왼쪽을.
+            let face = if side == Side::Left {
+                Facing::Right
+            } else {
+                Facing::Left
+            };
+            let joined = self
+                .pets
+                .get_mut(id)
+                .is_some_and(|pet| pet.start_volley(now_ms, spot, span, face));
+            if joined {
+                players.insert(*id, (side, spot));
+            }
+        }
+        // 들려 있는 마리가 빠져 둘이 안 되면 판을 안 연다.
+        if players.len() < VOLLEY_MIN_PETS {
+            for id in players.keys() {
+                if let Some(pet) = self.pets.get_mut(id) {
+                    pet.volley_finish(now_ms, true);
+                }
+            }
+            return Err(VolleyRefusal::TooFew);
+        }
+        self.volleyball = Some(Volleyball::new(players, court, now_ms, seed));
+        Ok(())
+    }
+
+    /// 판을 지금 접는다. **코어 밖의 이유로 판을 이어갈 수 없을 때** 쓴다 —
+    /// 브릿지가 코트나 공 창을 못 만든 경우가 그렇다.
+    pub fn end_volleyball(&mut self, now_ms: u64) {
+        let Self {
+            pets, volleyball, ..
+        } = self;
+        let Some(board) = volleyball.take() else {
+            return;
+        };
+        for id in board.participants() {
+            if let Some(pet) = pets.get_mut(&id) {
+                // 아무도 안 졌다 — 판이 그냥 사라진 것이라 전부 같은 그림으로 끝낸다.
+                pet.volley_finish(now_ms, true);
+            }
+        }
+    }
+
+    /// 비치발리볼 판을 한 틱 진행시킨다. **마리별 `step`보다 먼저** 돈다 —
+    /// 판이 마리를 몰지 그 반대가 아니라서, 이번 틱에 정해진 국면이 곧바로
+    /// 그 틱의 마리 동작에 반영되어야 한다 (볼링과 같은 규칙).
+    fn step_volleyball(&mut self, now_ms: u64) {
+        let Self {
+            pets, volleyball, ..
+        } = self;
+        let Some(board) = volleyball.as_mut() else {
+            return;
+        };
+
+        // 1) 판을 떠난 마리를 추린다. 드래그·빠따로 다른 동작에 넘어갔거나
+        //    사라진 마리가 여기서 빠진다.
+        for id in board.participants() {
+            if !pets.get(&id).is_some_and(Pet::is_volleying) {
+                board.leave(id);
+            }
+        }
+
+        // 2) 둘이 안 되면 접는다 — 혼자서는 랠리가 성립하지 않는다.
+        //    **득점 중에는 참여자가 0이어도 접지 않는다**: 그 순간 전원이
+        //    `Cheer`/`Sulk`로 넘어가므로, 접었다가는 축하 그림이 나오기 전에
+        //    코트가 사라진다 (볼링이 "굴러가는 중에는 안 접는다"고 한 자리다).
+        if board.phase() != CourtPhase::Point && board.player_count() < VOLLEY_MIN_PETS {
+            *volleyball = None;
+            return;
+        }
+
+        // 3) 판이 통째로 시간을 다 썼으면 접는다.
+        if board.expired(now_ms) {
+            for id in board.participants() {
+                if let Some(pet) = pets.get_mut(&id) {
+                    pet.volley_finish(now_ms, true);
+                }
+            }
+            *volleyball = None;
+            return;
+        }
+
+        let dt = board.tick(now_ms);
+        match board.phase() {
+            CourtPhase::Gathering => {
+                let 다_섰다 = board
+                    .participants()
+                    .iter()
+                    .all(|id| pets.get(id).is_some_and(Pet::volley_stood));
+                if 다_섰다 {
+                    // 서브 — 자기에게 보내는 왕복 0번이다.
+                    let 위치 = 코트_위치(board, pets);
+                    board.serve(now_ms, &위치);
+                    if let Some((rid, tcx)) = board.receiver() {
+                        if let Some(pet) = pets.get_mut(&rid) {
+                            pet.volley_chase(now_ms, tcx - PET_SIZE / 2.0);
+                        }
+                    }
+                }
+            }
+            CourtPhase::Rally => {
+                board.step_ball(dt);
+
+                // 받을 마리가 지금 공을 치는가. **여기가 전 마리를 가로지르는
+                // 자리다** — "이 공이 누구에게 가는가"는 마리 하나의 `step`으로
+                // 답할 수 없다.
+                if let Some((rid, _)) = board.receiver() {
+                    let 맞았나 = pets
+                        .get(&rid)
+                        .is_some_and(|pet| board.contact_at(pet.center_x()));
+                    if 맞았나 {
+                        let to = board.next_side();
+                        let 상대: Vec<(PetId, f64)> = board
+                            .ids_on(to)
+                            .into_iter()
+                            .filter_map(|id| pets.get(&id).map(|p| (id, p.center_x())))
+                            .collect();
+                        board.hit(now_ms, &상대);
+                        if let Some(pet) = pets.get_mut(&rid) {
+                            pet.volley_bump(now_ms);
+                        }
+                        if let Some((nid, tcx)) = board.receiver() {
+                            if let Some(pet) = pets.get_mut(&nid) {
+                                pet.volley_chase(now_ms, tcx - PET_SIZE / 2.0);
+                            }
+                        }
+                    }
+                }
+
+                if board.landed() {
+                    let 진_팀 = board.loser();
+                    for id in board.participants() {
+                        let 이겼나 = board.side_of(id) != Some(진_팀);
+                        if let Some(pet) = pets.get_mut(&id) {
+                            pet.volley_finish(now_ms, 이겼나);
+                        }
+                    }
+                    board.settle(now_ms);
+                }
+            }
+            CourtPhase::Point => {
+                if board.settled(now_ms) {
+                    *volleyball = None;
+                }
+            }
+        }
+    }
+
     /// 한 틱 동안 전 마리를 진행시킨다.
     ///
     /// **마리별 `Pet::step`은 자기 자신만 본다.** 여러 마리가 하나의 사건을 공유하는
@@ -515,6 +740,7 @@ impl Pets {
         world_of: impl Fn(PetId) -> Option<&'w World>,
     ) -> Vec<(PetId, Snapshot)> {
         self.step_bowling(now_ms);
+        self.step_volleyball(now_ms);
         let mut stepped = Vec::with_capacity(self.pets.len());
         // 부딪힘 판정이 볼 **이번 틱의 자취**와 세계 폭. `Pet`에 필드로 넣지 않고 여기서
         // 들고 있는다 — 필드를 더하면 스냅샷 동치성이 보는 상태가 늘어난다.
@@ -593,6 +819,19 @@ impl Pets {
         }
         bumped
     }
+}
+
+/// 판에 선 마리들의 (id, 팀, **몸통 가운데 x**). 서브할 마리를 고르는 데 쓴다 —
+/// 판은 자리를 알지만 마리가 지금 어디 있는지는 모른다 (뛰는 중일 수 있다).
+fn 코트_위치(
+    board: &Volleyball,
+    pets: &std::collections::BTreeMap<PetId, Pet>,
+) -> Vec<(PetId, Side, f64)> {
+    board
+        .participants()
+        .into_iter()
+        .filter_map(|id| Some((id, board.side_of(id)?, pets.get(&id)?.center_x())))
+        .collect()
 }
 
 impl Pet {

@@ -423,3 +423,290 @@ fn 세계를_못_읽은_마리는_건너뛴다() {
     let after = pets.get(b).unwrap().snapshot();
     assert_eq!((before.x, before.y), (after.x, after.y));
 }
+
+// ── 비치발리볼 판의 수명 ───────────────────────────────────────
+
+/// 1440px 화면쯤의 넓은 경계 — 코트가 들어간다.
+const 넓은_경계: Bounds = Bounds {
+    left: 52.0,
+    right: 1_248.0,
+    top: 80.0,
+    floor_y: 700.0,
+};
+
+fn 여러_마리(n: usize) -> Pets {
+    let w = World::single(넓은_경계);
+    let mut pets = Pets::new();
+    for i in 0..n {
+        pets.add(1_000 + i as u64, 0, &w, 넓은_경계.left + i as f64 * 60.0)
+            .expect("상한 안이다");
+    }
+    pets
+}
+
+/// 판이 끝날 때까지 굴린다. 반환은 (끝난 시각, 마지막까지 본 국면들).
+fn 판을_굴린다(pets: &mut Pets, world: &World, 최대_ms: u64) -> u64 {
+    let mut now = 0u64;
+    while now < 최대_ms {
+        now += 50;
+        pets.step_all(now, |_| Some(world));
+        if pets.volleyball().is_none() {
+            return now;
+        }
+    }
+    panic!("판이 {최대_ms}ms 안에 안 끝났다");
+}
+
+#[test]
+fn 한_마리면_판을_열지_않는다() {
+    let w = World::single(넓은_경계);
+    let mut pets = 여러_마리(1);
+    let 전 = pets.get(1).unwrap().snapshot().behavior;
+    assert_eq!(
+        pets.start_volleyball(0, 넓은_경계, 7),
+        Err(VolleyRefusal::TooFew)
+    );
+    assert!(pets.volleyball().is_none());
+    assert_eq!(pets.get(1).unwrap().snapshot().behavior, 전, "동작이 바뀌었다");
+    let _ = w;
+}
+
+#[test]
+fn 두_마리면_판이_열린다() {
+    let mut pets = 여러_마리(2);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    assert!(pets.volleyball().is_some());
+    for id in pets.ids() {
+        assert!(matches!(
+            pets.get(id).unwrap().snapshot().behavior,
+            Behavior::Volleyball { .. }
+        ));
+    }
+}
+
+#[test]
+fn 좁은_화면에서는_판을_열_수_없다() {
+    let 좁은 = Bounds {
+        left: 0.0,
+        right: 200.0,
+        top: 0.0,
+        floor_y: 400.0,
+    };
+    let mut pets = 여러_마리(4);
+    assert_eq!(
+        pets.start_volleyball(0, 좁은, 7),
+        Err(VolleyRefusal::NoRoom)
+    );
+}
+
+#[test]
+fn 이미_판이_돌면_다시_열지_않는다() {
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    assert_eq!(
+        pets.start_volleyball(100, 넓은_경계, 9),
+        Err(VolleyRefusal::BoardBusy)
+    );
+}
+
+#[test]
+fn 볼링이_도는_중에는_비치발리볼을_못_연다() {
+    let mut pets = 여러_마리(4);
+    assert!(pets.start_bowling(0, 넓은_경계));
+    assert_eq!(
+        pets.start_volleyball(100, 넓은_경계, 7),
+        Err(VolleyRefusal::BoardBusy)
+    );
+}
+
+#[test]
+fn 비치발리볼이_도는_중에는_볼링을_못_연다() {
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    assert!(!pets.start_bowling(100, 넓은_경계));
+}
+
+#[test]
+fn 참여_마리가_둘_미만이_되면_판이_접힌다() {
+    let w = World::single(넓은_경계);
+    let mut pets = 여러_마리(3);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    // 셋 중 둘을 집어 들면 하나만 남는다.
+    for id in [1u32, 2] {
+        pets.get_mut(id).unwrap().drag_start(100);
+    }
+    pets.step_all(150, |_| Some(&w));
+    assert!(pets.volleyball().is_none(), "혼자 남았는데 판이 살아 있다");
+}
+
+#[test]
+fn 드래그로_빠진_마리는_참여_목록에서_빠진다() {
+    let w = World::single(넓은_경계);
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    pets.get_mut(2).unwrap().drag_start(100);
+    pets.step_all(150, |_| Some(&w));
+    let board = pets.volleyball().expect("셋이 남았으니 판은 산다");
+    assert!(!board.participants().contains(&2));
+    assert_eq!(board.participants().len(), 3);
+}
+
+#[test]
+fn 펭귄을_지우면_판에서도_빠진다() {
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    assert!(pets.remove(2));
+    assert!(!pets.volleyball().unwrap().participants().contains(&2));
+    // 창이 사라진 경우(`forget`)도 같다.
+    pets.forget(3);
+    assert!(!pets.volleyball().unwrap().participants().contains(&3));
+}
+
+#[test]
+fn 펭귄을_전부_끄면_판이_사라진다() {
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    pets.clear();
+    assert!(pets.volleyball().is_none());
+}
+
+#[test]
+fn 판을_강제로_접으면_전부_평소로_돌아간다() {
+    let w = World::single(넓은_경계);
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    pets.end_volleyball(100);
+    assert!(pets.volleyball().is_none());
+    // 귀결 국면을 지나 유휴로 간다.
+    let mut now = 100;
+    for _ in 0..40 {
+        now += 50;
+        pets.step_all(now, |_| Some(&w));
+    }
+    for id in pets.ids() {
+        assert!(
+            !matches!(
+                pets.get(id).unwrap().snapshot().behavior,
+                Behavior::Volleyball { .. }
+            ),
+            "{id}번이 아직 코트에 있다"
+        );
+    }
+}
+
+#[test]
+fn 한_판이_스스로_돌고_끝난다() {
+    // 버튼 한 번으로 시작해 20초쯤 뒤 아무도 안 건드려도 끝난다.
+    let w = World::single(넓은_경계);
+    for seed in 1u64..=5 {
+        let mut pets = 여러_마리(4);
+        assert_eq!(pets.start_volleyball(0, 넓은_경계, seed), Ok(()));
+        let 끝난 = 판을_굴린다(&mut pets, &w, 60_000);
+        assert!(
+            (15_000..=28_000).contains(&끝난),
+            "시드 {seed}: {끝난}ms — 20초쯤이 아니다"
+        );
+        for id in pets.ids() {
+            let b = pets.get(id).unwrap().snapshot().behavior;
+            assert!(
+                !matches!(b, Behavior::Volleyball { volley: VolleyPhase::Gather | VolleyPhase::Ready | VolleyPhase::Chase | VolleyPhase::Bump }),
+                "{id}번이 랠리 국면에 남았다: {b:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn 랠리_중에_받으러_뛰는_마리가_생긴다() {
+    // KTD3-1 — 뛰는 그림이 랠리 화면의 절반이다. 안 뛰면 20초가 통째로 빈다.
+    let w = World::single(넓은_경계);
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 3), Ok(()));
+    let mut 뛴_적 = false;
+    let mut 때린_적 = false;
+    let mut now = 0u64;
+    while now < 40_000 && pets.volleyball().is_some() {
+        now += 50;
+        pets.step_all(now, |_| Some(&w));
+        for id in pets.ids() {
+            match pets.get(id).unwrap().snapshot().behavior {
+                Behavior::Volleyball {
+                    volley: VolleyPhase::Chase,
+                } => 뛴_적 = true,
+                Behavior::Volleyball {
+                    volley: VolleyPhase::Bump,
+                } => 때린_적 = true,
+                _ => {}
+            }
+        }
+    }
+    assert!(뛴_적, "한 번도 안 뛰었다");
+    assert!(때린_적, "한 번도 안 때렸다");
+}
+
+#[test]
+fn 득점하면_이긴_쪽과_진_쪽이_갈린다() {
+    let w = World::single(넓은_경계);
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 3), Ok(()));
+    let mut now = 0u64;
+    let (mut 좋아함, mut 약오름) = (false, false);
+    while now < 40_000 && pets.volleyball().is_some() {
+        now += 50;
+        pets.step_all(now, |_| Some(&w));
+        for id in pets.ids() {
+            match pets.get(id).unwrap().snapshot().behavior {
+                Behavior::Volleyball {
+                    volley: VolleyPhase::Cheer,
+                } => 좋아함 = true,
+                Behavior::Volleyball {
+                    volley: VolleyPhase::Sulk,
+                } => 약오름 = true,
+                _ => {}
+            }
+        }
+    }
+    assert!(좋아함 && 약오름, "이긴 쪽({좋아함})과 진 쪽({약오름})이 안 갈렸다");
+}
+
+#[test]
+fn 같은_시드는_같은_판을_낳는다() {
+    // 매 틱 전체 스냅샷을 대조한다 (PRINCIPLE 3).
+    let w = World::single(넓은_경계);
+    let mut a = 여러_마리(4);
+    let mut b = 여러_마리(4);
+    assert_eq!(a.start_volleyball(0, 넓은_경계, 0xC0FFEE), Ok(()));
+    assert_eq!(b.start_volleyball(0, 넓은_경계, 0xC0FFEE), Ok(()));
+    for t in 1..=500u64 {
+        let now = t * 50;
+        assert_eq!(
+            a.step_all(now, |_| Some(&w)),
+            b.step_all(now, |_| Some(&w)),
+            "{now}ms 에서 갈렸다"
+        );
+    }
+}
+
+#[test]
+fn 판을_못_열면_마리의_동작이_한_틱도_안_바뀐다() {
+    // 거절이 부작용을 남기면 "눌렀는데 아무 일도 없다"가 아니라 "눌렀더니
+    // 이상해졌다"가 된다.
+    let 좁은 = Bounds {
+        left: 0.0,
+        right: 200.0,
+        top: 0.0,
+        floor_y: 400.0,
+    };
+    let w = World::single(좁은);
+    let mut 누른 = 여러_마리(2);
+    let mut 안_누른 = 여러_마리(2);
+    assert_eq!(누른.start_volleyball(0, 좁은, 7), Err(VolleyRefusal::NoRoom));
+    for t in 1..=200u64 {
+        let now = t * 50;
+        assert_eq!(
+            누른.step_all(now, |_| Some(&w)),
+            안_누른.step_all(now, |_| Some(&w)),
+            "{now}ms 에서 갈렸다 — 거절이 부작용을 남겼다"
+        );
+    }
+}

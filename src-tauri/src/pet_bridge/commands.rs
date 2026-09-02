@@ -202,7 +202,9 @@ pub fn pet_add(
         state.pets.lock().unwrap().forget(id);
         return Err(err.to_string());
     }
-    save_pet_count(&app, state.pets.lock().unwrap().len());
+    // 락은 세는 동안만 쥔다 — 인자로 넘기면 임시 가드가 디스크 쓰기 내내 살아 있다.
+    let count = state.pets.lock().unwrap().len();
+    save_pet_count(&app, count);
     Ok(id)
 }
 
@@ -305,6 +307,8 @@ pub fn pet_remove(
     if *state.focused.lock().unwrap() == Some(id) {
         *state.focused.lock().unwrap() = None;
     }
-    save_pet_count(&app, state.pets.lock().unwrap().len());
+    // 락은 세는 동안만 쥔다 — 인자로 넘기면 임시 가드가 디스크 쓰기 내내 살아 있다.
+    let count = state.pets.lock().unwrap().len();
+    save_pet_count(&app, count);
     Ok(())
 }

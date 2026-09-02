@@ -16,6 +16,8 @@ const props = {
   onThemeChange: () => {},
   pinballEnabled: false,
   onPinballEnabledChange: () => {},
+  bowlingRunning: false,
+  onBowling: () => {},
 };
 
 describe("SettingsCard", () => {
@@ -78,6 +80,25 @@ describe("SettingsCard", () => {
     render(<SettingsCard {...props} />);
     expect(screen.getByText(/방망이 대신 펭귄이 날아가고/)).toBeInTheDocument();
     expect(screen.getByText(/끄면 원래대로 돌아와요/)).toBeInTheDocument();
+  });
+
+  it("볼링_버튼이_전역_커맨드를_부른다", async () => {
+    const onBowling = vi.fn();
+    render(<SettingsCard {...props} onBowling={onBowling} />);
+    await userEvent.click(screen.getByRole("button", { name: "볼링 한 판" }));
+    expect(onBowling).toHaveBeenCalled();
+  });
+
+  it("판이_도는_중에는_버튼이_비활성이다", () => {
+    // 이미 도는 중에 또 누르면 무시되므로(A3), 눌리는데 아무 일도 없으면
+    // 고장으로 읽힌다.
+    render(<SettingsCard {...props} bowlingRunning />);
+    expect(screen.getByRole("button", { name: /굴리는 중/ })).toBeDisabled();
+  });
+
+  it("볼링이_언제_끝나는지_적어_둔다", () => {
+    render(<SettingsCard {...props} />);
+    expect(screen.getByText(/공이 멎으면 끝나요/)).toBeInTheDocument();
   });
 
   it("무엇이_들리는지_적어_둔다", () => {

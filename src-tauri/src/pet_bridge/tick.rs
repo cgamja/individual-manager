@@ -208,6 +208,7 @@ pub(super) fn apply_ball(
     let Some(ball) = ball else {
         if last.take().is_some() {
             close_ball_window(app);
+            let _ = app.emit(EVENT_BOWLING_OVER, ());
         }
         return;
     };

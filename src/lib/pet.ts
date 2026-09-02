@@ -117,6 +117,10 @@ export const EVENT_PET_STATE = "pet://state";
  * 다르기 때문이다 — 하나로 합치면 공 창이 마릿수만큼의 이벤트를 걸러 내야 한다. */
 export const EVENT_BALL_STATE = "bowling://ball";
 
+/** 볼링 판이 **끝났을 때** 온다. 판을 끝내는 것은 공이지 사용자가 아니라서,
+ * 이게 없으면 "볼링 한 판" 버튼이 비활성인 채로 남는다. */
+export const EVENT_BOWLING_OVER = "bowling://over";
+
 /** 설정이 **이 창 밖에서** 바뀌었을 때 오는 알림 (핀볼 판의 Esc 등). */
 export const EVENT_PET_SETTINGS = "pet://settings";
 
@@ -273,6 +277,10 @@ export const onPetState = (cb: (snapshot: PetSnapshot) => void): Promise<Unliste
 /** 자기 창의 공 상태만 구독한다. 펭귄과 같은 이유로 **창에 묶는다.** */
 export const onBallState = (cb: (ball: BallSnapshot) => void): Promise<UnlistenFn> =>
   getCurrentWebviewWindow().listen<BallSnapshot>(EVENT_BALL_STATE, (event) => cb(event.payload));
+
+/** 볼링 판이 끝나면 알려 준다. 설정 창이 버튼을 되살리는 데 쓴다. */
+export const onBowlingOver = (cb: () => void): Promise<UnlistenFn> =>
+  listen(EVENT_BOWLING_OVER, () => cb());
 
 /** 설정이 이 창 밖에서 바뀌면 알려 준다 — 지금은 핀볼 판의 Esc가 유일한 경우다. */
 export const onPetSettings = (

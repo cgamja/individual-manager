@@ -29,6 +29,11 @@ pub const EVENT_PET_SETTINGS: &str = "pet://settings";
 /// 걸러 내야 한다.
 pub const EVENT_BALL_STATE: &str = "bowling://ball";
 
+/// 볼링 판이 **끝났음**을 설정 창에 알린다. 판을 끝내는 것은 공이지 사용자가
+/// 아니라서, 이걸 안 보내면 "볼링 한 판" 버튼이 비활성인 채로 남는다
+/// (설정 창을 닫았다 다시 열기 전까지).
+pub const EVENT_BOWLING_OVER: &str = "bowling://over";
+
 pub struct PetState {
     pub pets: Mutex<Pets>,
     /// 마지막으로 우클릭된 펭귄. 팝오버(`main` 창)는 자기가 **어느 펭귄 때문에**

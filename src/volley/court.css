@@ -1,0 +1,71 @@
+/* 코트 — 모래사장과 네트. 창 하나가 통째로 그림이다. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* **배경을 칠하지 않는다.** 조금이라도 칠하면 코트 둘레에 네모가 보인다. */
+  background: transparent;
+  user-select: none;
+}
+
+/* **클릭을 통과시킨다 — 이중 방어다.**
+   진짜 방어선은 Rust의 `set_ignore_cursor_events(true)`이고, 그 세터는
+   비동기라 창이 뜬 직후 한 프레임쯤은 아직 안 걸려 있을 수 있다. CSS는
+   웹뷰가 그려지는 첫 프레임부터 듣는다. 둘 중 하나만 있어도 대체로 되지만
+   구간이 서로 달라서 겹쳐 둔다. */
+#court-root,
+#court-root * {
+  pointer-events: none;
+}
+
+#court-root {
+  width: 100%;
+  height: 100%;
+  /* 아래에서 밀려 올라온다 — 판이 열리는 것이 한 동작으로 읽힌다. */
+  animation: vb-court-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.vb-court {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+@keyframes vb-court-rise {
+  0% {
+    transform: translateY(28px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 네트가 바람에 아주 조금 흔들린다 — 완전히 굳으면 붙여 놓은 그림으로 보인다. */
+@keyframes vb-net-sway {
+  0%,
+  100% {
+    transform: skewX(-0.6deg);
+  }
+  50% {
+    transform: skewX(0.6deg);
+  }
+}
+
+.vb-net-mesh {
+  transform-origin: 50% 100%;
+  animation: vb-net-sway 3.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #court-root,
+  #court-root * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

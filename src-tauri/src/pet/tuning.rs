@@ -393,6 +393,10 @@ const _: () = assert!(VOLLEY_COURT_HALF > VOLLEY_NET_GAP + PET_SIZE);
 /// 이보다 좁은 세계에서는 판을 열지 않는다 — 코트가 안 들어간다.
 pub(super) const VOLLEY_MIN_WORLD_WIDTH: f64 = 2.0 * (VOLLEY_NET_GAP + PET_SIZE);
 
+/// 세로로도 이만큼은 있어야 한다. 공을 띄울 높이가 없으면 체공이 0으로 눌려
+/// 공이 순간이동한다 — 가장 짧은 스파이크의 정점이 넉넉히 들어갈 만큼 잡는다.
+pub(super) const VOLLEY_MIN_WORLD_HEIGHT: f64 = 200.0;
+
 /// 판을 열 수 있는 최소 마릿수. **한 마리면 팀이 안 나온다** (R3).
 pub(super) const VOLLEY_MIN_PETS: usize = 2;
 const _: () = assert!(VOLLEY_MIN_PETS >= 2);

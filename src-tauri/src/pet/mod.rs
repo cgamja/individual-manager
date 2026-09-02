@@ -22,7 +22,7 @@ mod volleyball;
 pub use bowling::{BallSnapshot, BoardPhase, Bowling};
 use bowling::{dist2_to_segment, pin_positions};
 
-pub use volleyball::{Court, CourtPhase, Side, VolleyBallSnapshot, VolleySnapshot};
+pub use volleyball::{Court, CourtPhase, Side, VolleyBallSnapshot, VolleySnapshot, Volleyball};
 #[allow(unused_imports)]
 use volleyball::assign_sides;
 

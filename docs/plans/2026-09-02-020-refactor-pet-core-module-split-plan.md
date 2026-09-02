@@ -10,6 +10,16 @@ execution: code
 
 # pet.rs를 `pet/` 모듈로 쪼개기 — Plan
 
+> **구현 중에 계획이 바뀌었다 (2026-09-02).** 아래 U1~U7은 `step.rs`·`input.rs`로
+> 나누는 **기계 기준** 분할이다. U4까지 진행한 뒤 사용자 지적으로 **도메인 기준**
+> (동작 하나가 파일 하나)으로 바꿨다 — 근거는 테스트 블록에 손으로 그어 둔
+> `// ── 얼음낚시 ──` 구분선이었고, "얼음낚시가 어디 있나"에 답하려면 도메인이어야
+> 한다. 같은 지시로 `pet_bridge.rs`·`pet.css` 분할, 테스트 파일 분리, 주석 축소,
+> `field`→`pinball` 이름 변경이 이 PR 범위에 들어왔다 (원래는 전부 Deferred였다).
+>
+> **실제로 만들어진 배치는 `CLAUDE.md`의 구조 트리를 본다.** 이 문서는 그 결정에
+> 이르기까지의 기록이고, 파일 배치의 최신 원천이 아니다.
+
 ## Goal Capsule
 
 - **목표** — `src-tauri/src/pet.rs`(4616줄)를 `src-tauri/src/pet/` 모듈 여섯 파일로 쪼갠다.
@@ -76,7 +86,7 @@ execution: code
 - **AE1** — 브랜치에서 `cd src-tauri && cargo test`를 돌리면 `205 passed; 0 failed; 1 ignored`가
   나온다. `main`에서 돌린 결과와 숫자가 같다.
 - **AE2** — 아래를 돌리면 출력이 비어 있다 (테스트 이름 집합 불변):
-  ```
+  ```shell
   cargo test 2>&1 | grep -E '^test .+ \.\.\. ' | sed 's/^test //; s/ \.\.\..*//' \
     | awk -F'::' '{print $NF}' | sort | diff - test-names-before.txt
   ```
@@ -418,7 +428,7 @@ graph TD
 
 **기준선 파일을 먼저 만든다.** `main`에서:
 
-```
+```shell
 cargo test 2>&1 | grep -E '^test .+ \.\.\. ' | sed 's/^test //; s/ \.\.\..*//' \
   | awk -F'::' '{print $NF}' | sort > <스크래치패드>/test-names-before.txt
 ```

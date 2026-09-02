@@ -3,7 +3,7 @@
 use super::super::*;
 
 impl Pet {
-    /// 얼음낚시 국면 진행 — 매 틱. 이 부른다.
+    /// 얼음낚시 국면 진행 — 매 틱 `step`이 부른다.
     pub(in crate::pet) fn tick_fishing(&mut self, now_ms: u64, fishing: FishingPhase) {
         if now_ms >= self.behavior_until_ms {
             match fishing {

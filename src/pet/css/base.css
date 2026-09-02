@@ -151,3 +151,11 @@ body,
 .pg--sleep .pg-gaze {
   transform: none;
 }
+
+/* 움직임을 줄이는 시스템 설정을 존중한다 */
+@media (prefers-reduced-motion: reduce) {
+  .penguin *,
+  .penguin {
+    animation: none !important;
+  }
+}

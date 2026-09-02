@@ -97,16 +97,18 @@ fn 덮개_라벨이_capabilities에_등록되어_있다() {
 /// 놓쳤던 사각지대라 소스를 직접 대조한다.
 #[test]
 fn 모든_펫_커맨드가_invoke_handler에_등록되어_있다() {
-    let bridge = concat!(
-        include_str!("mod.rs"),
-        include_str!("commands.rs"),
-        include_str!("window.rs"),
-        include_str!("pinball.rs"),
-        include_str!("settings.rs"),
-        include_str!("tick.rs"),
-        include_str!("bounds.rs"),
-        include_str!("popover.rs")
-    );
+    // 디렉터리를 실행 시점에 훑는다. 파일 목록을 손으로 들고 있으면 새 모듈에
+    // 커맨드를 넣었을 때 이 테스트가 그 파일을 안 읽어 등록 누락을 놓친다 —
+    // 막으려던 사각지대가 그대로 되살아난다.
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/pet_bridge");
+    let mut bridge = String::new();
+    for entry in std::fs::read_dir(&dir).expect("pet_bridge 디렉터리를 못 읽었다") {
+        let path = entry.expect("디렉터리 항목을 못 읽었다").path();
+        if path.extension().is_some_and(|e| e == "rs") {
+            bridge.push_str(&std::fs::read_to_string(&path).expect("소스를 못 읽었다"));
+            bridge.push('\n');
+        }
+    }
     let lib = include_str!("../lib.rs");
 
     let mut commands = Vec::new();

@@ -2,7 +2,7 @@
 //!
 //! 모션 하나를 얹으려면 일곱 곳을 건드린다: 여기(`Behavior`),
 //! `motion/*.rs`(매 틱 물리), `pick_next`(진입), 퇴장, `tuning.rs`(상수),
-//! `pet.css`의 `pg--*`, `pet-css.test.ts`의 `ALL_BEHAVIORS`.
+//! `src/pet/css/<도메인>.css`의 `pg--*`, `pet-css.test.ts`의 `ALL_BEHAVIORS`.
 
 use serde::Serialize;
 

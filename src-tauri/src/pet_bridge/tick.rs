@@ -1,17 +1,11 @@
 //! 20Hz 틱 스레드 — 코어를 진행시키고 창을 옮기고 웹뷰에 알린다.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::time::Duration;
 
-use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
-use tauri_plugin_store::StoreExt;
+use tauri::{AppHandle, Emitter, EventTarget, LogicalPosition, Manager, WebviewWindow};
 
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, World, MAX_PETS};
+use crate::pet::{PetId, Snapshot, World};
 
 use super::*;
 

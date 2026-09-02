@@ -1,18 +1,9 @@
 //! 모니터 경계를 읽어 코어가 쓸 World로 바꾼다. 못 읽으면 주 모니터로 떨어진다.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::Duration;
-
-use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
-use tauri_plugin_store::StoreExt;
+use tauri::{AppHandle, Manager, WebviewWindow};
 
 use crate::pet::PET_SIZE;
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, World, MAX_PETS};
+use crate::pet::{Bounds, PetId, World};
 
 use super::*;
 

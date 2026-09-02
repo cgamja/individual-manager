@@ -1,7 +1,6 @@
 use super::*;
-use crate::pet::PET_SIZE;
-
-use super::*;
+use crate::pet::{Bounds, World, PET_SIZE};
+use std::collections::HashMap;
 
 fn 경계(right: f64) -> Bounds {
     Bounds {

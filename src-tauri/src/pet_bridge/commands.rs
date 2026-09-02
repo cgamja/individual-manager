@@ -1,17 +1,8 @@
 //! 웹뷰가 부르는 #[tauri::command] 전부.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
-use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
-use tauri_plugin_store::StoreExt;
-
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, World, MAX_PETS};
+use crate::pet::{PetId, Snapshot, MAX_PETS};
 
 use super::*;
 

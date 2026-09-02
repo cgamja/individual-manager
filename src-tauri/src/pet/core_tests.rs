@@ -1,9 +1,6 @@
 use crate::pet::test_support::*;
 use crate::pet::*;
 
-use super::test_support::*;
-use super::*;
-
 #[test]
 fn 같은_시드는_같은_동작_시퀀스를_낳는다() {
     let mut a = Pet::new(2024, 0, &world());

@@ -1,18 +1,9 @@
 //! 설정 창을 펭귄 옆에 띄울 위치 계산.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::Duration;
-
-use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
-use tauri_plugin_store::StoreExt;
+use tauri::{AppHandle, Manager};
 
 use crate::pet::PET_SIZE;
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, World, MAX_PETS};
+use crate::pet::{Bounds, PetId};
 
 use super::*;
 

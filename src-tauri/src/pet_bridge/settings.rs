@@ -1,17 +1,9 @@
 //! 저장된 설정 읽고 쓰기 — 펭귄 on/off·마릿수·핀볼·테마.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::Duration;
-
-use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, World, MAX_PETS};
+use crate::pet::{PetId, MAX_PETS};
 
 use super::*;
 

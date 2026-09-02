@@ -1,19 +1,6 @@
 //! 핀볼 판 — 화면마다 하나씩 까는 투명 창. 펭귄 창보다 아래 레벨이다.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::Duration;
-
-use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
-use tauri_plugin_store::StoreExt;
-
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, World, MAX_PETS};
-
-use super::*;
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// 핀볼 덮개 창의 라벨. **`capabilities/default.json`의 `windows`에 있어야 한다** —
 /// 없으면 이 창이 부르는 커맨드가 컴파일·테스트를 다 통과하고 **런타임에서만

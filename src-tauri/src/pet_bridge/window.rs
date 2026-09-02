@@ -1,18 +1,9 @@
 //! 펭귄 창의 생성·수명·좌표. 창 플래그는 전부 여기서 정한다.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::Duration;
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
-use tauri_plugin_store::StoreExt;
-
+use crate::pet::PetId;
 use crate::pet::PET_SIZE;
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, World, MAX_PETS};
 
 use super::*;
 

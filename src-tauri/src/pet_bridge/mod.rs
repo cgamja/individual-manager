@@ -3,19 +3,11 @@
 //! 창 플래그는 전부 여기 한 곳에서 정한다. 창 레벨을 "항상 위"에서 "데스크톱 뒤"로
 //! 뒤집고 싶어지면 고칠 곳도 여기 하나다 (KTD3).
 
-use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::Duration;
 
 use serde::Serialize;
 
-use tauri::{
-    AppHandle, Emitter, EventTarget, LogicalPosition, Manager, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
-use tauri_plugin_store::StoreExt;
-
-use crate::pet::{Behavior, Bounds, Facing, PetId, Pets, Snapshot, Vertical, World, MAX_PETS};
+use crate::pet::{Behavior, Facing, PetId, Pets, Snapshot, Vertical};
 
 /// 지금(epoch ms). 코어(`pet.rs`)는 시간을 주입받는 순수 모듈이라 시계를 갖지 않는다 —
 /// 시계를 읽는 곳은 브릿지 하나뿐이어야 테스트가 시간을 마음대로 돌릴 수 있다.

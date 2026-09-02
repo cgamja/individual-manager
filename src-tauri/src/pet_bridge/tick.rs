@@ -30,7 +30,7 @@ const BOUNDS_REFRESH_MS: u64 = 2_000;
 const RECONCILE_GRACE_MS: u64 = 1_000;
 
 /// 어긋남을 처음 본 시각들 중, 유예를 다 쓴 것들.
-pub fn due_for_cleanup(mismatch_since: &HashMap<PetId, u64>, now_ms: u64) -> Vec<PetId> {
+pub(super) fn due_for_cleanup(mismatch_since: &HashMap<PetId, u64>, now_ms: u64) -> Vec<PetId> {
     mismatch_since
         .iter()
         .filter(|(_, since)| now_ms.saturating_sub(**since) >= RECONCILE_GRACE_MS)
@@ -142,7 +142,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
 
 /// 스냅샷을 창 위치와 웹뷰 상태에 반영한다. 창 이동과 상태 통지는 조건이
 /// 다르다 — 자는 펭귄은 움직이지 않지만 "잔다"는 사실은 알려야 한다.
-pub fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, notify: bool) {
+pub(super) fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, notify: bool) {
     if move_window {
         let (wx, wy) = window_origin(snapshot.x, snapshot.y);
         let _ = window.set_position(LogicalPosition::new(wx, wy));
@@ -159,7 +159,7 @@ pub fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, noti
 /// 커맨드가 상태를 바꾼 뒤 즉시 화면에 반영한다 — 다음 틱(최대 500ms)을
 /// 기다리면 클릭·드래그 반응이 굼떠 보인다. 커맨드는 항상 동작을 바꾸므로
 /// 이동과 통지를 모두 한다.
-pub fn flush(app: &AppHandle, id: PetId) -> Option<Snapshot> {
+pub(super) fn flush(app: &AppHandle, id: PetId) -> Option<Snapshot> {
     let window = pet_window(app, id)?;
     let snapshot = app
         .state::<PetState>()

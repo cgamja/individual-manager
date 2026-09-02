@@ -18,7 +18,12 @@ use super::*;
 
 /// 펭귄 위치에서 팝오버를 놓을 자리를 구한다. 모니터를 못 읽으면 `None`을
 /// 돌려 트레이 밑(기존 동작)으로 떨어진다.
-pub fn popover_anchor(app: &AppHandle, id: PetId, pet_x: f64, pet_y: f64) -> Option<(f64, f64)> {
+pub(super) fn popover_anchor(
+    app: &AppHandle,
+    id: PetId,
+    pet_x: f64,
+    pet_y: f64,
+) -> Option<(f64, f64)> {
     let popover = app.get_webview_window("main")?;
     let monitor = pet_window(app, id)?.current_monitor().ok().flatten()?;
     let scale = monitor.scale_factor();
@@ -42,7 +47,7 @@ pub fn popover_anchor(app: &AppHandle, id: PetId, pet_x: f64, pet_y: f64) -> Opt
 }
 
 /// 펭귄과 팝오버 사이 여백 (논리 px).
-pub const POPOVER_GAP: f64 = 8.0;
+pub(super) const POPOVER_GAP: f64 = 8.0;
 
 /// 펭귄 옆에 팝오버를 놓을 좌표. 오른쪽을 우선하되 넘치면 왼쪽으로 접고,
 /// 그래도 안 되면 영역 안으로 자른다. 세로는 펭귄 높이에 맞추되 화면을 넘지 않는다.
@@ -69,7 +74,7 @@ pub fn popover_position_near(
 }
 
 /// 부른 펭귄 옆자리. 오른쪽을 우선하되 넘치면 왼쪽으로 접는다.
-pub fn next_to(x: f64, bounds: Bounds) -> f64 {
+pub(super) fn next_to(x: f64, bounds: Bounds) -> f64 {
     let gap = PET_SIZE * 0.75;
     let right = x + gap;
     let candidate = if right <= bounds.right {

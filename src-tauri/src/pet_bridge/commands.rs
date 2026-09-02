@@ -17,13 +17,13 @@ use super::*;
 
 /// 커맨드를 부른 창의 펭귄. 펫 창이 아니면 `None` — 빠따·드래그처럼 **자기
 /// 펭귄에게만** 가야 하는 조작은 여기서 걸러진다 (KTD1).
-pub fn caller_pet(window: &WebviewWindow) -> Option<PetId> {
+pub(super) fn caller_pet(window: &WebviewWindow) -> Option<PetId> {
     pet_id_from_label(window.label())
 }
 
 /// 추가·삭제의 대상. 펫 창이 부르면 자기 자신이고, 팝오버(`main`)가 부르면
 /// 마지막으로 우클릭된 펭귄이다 (KTD6).
-pub fn target_pet(window: &WebviewWindow, state: &PetState) -> Option<PetId> {
+pub(super) fn target_pet(window: &WebviewWindow, state: &PetState) -> Option<PetId> {
     caller_pet(window).or_else(|| *state.focused.lock().unwrap())
 }
 

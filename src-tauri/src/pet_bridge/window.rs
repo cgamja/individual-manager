@@ -89,7 +89,7 @@ pub fn pet_window(app: &AppHandle, id: PetId) -> Option<WebviewWindow> {
 }
 
 /// 살아 있는 아무 펫 창 하나. 화면 경계처럼 "어느 펭귄이든 상관없는" 조회에 쓴다.
-pub fn any_pet_window(app: &AppHandle) -> Option<WebviewWindow> {
+pub(super) fn any_pet_window(app: &AppHandle) -> Option<WebviewWindow> {
     let ids = app.state::<PetState>().pets.lock().unwrap().ids();
     ids.into_iter().find_map(|id| pet_window(app, id))
 }

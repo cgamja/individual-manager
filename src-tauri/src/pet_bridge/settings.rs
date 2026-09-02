@@ -17,9 +17,9 @@ use super::*;
 
 /// 프론트의 `settings.ts`와 공유하는 저장 위치. 웹뷰가 저장하고 Rust가 읽는다 —
 /// 시작 시점에 펭귄을 띄울지는 웹뷰가 뜨기 전에 정해져야 깜빡임이 없다.
-pub const SETTINGS_FILE: &str = "settings.json";
+pub(super) const SETTINGS_FILE: &str = "settings.json";
 
-pub const PET_KEY: &str = "pet";
+pub(super) const PET_KEY: &str = "pet";
 
 /// 저장된 켜짐 여부. 값이 없으면 켜짐이 기본이다 — 사용자가 직접 요청한
 /// 기능이라 opt-in으로 숨기지 않는다 (A2).
@@ -84,7 +84,7 @@ pub fn pet_pinball(app: &AppHandle) -> bool {
 }
 
 /// 새로 만든 펭귄에 저장된 설정을 건다.
-pub fn apply_saved_settings(app: &AppHandle, id: PetId) {
+pub(super) fn apply_saved_settings(app: &AppHandle, id: PetId) {
     let pinball = pet_pinball(app);
     if let Some(pet) = app.state::<PetState>().pets.lock().unwrap().get_mut(id) {
         pet.set_pinball(pinball);
@@ -103,7 +103,7 @@ pub fn pet_count(app: &AppHandle) -> usize {
 
 /// 마릿수를 저장한다. **읽고-고쳐-쓰기**여야 한다 — `pet` 키 아래 `enabled`가
 /// 함께 살아서, 객체를 통째로 덮어쓰면 켜짐/꺼짐 설정이 날아간다 (KTD3).
-pub fn save_pet_count(app: &AppHandle, count: usize) {
+pub(super) fn save_pet_count(app: &AppHandle, count: usize) {
     let Ok(store) = app.store(SETTINGS_FILE) else {
         return;
     };

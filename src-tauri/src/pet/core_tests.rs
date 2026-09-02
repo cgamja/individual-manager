@@ -283,3 +283,45 @@ fn 기준점은_펭귄_발밑_중앙이다() {
     p.y = 400.0;
     assert_eq!(p.anchor(), (300.0 + PET_SIZE / 2.0, 400.0 + PET_SIZE));
 }
+
+#[test]
+fn 빈도_등급이_순서대로다() {
+    let mut 기본 = 0; // Walk·Idle
+    let mut 자주 = 0; // Swim
+    let mut 가끔 = 0; // IceFishing
+    for seed in 1u64..5 {
+        let 전체 = 삼십분(seed);
+        let mut 직전 = String::new();
+        for s in 전체 {
+            let 이름 = match s.behavior {
+                Behavior::Walk | Behavior::Idle { .. } => "기본",
+                Behavior::Swim => "자주",
+                Behavior::IceFishing { .. } => "가끔",
+                _ => "",
+            }
+            .to_string();
+            if !이름.is_empty() && 이름 != 직전 {
+                match 이름.as_str() {
+                    "기본" => 기본 += 1,
+                    "자주" => 자주 += 1,
+                    _ => 가끔 += 1,
+                }
+            }
+            직전 = 이름;
+        }
+    }
+    assert!(기본 > 자주, "기본({기본})이 자주({자주})보다 잦아야 한다");
+    assert!(자주 > 가끔, "자주({자주})가 가끔({가끔})보다 잦아야 한다");
+}
+
+#[test]
+fn 희귀는_가끔보다_두_자릿수_드물다() {
+    let 가끔 = ICE_FISHING_PERMILLE as f64 / 1_000.0;
+    let 희귀 = 1.0 / FREAKOUT_ONE_IN as f64;
+    assert!(
+        가끔 / 희귀 >= 100.0,
+        "발작(1/{})이 얼음낚시({}‰)보다 두 자릿수 드물지 않다",
+        FREAKOUT_ONE_IN,
+        ICE_FISHING_PERMILLE
+    );
+}

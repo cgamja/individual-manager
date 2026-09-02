@@ -31,7 +31,11 @@ pub type ScreenSpec = ((i32, i32), (u32, u32), f64);
 /// 화면 하나가 논리 좌표로 차지하는 사각형. 크기가 0이면 `None`이다 —
 /// `primary_monitor()`는 화면이 하나도 없어도 `Some`을 주면서 크기 0인 핸들을
 /// 내놓는다 ([`bounds_of_work_area`]와 같은 이유).
-pub fn screen_rect(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<(f64, f64, f64, f64)> {
+pub(super) fn screen_rect(
+    pos: (i32, i32),
+    size: (u32, u32),
+    scale: f64,
+) -> Option<(f64, f64, f64, f64)> {
     if size.0 == 0 || size.1 == 0 || scale <= 0.0 {
         return None;
     }

@@ -36,17 +36,35 @@
 ## 구조
 
 ```text
-src/                  React 19 + TS 프론트
-  pet/                펭귄 창 웹뷰 — Penguin.tsx(SVG·CSS 모션), PetApp.tsx, pet.css
-  components/         설정 창 카드 UI + *.test.tsx
-  lib/                Rust invoke·이벤트 래퍼 (pet, settings) + *.test.ts
+src/
+  pet/                펭귄 창 웹뷰 — Penguin.tsx(SVG), PetApp.tsx, sound·synth
+    css/              동작별 스타일 (base·ground·air·react·pinball·drag·
+                      fishing·freakout·rest·speech) — index.css가 묶는다
+  pinball/            핀볼 판 창 — 화면을 덮는 투명 창, 커서만 방망이
+  components/         설정 창 카드 UI
+  lib/                Rust invoke·이벤트 래퍼 (pet, settings)
 src-tauri/src/
-  pet.rs              펭귄 상태머신 — Tauri 무의존 순수 모듈 + 인라인 테스트
-  pet_bridge.rs       commands · 20Hz 틱 스레드 · 창 위치 · 화면 경계
+  pet/                펭귄 코어 — Tauri 무의존 순수 상태머신
+    tuning.rs         속도·길이·확률 상수 — 값을 바꾸려면 여기만
+    behavior.rs       동작 목록(Behavior) + 국면 enum
+    world.rs          펭귄이 다닐 영역
+    motion/           동작 하나가 파일 하나 (ground·air·react·drag·
+                      pinball·fishing·freakout)
+    mod.rs            Pet·Pets·step 디스패치·pick_next·enter·clamp·난수
+  pet_bridge/         Tauri 연결 — settings·window·pinball·bounds·tick·
+                      popover·commands
   lib.rs              setup: 트레이 생성, Accessory 정책, 플러그인 등록, 창 이벤트
 docs/plans/           마일스톤 항목별 구현 플랜
 docs/solutions/       재발 방지용 학습 기록 — 셸을 건드리기 전에 읽는다
 ```
+
+**테스트는 구현과 다른 파일이다** — `#[path = "*_tests.rs"]`로 붙인다. Rust 단위 테스트는
+비공개 항목을 봐야 해서 같은 crate 안에 있어야 하고 `tests/` 통합 테스트로는 안 된다.
+프론트는 `*.test.ts(x)`가 같은 폴더에 있다.
+
+**모션 하나는 일곱 자리에 흩어져 있다** — `behavior.rs`의 모듈 문서에 목록이 있다.
+새 모션을 얹을 때 CSS(`pg--*`)와 `pet-css.test.ts`의 `ALL_BEHAVIORS`를 빠뜨려도
+Rust는 아무 말도 하지 않는다.
 
 스택은 Tauri v2 + React 19 + TypeScript + Vite 7 (PRD Q1 확정). Rust는 단일 crate `penguin`.
 
@@ -54,7 +72,7 @@ docs/solutions/       재발 방지용 학습 기록 — 셸을 건드리기 전
 
 - **`main`에 직접 커밋하지 않는다.** 브랜치는 `타입/기능-설명-번호` (예: `feat/f3-ice-fishing-01`).
 - **커밋은 한국어 Angular 컨벤션**, `타입: 제목` 50자 이내, 기능 단위로 묶는다.
-- **TDD** — 핵심 로직(`pet.rs`의 상태 전이·경계 판정)은 실패 테스트 먼저.
+- **TDD** — 핵심 로직(`pet/motion/*`의 상태 전이·경계 판정)은 실패 테스트 먼저.
   **테스트 이름은 한국어** (예: `공중에서_클릭하면_제자리에서_반응한다`). UI 테스트는 선택.
 - **PR 하나는 `TODO.md` 체크박스 하나**를 넘지 않는다. `.github/TEMPLATE/PR.md` 템플릿을 쓴다.
 - **에이전트가 merge해도 된다** (2026-08-30 사용자 지시). 단 두 러너를 모두 통과하고
@@ -77,7 +95,7 @@ docs/solutions/       재발 방지용 학습 기록 — 셸을 건드리기 전
 
 ## 이 코드베이스의 함정
 
-`docs/solutions/`에 기록된 것들 — 메뉴바 셸(`lib.rs`)·브릿지(`pet_bridge.rs`)를 수정하기
+`docs/solutions/`에 기록된 것들 — 메뉴바 셸(`lib.rs`)·브릿지(`pet_bridge/`)를 수정하기
 전에 해당 문서를 읽는다.
 
 - **`app.hide()`를 호출하지 않는다.** macOS 26(Tahoe)에서 트레이 아이콘까지 사라진다.

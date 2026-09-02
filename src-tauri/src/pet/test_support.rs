@@ -36,3 +36,18 @@ pub fn 두_화면() -> World {
     ])
     .expect("화면이 둘이면 세계가 만들어진다")
 }
+
+pub fn pet() -> Pet {
+    Pet::new(42, 0, &world())
+}
+
+/// `from`부터 `to`까지 `dt` 간격으로 진행시키며 스냅샷을 모은다.
+pub fn drive(pet: &mut Pet, from: u64, to: u64, dt: u64, world: &World) -> Vec<Snapshot> {
+    let mut out = Vec::new();
+    let mut t = from;
+    while t <= to {
+        out.push(pet.step(t, world));
+        t += dt;
+    }
+    out
+}

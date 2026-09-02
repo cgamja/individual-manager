@@ -1,19 +1,8 @@
-//! 모션 카탈로그 — [`Behavior`]와 국면 enum들.
+//! 펭귄이 할 수 있는 동작 목록과 동작 안의 국면.
 //!
-//! 모션 하나는 일곱 자리에 흩어져 있다. 이 파일은 첫 자리다 (`Slide` 기준):
-//!
-//! | # | 자리 |
-//! |---|---|
-//! | 1 | 여기 — `Behavior::Slide` |
-//! | 2 | `motion/ground.rs` — 매 틱 물리 |
-//! | 3 | `pick_next` — 진입 확률 |
-//! | 4 | `hit_wall` → `enter_idle` — 퇴장 |
-//! | 5 | `tuning.rs` — `SLIDE_MS`·`SLIDE_SPEED`·`SLIDE_AFTER_WALK_PERCENT` |
-//! | 6 | `src/lib/pet.ts` → `pet.css`의 `pg--slide` |
-//! | 7 | `src/pet/pet-css.test.ts`의 `ALL_BEHAVIORS` |
-//!
-//! 6·7을 빠뜨려도 Rust는 아무 말도 안 한다 — 눈으로만 잡힌다.
-//! 사용자가 모션을 만들게 하려면 이 일곱을 전부 데이터로 바꿔야 한다.
+//! 모션 하나를 얹으려면 일곱 곳을 건드린다: 여기(`Behavior`),
+//! `motion/*.rs`(매 틱 물리), `pick_next`(진입), 퇴장, `tuning.rs`(상수),
+//! `pet.css`의 `pg--*`, `pet-css.test.ts`의 `ALL_BEHAVIORS`.
 
 use serde::Serialize;
 

@@ -19,6 +19,10 @@ interface SettingsCardProps {
   /** 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로 버튼을 끈다 (A3). */
   bowlingRunning: boolean;
   onBowling: () => void;
+  /** 비치발리볼 판이 도는 중인가. **두 판은 서로를 배제하므로** 어느 쪽이든
+   * 도는 동안 버튼 둘이 함께 비활성된다. */
+  volleyballRunning: boolean;
+  onVolleyball: () => void;
 }
 
 /** 설정 카드. */
@@ -35,6 +39,8 @@ export function SettingsCard({
   onPinballEnabledChange,
   bowlingRunning,
   onBowling,
+  volleyballRunning,
+  onVolleyball,
 }: SettingsCardProps) {
   return (
     <section className="card settings-card">
@@ -95,13 +101,36 @@ export function SettingsCard({
           때문이다 — 판에는 화면의 펭귄 전부가 참여한다 (R1). */}
       <div className="settings-row">
         <span>볼링</span>
-        <button type="button" onClick={onBowling} disabled={bowlingRunning}>
+        <button
+          type="button"
+          onClick={onBowling}
+          disabled={bowlingRunning || volleyballRunning}
+        >
           {bowlingRunning ? "굴리는 중…" : "볼링 한 판"}
         </button>
       </div>
       <p className="settings-hint">
         펭귄들이 오른쪽 바닥에 한 줄로 서요. 다 서면 왼쪽에 공이 놓이고, 마우스로
         집어 뿌리면 굴러가요. 공이 멎으면 끝나요 — 점수는 안 세요.
+      </p>
+
+      {/* **사용자가 아무것도 안 하는 유일한 판이다.** 볼링은 공을 굴려야
+          진행되지만 이건 누르고 나면 20초 동안 할 일이 없다 — 그래서 안내
+          문구가 "무엇을 하세요"가 아니라 "무엇이 보입니다"다. */}
+      <div className="settings-row">
+        <span>비치발리볼</span>
+        <button
+          type="button"
+          onClick={onVolleyball}
+          disabled={bowlingRunning || volleyballRunning}
+        >
+          {volleyballRunning ? "치는 중…" : "비치발리볼 한 판"}
+        </button>
+      </div>
+      <p className="settings-hint">
+        펭귄들이 화면 가운데로 모여 모래사장과 네트가 깔리고, 핑크 비키니를 입고
+        20초쯤 한 판 쳐요. 구경만 하면 돼요 — 공이 모래에 닿으면 끝나고, 이긴 쪽은
+        좋아하고 진 쪽은 약 올라요. 두 마리부터 할 수 있고 점수는 안 세요.
       </p>
 
       <div className="settings-row">

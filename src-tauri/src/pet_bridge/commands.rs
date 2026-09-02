@@ -2,7 +2,7 @@
 
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
-use crate::pet::{PetId, Snapshot, MAX_PETS};
+use crate::pet::{PetId, Snapshot, VolleyRefusal, MAX_PETS};
 
 use super::*;
 
@@ -349,6 +349,39 @@ pub fn bowling_start(state: State<'_, PetState>, app: AppHandle) -> Result<(), S
     // 뮤텍스를 다시 잡아 자기 데드락이 난다 (std `Mutex`는 재진입 불가).
     // 증상은 "버튼을 누르면 앱이 통째로 멈춘다" 하나뿐이라 원인이 안 보인다.
     // `pet_set_pinball`이 같은 이유로 같은 모양을 쓴다.
+    let ids = state.pets.lock().unwrap().ids();
+    for id in ids {
+        flush(&app, id);
+    }
+    Ok(())
+}
+
+/// 설정 창의 "비치발리볼 한 판" — **볼링과 같은 전역 커맨드다.** 우클릭한 한
+/// 마리가 아니라 화면의 펭귄 전부가 참여한다.
+///
+/// **사용자 입력이 여기서 끝난다.** 이 커맨드 뒤로는 20초 동안 사용자가 할 일이
+/// 하나도 없다 — 볼링의 드래그·굴리기에 해당하는 커맨드가 없는 이유다.
+#[tauri::command]
+pub fn volleyball_start(state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let court = world_or_flat_any(&app).first().bounds;
+    // 시드는 시각이다 — 같은 시드가 같은 랠리를 낳으므로(PRINCIPLE 3),
+    // 버튼을 다시 누르면 다른 판이 나온다.
+    let opened = state
+        .pets
+        .lock()
+        .unwrap()
+        .start_volleyball(now_ms(), court, now_ms());
+    opened.map_err(|why| {
+        match why {
+            VolleyRefusal::BoardBusy => "이미 판이 돌고 있어요",
+            VolleyRefusal::NoRoom => "코트를 깔 자리가 없어요 — 화면이 좁아요",
+            VolleyRefusal::TooFew => "두 마리부터 할 수 있어요",
+        }
+        .to_string()
+    })?;
+    // **id를 먼저 꺼내 가드를 떨군다.** `for id in <락>.ids()`로 쓰면 반복자
+    // 식의 임시 `MutexGuard`가 루프 전체 동안 살아 있고, `flush`가 같은
+    // 뮤텍스를 다시 잡아 자기 데드락이 난다 (`bowling_start`와 같은 이유).
     let ids = state.pets.lock().unwrap().ids();
     for id in ids {
         flush(&app, id);

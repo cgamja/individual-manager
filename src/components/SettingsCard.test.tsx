@@ -18,6 +18,8 @@ const props = {
   onPinballEnabledChange: () => {},
   bowlingRunning: false,
   onBowling: () => {},
+  volleyballRunning: false,
+  onVolleyball: () => {},
 };
 
 describe("SettingsCard", () => {
@@ -105,5 +107,38 @@ describe("SettingsCard", () => {
     render(<SettingsCard {...props} />);
     expect(screen.getByText(/때리거나 던지면 소리가 나요/)).toBeInTheDocument();
     expect(screen.getByText(/그 밖에는 조용해요/)).toBeInTheDocument();
+  });
+
+  it("비치발리볼을_누르면_알린다", async () => {
+    const onVolleyball = vi.fn();
+    render(<SettingsCard {...props} onVolleyball={onVolleyball} />);
+    await userEvent.click(screen.getByRole("button", { name: "비치발리볼 한 판" }));
+    expect(onVolleyball).toHaveBeenCalledTimes(1);
+  });
+
+  it("판이_도는_동안_두_버튼이_모두_비활성이다", () => {
+    // **두 판은 서로를 배제한다** — 동시에 열리면 한쪽이 상대 판의 마리를
+    // 끌어가고 창만 남는다. 눌리는데 아무 일도 안 일어나면 고장으로 읽힌다.
+    const { rerender } = render(<SettingsCard {...props} volleyballRunning />);
+    expect(screen.getByRole("button", { name: "치는 중…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "볼링 한 판" })).toBeDisabled();
+
+    rerender(<SettingsCard {...props} bowlingRunning />);
+    expect(screen.getByRole("button", { name: "굴리는 중…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "비치발리볼 한 판" })).toBeDisabled();
+  });
+
+  it("아무_판도_안_돌면_둘_다_누를_수_있다", () => {
+    render(<SettingsCard {...props} />);
+    expect(screen.getByRole("button", { name: "비치발리볼 한 판" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "볼링 한 판" })).toBeEnabled();
+  });
+
+  it("구경만_하면_된다고_적어_둔다", () => {
+    // 사용자 입력이 없는 유일한 판이라, 안내가 "무엇을 하세요"가 아니라
+    // "무엇이 보입니다"여야 한다.
+    render(<SettingsCard {...props} />);
+    expect(screen.getByText(/구경만 하면 돼요/)).toBeInTheDocument();
+    expect(screen.getByText(/두 마리부터/)).toBeInTheDocument();
   });
 });

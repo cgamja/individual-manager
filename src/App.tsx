@@ -18,6 +18,8 @@ import {
   slidePet,
   squawkPet,
   startBowling,
+  startVolleyball,
+  onVolleyOver,
   freakoutPet,
   type PetSummary,
 } from "./lib/pet";
@@ -70,6 +72,7 @@ function App() {
     max: 8,
     focused: null,
     bowling: false,
+    volleyball: false,
   });
 
   useEffect(() => {
@@ -123,6 +126,19 @@ function App() {
       })
       .catch(() => {});
 
+    // 비치발리볼도 같다 — 판을 끝내는 것은 예산이지 사용자가 아니다.
+    let unlistenVolley: UnlistenFn | undefined;
+    void onVolleyOver(() => {
+      getPetSummary()
+        .then(setPetSummary)
+        .catch(() => {});
+    })
+      .then((off) => {
+        if (cancelled) off();
+        else unlistenVolley = off;
+      })
+      .catch(() => {});
+
     let unlisten: UnlistenFn | undefined;
     void onPetSettings(({ pinball }) => {
       setPinballEnabledState(pinball);
@@ -141,6 +157,7 @@ function App() {
       document.removeEventListener("visibilitychange", onVisibility);
       unlisten?.();
       unlistenBowling?.();
+      unlistenVolley?.();
     };
   }, []);
 
@@ -268,6 +285,15 @@ function App() {
     await refreshPets();
   }, [refreshPets]);
 
+  /** 비치발리볼 한 판 — 볼링과 같은 규칙으로 **저장하지 않는다.** 20초짜리
+   * 한 판이라 앱을 껐다 켜면 판은 그냥 없다. */
+  const handleVolleyball = useCallback(async () => {
+    await startVolleyball().catch((err) =>
+      console.error("비치발리볼을 못 열었어요:", err),
+    );
+    await refreshPets();
+  }, [refreshPets]);
+
   /** 대사 편집 — 화면을 먼저 바꾸고 저장한다. 실패하면 되돌린다. */
   const handleTauntsChange = useCallback(
     async (next: string[]) => {
@@ -309,6 +335,8 @@ function App() {
         onPinballEnabledChange={(next) => void handlePinballEnabledChange(next)}
         bowlingRunning={petSummary.bowling}
         onBowling={() => void handleBowling()}
+        volleyballRunning={petSummary.volleyball}
+        onVolleyball={() => void handleVolleyball()}
       />
       {saveFailed && (
         <p className="notif-hint" role="status">

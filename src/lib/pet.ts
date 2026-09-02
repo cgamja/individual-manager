@@ -224,6 +224,9 @@ export interface PetSummary {
   focused: number | null;
   /** 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로 버튼을 끈다 (A3). */
   bowling: boolean;
+  /** 비치발리볼 판이 도는 중인가. **두 판은 서로를 배제하므로** 어느 쪽이든
+   * 도는 동안 버튼 둘이 함께 비활성된다. */
+  volleyball: boolean;
 }
 
 /** 볼링 공의 상태. **위치는 여기 없다** — 창이 옮기므로, 넣으면 굴러가는

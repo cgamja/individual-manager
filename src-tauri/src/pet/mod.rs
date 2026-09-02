@@ -28,7 +28,7 @@ use volleyball::assign_sides;
 
 pub use behavior::{
     Behavior, BowlingPhase, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech,
-    Vertical,
+    Vertical, VolleyPhase,
 };
 use behavior::{IDLE_KINDS, SASSY_KINDS};
 
@@ -100,6 +100,13 @@ pub struct Pet {
     /// 이번 슬라이딩의 출발 속도 (논리 px/초). 진입할 때 한 번 뽑는다 —
     /// 길이는 고정이고 이 값이 거리를 정한다.
     slide_speed: f64,
+    /// 비치발리볼에서 **자기 팀이 뛸 수 있는 x 범위** (좌상단 기준). 판이 목적지를
+    /// 자기 코트 안에만 주지만, 그 보장이 마리 쪽에도 있어야 판이 실수해도
+    /// 네트를 넘어가는 그림이 안 나온다.
+    volley_span: (f64, f64),
+    /// 비치발리볼에서 **네트를 보는 방향.** 뛰는 동안에도 이쪽을 본다 — 진행
+    /// 방향으로 돌면 옆걸음이 아니라 도망가는 그림이 된다.
+    volley_face: Facing,
     /// **핀볼 모드인가.** 켜면 착지 등급 판정을 우회하고 벽·천장·바닥이 전부
     /// 반사면이 된다 (`landing`, `PINBALL_DAMPING`).
     pinball: bool,
@@ -624,6 +631,8 @@ impl Pet {
             target: (x, bounds.floor_y),
             last_y: bounds.floor_y,
             slide_speed: 0.0,
+            volley_span: (x, x),
+            volley_face: Facing::Right,
             pinball: false,
             swim_descending: false,
             freakout_until_ms: 0,
@@ -739,6 +748,7 @@ impl Pet {
             Behavior::Freakout { freakout } => self.tick_freakout(now_ms, freakout, bounds, dt),
             Behavior::IceFishing { fishing } => self.tick_fishing(now_ms, fishing),
             Behavior::Bowling { bowling } => self.tick_bowling(now_ms, bowling, bounds, dt),
+            Behavior::Volleyball { volley } => self.tick_volley(now_ms, volley, dt),
             Behavior::Idle { .. } | Behavior::Sleep => {
                 if now_ms >= self.behavior_until_ms {
                     self.pick_next(now_ms, bounds);

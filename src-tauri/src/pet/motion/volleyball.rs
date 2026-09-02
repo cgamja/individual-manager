@@ -8,7 +8,7 @@
 //! 프레임에 사라져 펭귄이 튄다 (얼음낚시의 `Pack`, 발작의 `Pant`, 볼링의 `Scatter`와
 //! 같은 자리). 그림은 **싸가지 반응의 keyframe을 CSS에서 그대로 참조**하지만
 //! 국면은 `Volleyball` 안에 남는다 — `Behavior::Sassy`로 넘겨 버리면 축하하는 동안
-//! **비키니가 사라진다.**
+//! **옷이 사라진다.**
 //!
 //! 진입은 사용자가 누르는 버튼뿐이다 — `pick_next`를 건드리지 않으므로 골든 수열이
 //! 재기준화되지 않는다.
@@ -25,7 +25,7 @@ impl Pet {
             // 다다랐다는 것은 판이 사라졌다는 뜻이다.
             VolleyPhase::Ready => {
                 if now_ms >= self.behavior_until_ms {
-                    self.enter_idle(now_ms);
+                    self.leave_court(now_ms);
                 }
             }
             VolleyPhase::Bump => {
@@ -35,16 +35,22 @@ impl Pet {
             }
             VolleyPhase::Cheer | VolleyPhase::Sulk => {
                 if now_ms >= self.behavior_until_ms {
-                    // **선 그 자리에서** 평소로 돌아간다 — 원래 자리로 되돌려
-                    // 보내지 않는다 (R12).
-                    self.enter_idle(now_ms);
+                    // **선 자리에서 그대로 떨어진다.** 판이 화면 세로 중앙이라
+                    // 축하가 끝나면 공중에 떠 있는 상태다 — 볼링의 `Scatter`가
+                    // 같은 자리에서 하는 것과 같다. 가로 자리는 안 건드리므로
+                    // "선 그 자리에서 평소로"(R12)는 그대로다.
+                    if self.air {
+                        self.enter(Behavior::Falling, now_ms);
+                    } else {
+                        self.enter_idle(now_ms);
+                    }
                 }
             }
         }
     }
 
-    /// 자기 자리로 **날아간다.** 목적지가 코트 위의 한 점이라 헤엄·볼링 모으기와
-    /// 같은 꼴로 `target`을 향해 곧장 간다 — 순간이동하지 않는다.
+    /// 자기 자리로 **날아간다.** 목적지가 화면 세로 중앙의 한 점이라 헤엄·볼링
+    /// 모으기와 같은 꼴로 `target`을 향해 곧장 간다 — 순간이동하지 않는다.
     fn tick_volley_gather(&mut self, now_ms: u64, dt: f64) {
         let (tx, ty) = self.target;
         let (dx, dy) = (tx - self.x, ty - self.y);
@@ -67,14 +73,14 @@ impl Pet {
         }
     }
 
-    /// 공이 떨어질 자리로 **뛴다.** 가로만 움직인다 — 모래 위를 달리는 것이지
-    /// 날아가는 게 아니다. 도착하면 서서 기다린다.
+    /// 공이 떨어질 자리로 **뛴다.** 가로만 움직인다 — 판의 높이를 유지한 채
+    /// 옆으로 달린다. 도착하면 서서 기다린다.
     ///
     /// **자기 팀 범위 밖으로는 안 나간다.** 판이 목적지를 자기 코트 안에만 주지만,
     /// 그 보장이 여기 있어야 판이 실수해도 네트를 넘어가는 그림이 안 나온다.
     fn tick_volley_chase(&mut self, now_ms: u64, dt: f64) {
         if now_ms >= self.behavior_until_ms {
-            self.enter_idle(now_ms);
+            self.leave_court(now_ms);
             return;
         }
         let (tx, hi) = (self.target.0, self.volley_span.1);
@@ -187,6 +193,16 @@ impl Pet {
                 volley: VolleyPhase::Ready | VolleyPhase::Chase | VolleyPhase::Bump
             }
         )
+    }
+
+    /// 판에서 빠져나가는 한 길 — **공중이면 떨어지고 아니면 유휴로.** 판이
+    /// 화면 세로 중앙이라 나가는 자리는 거의 항상 공중이다.
+    fn leave_court(&mut self, now_ms: u64) {
+        if self.air {
+            self.enter(Behavior::Falling, now_ms);
+        } else {
+            self.enter_idle(now_ms);
+        }
     }
 
     fn enter_volley(&mut self, phase: VolleyPhase, now_ms: u64) {

@@ -539,7 +539,7 @@ impl Pets {
     ///
     /// **판만 버리고 마리를 안 풀면 그 마리가 국면에 갇힌다** — 국면의 시각은
     /// 길이가 아니라 안전 상한(60초)이라, 코트도 공도 사라진 바탕화면에
-    /// 비키니만 입고 1분을 서 있게 된다.
+    /// 지푸라기만 걸친 채 1분을 서 있게 된다.
     fn leave_volleyball(&mut self, id: PetId) {
         if let Some(board) = self.volleyball.as_mut() {
             board.leave(id);
@@ -663,7 +663,7 @@ impl Pets {
         if board.phase() != CourtPhase::Point && board.player_count() < VOLLEY_MIN_PETS {
             // **남은 마리를 반드시 풀어 준다.** 판만 버리면 그 마리가 국면에
             // 갇히는데, 국면의 시각은 길이가 아니라 안전 상한(60초)이라
-            // 코트가 사라진 바탕화면에 비키니만 입고 1분을 서 있게 된다.
+            // 코트가 사라진 바탕화면에 지푸라기만 걸친 채 1분을 서 있게 된다.
             for id in board.participants() {
                 if let Some(pet) = pets.get_mut(&id) {
                     pet.volley_finish(now_ms, true);

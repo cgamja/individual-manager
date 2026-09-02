@@ -363,23 +363,44 @@ const _: () = assert!(BOWLING_SPEED_LOSS_PER_PIN < 1.0);
 pub const VOLLEY_BALL_SIZE: f64 = 56.0;
 const _: () = assert!(VOLLEY_BALL_SIZE < PET_SIZE);
 
-/// 네트가 모래 위로 서는 높이.
+/// 네트 그물의 높이. **모래 위에 서는 것이 아니라 판에 매달려 있다** — 판이
+/// 화면 세로 중앙이라 모래는 저 아래에 있다.
 pub(super) const VOLLEY_NET_HEIGHT: f64 = 120.0;
 
-/// 모래사장이 발밑에서 아래로 뻗는 깊이. 작업 영역 바닥이 곧 발밑이라 이만큼은
+/// 모래사장이 발밑 선에서 아래로 뻗는 깊이. 작업 영역 바닥보다 아래이므로
 /// 화면 밖으로 나가고, 그래서 모래의 아래 모서리가 안 보인다.
 pub(super) const VOLLEY_SAND_DEPTH: f64 = 80.0;
+
+/// 모래사장이 좌우로 세계 밖까지 뻗는 길이. **해변의 좌우 끝이 보이면 안 된다** —
+/// 화면 안에서 끊기면 백사장이 아니라 깔개로 보인다.
+pub(super) const VOLLEY_COURT_BLEED: f64 = 200.0;
 
 /// 펭귄이 공을 치는 높이 — 펭귄 `y`(좌상단)보다 이만큼 **위**다.
 pub(super) const VOLLEY_REACH: f64 = 40.0;
 
-/// **타점이 네트 꼭대기보다 높다 — 이 한 줄이 네트 판정을 통째로 없앤다.**
+/// 네트 꼭대기가 펭귄 `y`(좌상단)보다 이만큼 **아래**다. 머리 바로 밑에 걸려야
+/// 배구 네트로 보인다.
+pub(super) const VOLLEY_NET_DROP: f64 = 10.0;
+
+/// **타점이 네트 꼭대기보다 높다 — 이 한 줄이 네트 판정을 통째로 없앤다** (KTD6).
 ///
-/// 펭귄 발밑(= 모래)은 `y + PET_SIZE`이므로 타점의 모래 위 높이는
-/// `PET_SIZE + VOLLEY_REACH`다. 타점에서 출발해 타점으로 돌아오는 포물선은
-/// **전 구간이 타점 이상**이라 네트에 걸릴 수가 없다. 네트인 처리도, 그 테스트도,
-/// "걸렸을 때 어떻게 하나"라는 논의도 이 부등식이 사는 동안에는 필요 없다.
-const _: () = assert!(VOLLEY_NET_HEIGHT < PET_SIZE + VOLLEY_REACH);
+/// 판을 화면 세로 중앙으로 올리면서 근거가 **더 단순해졌다**: 예전에는 네트가
+/// 모래에 서 있어서 "네트 높이 < 펭귄 키 + 손 높이"라는 비교가 필요했지만,
+/// 이제 네트는 판에 매달려 있고 타점은 펭귄 위, 네트 꼭대기는 펭귄 아래라
+/// **부호만으로 성립한다.** 타점에서 출발해 타점으로 돌아오는 포물선은 전
+/// 구간이 타점 이상이라 네트에 걸릴 수가 없다.
+const _: () = assert!(VOLLEY_NET_DROP > -VOLLEY_REACH);
+/// 네트가 발밑보다 아래로 처지면 판에 매달린 게 아니라 끌리는 그림이 된다.
+const _: () = assert!(VOLLEY_NET_DROP + VOLLEY_NET_HEIGHT <= PET_SIZE);
+
+/// 타점과 네트 꼭대기 사이. 킬샷이 네트를 넘는지 계산하는 데 쓴다.
+pub(super) const VOLLEY_NET_CLEAR: f64 = VOLLEY_REACH + VOLLEY_NET_DROP;
+
+/// 네트 그물의 **반폭.** 네트는 선이 아니라 폭을 가지므로, 넘는지 따질 때는
+/// 공이 가장 낮게 지나는 **먼 쪽 모서리**를 봐야 한다 — 가운데 선만 보면
+/// 그 몇십 px 뒤에서 그물에 걸린다.
+pub(super) const VOLLEY_NET_HALF_W: f64 = 48.0;
+const _: () = assert!(VOLLEY_NET_HALF_W < VOLLEY_NET_GAP);
 
 /// 네트에서 가장 가까운 자리까지 (몸통 가운데 기준). 네트에 딱 붙어 서면
 /// 공을 넘기는 게 아니라 네트를 넘겨다보는 그림이 된다.
@@ -393,9 +414,13 @@ const _: () = assert!(VOLLEY_COURT_HALF > VOLLEY_NET_GAP + PET_SIZE);
 /// 이보다 좁은 세계에서는 판을 열지 않는다 — 코트가 안 들어간다.
 pub(super) const VOLLEY_MIN_WORLD_WIDTH: f64 = 2.0 * (VOLLEY_NET_GAP + PET_SIZE);
 
-/// 세로로도 이만큼은 있어야 한다. 공을 띄울 높이가 없으면 체공이 0으로 눌려
-/// 공이 순간이동한다 — 가장 짧은 스파이크의 정점이 넉넉히 들어갈 만큼 잡는다.
-pub(super) const VOLLEY_MIN_WORLD_HEIGHT: f64 = 200.0;
+/// 세로로도 이만큼은 있어야 한다.
+///
+/// **판이 화면 세로 중앙으로 올라가면서 이 값이 두 배가 됐다.** 공이 뜰 수 있는
+/// 높이가 세계 전체가 아니라 **판 위쪽 절반**뿐이기 때문이다. 좁으면
+/// `flight_ms_for`의 천장 자르기가 체공 세 등급을 하나로 뭉개 **리듬이 갈리는
+/// 갈래(KTD3-3)가 통째로 죽는다** — 아래 단언이 그 지점을 막는다.
+pub(super) const VOLLEY_MIN_WORLD_HEIGHT: f64 = 420.0;
 
 /// 판을 열 수 있는 최소 마릿수. **한 마리면 팀이 안 나온다** (R3).
 pub(super) const VOLLEY_MIN_PETS: usize = 2;
@@ -424,6 +449,15 @@ pub(super) const VOLLEY_GRAVITY: f64 = 1_200.0;
 pub(super) const VOLLEY_FLIGHT_MS: [u64; 3] = [550, 950, 1_500];
 const _: () = assert!(VOLLEY_FLIGHT_MS[0] < VOLLEY_FLIGHT_MS[1]);
 const _: () = assert!(VOLLEY_FLIGHT_MS[1] < VOLLEY_FLIGHT_MS[2]);
+
+/// **가장 좁은 세계에서도 체공 세 등급이 갈려야 한다.** 판 위쪽 높이가
+/// `MIN_WORLD_HEIGHT/2 - REACH`이고 정점이 `g·T²/8`이므로 천장이 정하는 상한은
+/// `sqrt(8h/g)`다. 그게 평타보다 짧으면 세 등급이 둘로 뭉개진다.
+const VOLLEY_MIN_HEADROOM: f64 = VOLLEY_MIN_WORLD_HEIGHT / 2.0 - VOLLEY_REACH;
+const _: () = assert!(
+    8.0 * VOLLEY_MIN_HEADROOM / VOLLEY_GRAVITY
+        > (VOLLEY_FLIGHT_MS[1] as f64 / 1_000.0) * (VOLLEY_FLIGHT_MS[1] as f64 / 1_000.0)
+);
 
 /// 받을 마리가 목적지에 도착하고 남는 여유.
 pub(super) const VOLLEY_ARRIVE_MARGIN_MS: u64 = 250;

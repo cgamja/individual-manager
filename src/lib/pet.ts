@@ -26,7 +26,7 @@ export type BowlingPhase = "gather" | "ready" | "scatter";
  * 안에만 있다 — 웹뷰는 자기 펭귄이 무엇을 하는지만 알면 된다.
  *
  * `cheer`/`sulk`는 **싸가지 반응의 그림을 CSS에서 재사용한다.** 국면을
- * `Volleyball` 안에 남긴 이유는 그래야 축하하는 동안에도 비키니가 남기 때문이다. */
+ * `Volleyball` 안에 남긴 이유는 그래야 축하하는 동안에도 옷이 남기 때문이다. */
 export type VolleyPhase =
   | "gather"
   | "ready"

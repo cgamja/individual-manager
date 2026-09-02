@@ -62,10 +62,16 @@ pub struct Court {
     half: f64,
     /// 네트에서 가장 가까운 자리까지.
     gap: f64,
-    /// 펭귄이 서는 y (좌상단). 모래는 이보다 `PET_SIZE` 아래다.
-    floor_y: f64,
+    /// **판**의 y (펭귄 좌상단 기준) — 화면 세로 중앙이다. 볼링이 핀을 공중에
+    /// 세운 것과 같은 자리이고, **모래는 여기가 아니라 저 아래 화면 바닥에 있다.**
+    play_y: f64,
+    /// 모래 표면 (해변의 윗선). 화면 바닥이다.
+    sand_y: f64,
     /// 올라갈 수 있는 최고점 — 공의 정점을 여기서 자른다.
     top: f64,
+    /// 세계의 좌우 끝 (펭귄 좌상단 기준). 모래사장이 여기서 더 뻗는다.
+    left: f64,
+    right: f64,
 }
 
 impl Court {
@@ -84,34 +90,39 @@ impl Court {
         // `half <= gap`이 되어 설 자리가 사라진다.
         let half = VOLLEY_COURT_HALF.min(width / 2.0);
         let gap = VOLLEY_NET_GAP.min(half / 2.0);
+        let top = bounds.top.min(bounds.floor_y);
         Some(Court {
             net_cx: (bounds.left + bounds.right) / 2.0 + PET_SIZE / 2.0,
             half,
             gap,
-            floor_y: bounds.floor_y,
-            top: bounds.top.min(bounds.floor_y),
+            // **판은 화면 세로 중앙이다** — 볼링의 `lane_center_y`와 같다.
+            play_y: (top + bounds.floor_y) / 2.0,
+            // 모래는 판이 아니라 **화면 바닥**에 있다. 발밑 선이므로 `+ PET_SIZE`.
+            sand_y: bounds.floor_y + PET_SIZE,
+            top,
+            left: bounds.left,
+            right: bounds.right,
         })
     }
 
-    #[cfg(test)]
     pub(super) fn net_cx(&self) -> f64 {
         self.net_cx
     }
 
-    /// 모래 표면 — 펭귄 발밑이다 (`Pet::y`는 좌상단이므로 `+ PET_SIZE`).
+    /// 모래 표면 — **화면 바닥의 해변**이다. 공이 여기 닿으면 랠리가 끝난다.
     pub(super) fn sand_y(&self) -> f64 {
-        self.floor_y + PET_SIZE
+        self.sand_y
     }
 
-    /// 네트 꼭대기.
+    /// 네트 꼭대기. **판에 매달려 있다** — 펭귄 머리 바로 밑이다.
     pub(super) fn net_top_y(&self) -> f64 {
-        self.sand_y() - VOLLEY_NET_HEIGHT
+        self.play_y + VOLLEY_NET_DROP
     }
 
     /// 펭귄이 공을 치는 높이 (공 **중심**의 y). **네트 꼭대기보다 위다** —
     /// 그래서 타점에서 타점으로 가는 포물선은 네트에 걸릴 수가 없다 (KTD6).
     pub(super) fn contact_y(&self) -> f64 {
-        self.floor_y - VOLLEY_REACH
+        self.play_y - VOLLEY_REACH
     }
 
     /// 공의 정점이 넘으면 안 되는 선. 넘으면 화면 위로 사라진다.
@@ -136,7 +147,7 @@ impl Court {
         } else {
             lo + (hi - lo) * (k.min(n - 1) as f64) / ((n - 1) as f64)
         };
-        (cx - PET_SIZE / 2.0, self.floor_y)
+        (cx - PET_SIZE / 2.0, self.play_y)
     }
 
     /// 타점을 지난 공이 **모래까지 더 떨어지는 데 걸리는 시간**(초).
@@ -150,11 +161,19 @@ impl Court {
         (-t + (t * t + 4.0 * c).sqrt()) / 2.0
     }
 
-    /// 코트 밖으로 나갔는가 — 목적지가 늘 코트 안이라 일어나지 않지만,
-    /// 일어나면 공이 영영 안 떨어지므로 방어로 둔다.
+    /// 모래사장의 좌우 끝 (공 중심 기준). 킬샷은 코트 밖 해변에도 떨어진다 —
+    /// 백사장이 화면을 가로지르므로 거기까지가 "모래에 닿았다"이다.
+    pub(super) fn sand_span(&self) -> (f64, f64) {
+        (
+            self.left - VOLLEY_COURT_BLEED,
+            self.right + PET_SIZE + VOLLEY_COURT_BLEED,
+        )
+    }
+
+    /// 모래사장 밖으로 나갔는가 — 여기까지 가면 화면 밖이라 더 볼 것이 없다.
     pub(super) fn out_of(&self, cx: f64) -> bool {
-        let 반폭 = self.half + PET_SIZE;
-        cx < self.net_cx - 반폭 || cx > self.net_cx + 반폭
+        let (lo, hi) = self.sand_span();
+        cx < lo || cx > hi
     }
 
     /// 이 x가 네트의 어느 쪽인가. 정확히 네트 위면 왼쪽으로 본다 — 공이 네트
@@ -169,16 +188,19 @@ impl Court {
     }
 
     /// 코트 창이 덮을 사각형 — `(x, y, 폭, 높이)` 논리 좌표.
-    /// 네트 꼭대기부터 모래 아래까지다.
+    ///
+    /// **네트 꼭대기(화면 중앙)부터 모래 아래(화면 밖)까지**를 한 창이 덮는다.
+    /// 창을 둘로 나누지 않은 이유: 창이 늘면 capabilities 라벨·창 레벨·클릭
+    /// 통과·반쯤 만들어진 창의 되돌리기가 **그만큼 두 벌**이 된다. 투명하고
+    /// 클릭을 통과시키므로 커도 비용이 없다.
+    /// **네트는 이 창의 가로 한가운데다** — `sand_span`이 `net_cx`를 중심으로
+    /// 대칭이라, 웹뷰가 좌표를 하나도 안 받고 `left: 50%`로 정확히 맞춘다.
     pub fn rect(&self) -> (f64, f64, f64, f64) {
-        let 반폭 = self.half + PET_SIZE / 2.0;
-        (
-            self.net_cx - 반폭,
-            self.net_top_y(),
-            반폭 * 2.0,
-            VOLLEY_NET_HEIGHT + VOLLEY_SAND_DEPTH,
-        )
+        let (lo, hi) = self.sand_span();
+        let top = self.net_top_y();
+        (lo, top, hi - lo, self.sand_y + VOLLEY_SAND_DEPTH - top)
     }
+
 }
 
 /// 마릿수를 팀으로 나눈다 — **id 오름차순으로 번갈아.** 홀수면 왼쪽이 하나 많다.
@@ -482,29 +504,19 @@ impl Volleyball {
         } else {
             VOLLEY_FLIGHT_MS[(self.next_u64() % VOLLEY_FLIGHT_MS.len() as u64) as usize]
         };
+        // **킬샷의 착지점은 체공에 딸린 낙하 거리에 의존한다** — 등급만으로 정해지는
+        // 이 값(도착 보장을 끄므로 뛸 거리가 0이다)을 먼저 구해야 순서가 안 뒤집힌다.
         let t0 = flight_ms_for(&self.court, 0.0, grade) as f64 / 1000.0;
-        let t = t0;
 
         let 빈자리 = farthest_from(on_side, lo, hi);
+        // **킬샷은 목적지가 아니라 착지점을 고른다.** 아무도 안 치므로 공은
+        // 타점을 지나 **화면 바닥의 모래까지** 떨어지고, 그동안 가로 속도를
+        // 그대로 갖는다. 판이 화면 세로 중앙으로 올라가면서 그 낙하가 화면
+        // 절반만큼 길어져, 타점 높이로 조준하면 해변을 한참 지나쳐 날아간다.
         let target_cx = if 마지막 {
             // **아무 마리에게서도 가장 먼 자리에 꽂는다.** 받는 마리는 뛰지만
             // 못 미치고, 공이 모래에 박힌다.
-            //
-            // 다만 **착지점이 코트를 안 넘게 목적지를 당긴다.** 킬샷은 아무도
-            // 안 치므로 공이 타점을 지나 모래까지 더 떨어지는데, 그동안 가로
-            // 속도를 그대로 갖는다 — 안 당기면 코트 밖에서 `out_of`로 끝나고
-            // `settle`이 공을 화면 밖 x에 수직으로 떨어뜨린다.
-            //
-            // **포물선 자체는 타점→타점 그대로 둔다.** 모래를 직접 겨누면
-            // 하강 구간이 앞당겨져 **네트 위에서 타점 아래로 내려가** KTD6의
-            // 보장이 깨진다 (테스트 `공은_반드시_네트를_넘는다`가 잡았다).
-            // 착지점 `target·(1+r) − x·r`(r = 낙하시간/체공)이 `[lo, hi]` 안에
-            // 들도록 목적지를 **양쪽으로** 제한한다. 한쪽만 막으면 반대 방향
-            // 킬샷이 그대로 넘친다 — 실제로 왼쪽으로 가는 공이 그랬다.
-            let r = self.court.fall_after_contact(t) / t;
-            let 하한 = ((lo + ball.x * r) / (1.0 + r)).max(lo);
-            let 상한 = ((hi + ball.x * r) / (1.0 + r)).min(hi);
-            빈자리.clamp(하한.min(상한), 상한.max(하한))
+            self.kill_landing(ball.x, 빈자리, to, t0)
         } else {
             // 균등하게 뽑되 **빈자리 쪽으로 끌어당긴다.** 순수 균등이면 마릿수가
             // 늘수록 뽑힌 자리가 이미 누군가의 사정거리 안이라 아무도 안 뛴다
@@ -521,13 +533,18 @@ impl Volleyball {
         // 마지막 왕복만 **도착 보장을 끈다** — 그래서 못 받는다.
         let ms = flight_ms_for(&self.court, if 마지막 { 0.0 } else { 뛸_거리 }, grade);
         let t = ms as f64 / 1000.0;
-        let _ = t0;
         // 타점에서 출발해 `t` 뒤 타점으로 돌아오는 포물선. 이 모양이 네트를
         // 넘는 보장(KTD6)을 만든다.
         ball.vy = -VOLLEY_GRAVITY * t / 2.0;
-        // 가로 속도는 목적지에 **타점 높이로** 닿는 시각으로 정한다. 킬샷이
-        // 그 뒤로 더 떨어지며 넘어가는 몫은 위에서 목적지를 당겨 처리했다.
-        ball.vx = (target_cx - ball.x) / t;
+        // 평소 왕복은 받을 마리가 **타점 높이에서** 치므로 `t`가 곧 그 시각이다.
+        // **킬샷은 아무도 안 치므로 모래에 닿는 시각으로 나눈다** — 그래야
+        // 고른 자리에 실제로 떨어진다.
+        let 도달 = if 마지막 {
+            t + self.court.fall_after_contact(t)
+        } else {
+            t
+        };
+        ball.vx = (target_cx - ball.x) / 도달;
 
         self.ball = Some(ball);
         self.to_side = to;
@@ -535,6 +552,34 @@ impl Volleyball {
         self.last_flight_ms = ms;
         if 마지막 {
             self.rally_over = true;
+        }
+    }
+
+    /// 킬샷이 떨어질 자리를 고른다 — **네트를 넘으면서 해변 안에 떨어지는 x.**
+    ///
+    /// 두 조건이 서로 당긴다. 가까이 떨어뜨리면 공이 네트에 닿기까지 걸리는
+    /// 시간이 전체 비행에서 차지하는 비율이 커져 **타점 아래로 내려간 채 네트를
+    /// 지난다.** 멀리 떨어뜨리면 해변을 지나 화면 밖으로 나간다.
+    ///
+    /// 네트를 넘는 조건은 시간으로 쓰면 한 줄이다. 공이 타점보다
+    /// `VOLLEY_NET_CLEAR`만큼 내려가는 데 걸리는 시간을 `s₅₀`라 하면
+    /// (`s² − t·s − 2·clear/g = 0`의 양근), **네트에 닿는 시각이 그보다 일러야**
+    /// 한다. 가로는 등속이라 시간 비율이 곧 거리 비율이므로 최소 비행 거리가 나온다.
+    fn kill_landing(&self, x0: f64, 빈자리: f64, to: Side, t: f64) -> f64 {
+        let 전체 = t + self.court.fall_after_contact(t);
+        let s50 = (t + (t * t + 8.0 * VOLLEY_NET_CLEAR / VOLLEY_GRAVITY).sqrt()) / 2.0;
+        // 1.0에 붙으면 그물을 스치듯 지나가므로 10%를 남긴다.
+        let 비율 = (s50 * 0.9 / 전체).min(0.9).max(f64::EPSILON);
+        // **네트의 먼 쪽 모서리**를 기준으로 잰다 — 공은 거기서 가장 낮다.
+        let 방향 = if to == Side::Right { 1.0 } else { -1.0 };
+        let 그물_끝 = self.court.net_cx() + 방향 * VOLLEY_NET_HALF_W;
+        let 최소_거리 = (그물_끝 - x0).abs() / 비율;
+        let (모래_lo, 모래_hi) = self.court.sand_span();
+        // 해변 끝에 딱 붙으면 공이 화면 가장자리에서 끝난다 — 조금 안쪽에 둔다.
+        let 여백 = VOLLEY_COURT_BLEED / 2.0;
+        match to {
+            Side::Right => 빈자리.max(x0 + 최소_거리).min(모래_hi - 여백),
+            Side::Left => 빈자리.min(x0 - 최소_거리).max(모래_lo + 여백),
         }
     }
 

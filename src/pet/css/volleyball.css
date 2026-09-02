@@ -1,4 +1,4 @@
-/* ── 비치발리볼 — 코트로 모여 비키니를 입고 한 판 친다 ────────── */
+/* ── 비치발리볼 — 화면 중앙에 모여 지푸라기를 걸치고 한 판 친다 ── */
 
 /* 국면 여섯 (`VolleyPhase`). **판이 마리를 몬다** — `Ready`와 `Chase`의 목적지를
    정하는 것은 코어의 판이고, 여기서 그리는 것은 자세뿐이다.
@@ -6,24 +6,27 @@
    `Gather`만 공중이라 `.pg-air`와 기울기가 함께 걸리고, 나머지는 모래 위라
    지상 자세를 쓴다 (볼링과 정반대다 — 그쪽은 판이 화면 세로 중앙이었다). */
 
-/* ── 비키니 — 판이 도는 동안에만 입는다 ───────────────────────── */
+/* ── 지푸라기 걸침 — 판이 도는 동안에만 입는다 ───────────────── */
 
-/* **평소에는 `display: none`이다.** `opacity: 0`으로 감추면 후광(`pg-halo`)에
-   분홍 잔상이 남는다 — 얼음낚시 도형들과 같은 규칙이고 `pet-css.test.ts`가
-   대조한다. */
-.pg-bikini {
+/* **상의만 있고 하의는 없다.** 비키니를 접은 이유는 취향이 아니라 적나라해서다 —
+   수영복 하의는 펭귄 몸에 속옷처럼 얹혀 오히려 눈에 띄었고, 지우면 원래 펭귄
+   몸으로 돌아갈 뿐이라 그쪽이 덜 노출된다. 그림은 `Penguin.tsx`에 있다.
+
+   **평소에는 `display: none`이다.** `opacity: 0`으로 감추면 후광(`pg-halo`)에
+   잔상이 남는다 — 얼음낚시 도형들과 같은 규칙이고 `pet-css.test.ts`가 대조한다. */
+.pg-straw {
   display: none;
 }
 
 /* 여섯 국면 전부에서 보인다. **`Cheer`/`Sulk`까지 포함하는 것이 이 국면들을
-   `Behavior::Sassy`로 넘기지 않은 이유다** — 넘겼으면 축하하는 동안 수영복이
+   `Behavior::Sassy`로 넘기지 않은 이유다** — 넘겼으면 축하하는 동안 옷이
    한 프레임에 사라진다. */
-.pg--volley-gather .pg-bikini,
-.pg--volley-ready .pg-bikini,
-.pg--volley-chase .pg-bikini,
-.pg--volley-bump .pg-bikini,
-.pg--volley-cheer .pg-bikini,
-.pg--volley-sulk .pg-bikini {
+.pg--volley-gather .pg-straw,
+.pg--volley-ready .pg-straw,
+.pg--volley-chase .pg-straw,
+.pg--volley-bump .pg-straw,
+.pg--volley-cheer .pg-straw,
+.pg--volley-sulk .pg-straw {
   display: block;
 }
 

@@ -52,10 +52,18 @@ fn 타점은_네트_꼭대기보다_높다() {
 }
 
 #[test]
-fn 모래는_발밑에_있다() {
+fn 모래는_화면_바닥이고_판은_그보다_한참_위다() {
+    // **판이 화면 세로 중앙으로 올라갔다** — 모래사장은 배경으로 바닥에 남는다.
     let b = 넓은_코트();
     let c = Court::new(b).unwrap();
-    assert_eq!(c.sand_y(), b.floor_y + PET_SIZE);
+    assert_eq!(c.sand_y(), b.floor_y + PET_SIZE, "모래는 화면 바닥의 발밑 선이다");
+    let (play_y, _) = (c.spot_of(Side::Left, 0, 1).1, 0);
+    assert!(
+        play_y < c.sand_y() - PET_SIZE,
+        "판({play_y})이 모래({})에 붙어 있다",
+        c.sand_y()
+    );
+    assert!((play_y - (b.top + b.floor_y) / 2.0).abs() < 1e-9, "판은 화면 세로 중앙이다");
 }
 
 #[test]
@@ -93,7 +101,10 @@ fn 자리는_세계_경계_안에_있다() {
                     x >= b.left && x <= b.right,
                     "{side:?} {k}/{n} 의 x={x} 가 경계 밖이다"
                 );
-                assert_eq!(y, b.floor_y, "펭귄은 모래 위에 선다");
+                // **판이 화면 세로 중앙으로 올라갔다** — 세로 자리가 전부 같고
+                // 경계 안이어야 한다는 이 테스트의 의도는 그대로다.
+                assert_eq!(y, (b.top + b.floor_y) / 2.0, "펭귄은 판 위에 뜬다");
+                assert!(y > b.top && y < b.floor_y, "판이 세계 밖으로 나갔다");
             }
         }
     }
@@ -129,10 +140,26 @@ fn 네트를_기준으로_어느_쪽인지_안다() {
 
 #[test]
 fn 코트_사각형은_네트_꼭대기부터_모래_아래까지다() {
+    // 의도는 그대로 — 창 하나가 네트와 모래를 **함께** 덮는다. 판이 올라가면서
+    // 그 사이가 화면 절반만큼 벌어졌을 뿐이다.
     let c = 코트();
-    let (_, y, _, h) = c.rect();
-    assert_eq!(y, c.net_top_y());
-    assert_eq!(h, VOLLEY_NET_HEIGHT + VOLLEY_SAND_DEPTH);
+    let (x, y, w, h) = c.rect();
+    assert_eq!(y, c.net_top_y(), "창 윗변은 네트 꼭대기다");
+    assert_eq!(h, c.sand_y() + VOLLEY_SAND_DEPTH - c.net_top_y(), "창은 모래 아래까지 덮는다");
+    // **네트는 창의 가로 한가운데다** — 웹뷰가 `left: 50%`로 맞출 수 있는 근거다.
+    assert!(((x + w / 2.0) - c.net_cx()).abs() < 1e-9, "네트가 창 한가운데가 아니다");
+    let (모래_lo, 모래_hi) = c.sand_span();
+    assert_eq!((x, x + w), (모래_lo, 모래_hi), "창은 모래사장을 통째로 덮는다");
+}
+
+#[test]
+fn 모래사장은_세계보다_넓다() {
+    // 해변의 좌우 끝이 화면 안에서 끊기면 백사장이 아니라 깔개로 보인다.
+    let b = 넓은_코트();
+    let c = Court::new(b).unwrap();
+    let (lo, hi) = c.sand_span();
+    assert!(lo < b.left, "왼쪽 끝이 세계 안에서 끊긴다");
+    assert!(hi > b.right + PET_SIZE, "오른쪽 끝이 세계 안에서 끊긴다");
 }
 
 // ── 팀 배정 ────────────────────────────────────────────────────
@@ -370,21 +397,24 @@ fn 랠리는_열_번_넘게_오간다() {
 }
 
 #[test]
-fn 체공_등급이_세_가지_다_나온다() {
+fn 체공이_세_갈래로_갈린다() {
+    // **등급값을 그대로 대조하지 않는다.** 판이 화면 세로 중앙으로 올라가면서
+    // 공이 뜰 수 있는 높이가 절반이 됐고, `flight_ms_for`의 천장 자르기가 가장
+    // 긴 등급을 눌러 준다 — 값은 달라져도 **셋으로 갈린다**는 것이 이 테스트가
+    // 지키려던 것이고 그건 그대로다 (`VOLLEY_MIN_HEADROOM` 단언이 하한을 잡는다).
     let mut 본_것 = std::collections::BTreeSet::new();
     for seed in 1u64..=20 {
         for ms in 랠리를_굴린다(4, seed).체공들 {
-            if VOLLEY_FLIGHT_MS.contains(&ms) {
-                본_것.insert(ms);
-            }
+            본_것.insert(ms);
         }
     }
-    assert_eq!(
-        본_것.len(),
-        3,
-        "체공 등급 셋 중 {}가지만 나왔다 — 리듬이 안 갈린다",
+    assert!(
+        본_것.len() >= 3,
+        "체공이 {}가지뿐이다 — 리듬이 안 갈린다",
         본_것.len()
     );
+    let (짧은, 긴) = (*본_것.iter().next().unwrap(), *본_것.iter().last().unwrap());
+    assert!(긴 >= 짧은 * 2, "가장 긴 체공({긴})이 짧은 것({짧은})의 두 배도 안 된다");
 }
 
 #[test]

@@ -270,13 +270,26 @@ describe("비치발리볼", () => {
     }
   });
 
-  it("비키니는_pg_all_안에_있다", () => {
-    // 밖에 두면 착지 포즈에서 몸만 눌리고 수영복이 허공에 남는다.
+  it("지푸라기는_pg_all_안에_있다", () => {
+    // 밖에 두면 착지 포즈에서 몸만 눌리고 옷이 허공에 남는다.
     const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
     const all = svg.indexOf('className="pg-all"');
-    const bikini = svg.indexOf('className="pg-bikini"');
+    const straw = svg.indexOf('className="pg-straw"');
     expect(all).toBeGreaterThan(-1);
-    expect(bikini).toBeGreaterThan(all);
+    expect(straw).toBeGreaterThan(all);
+  });
+
+  it("수영복의_잔재가_남아있지_않다", () => {
+    // 이름에서 의도를 읽는 레포다 — `bikini`가 남으면 다음 사람이 옷을
+    // 되돌려도 된다고 읽는다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const volley = readFileSync(resolve("src/pet/css/volleyball.css"), "utf8");
+    for (const [이름, 본문] of [
+      ["Penguin.tsx", svg],
+      ["volleyball.css", volley],
+    ] as const) {
+      expect(본문.toLowerCase(), `${이름}에 bikini가 남아 있다`).not.toContain("bikini");
+    }
   });
 });
 
@@ -288,7 +301,7 @@ describe("평소 숨기는 도형", () => {
     "pg-float",
     "pg-fish",
     "pg-beak-lower",
-    "pg-bikini",
+    "pg-straw",
   ];
 
   /** 선택자에 이 클래스가 정확히 등장하는 모든 규칙 블록의 본문. */

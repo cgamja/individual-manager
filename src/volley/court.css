@@ -1,4 +1,5 @@
-/* 코트 — 모래사장과 네트. 창 하나가 통째로 그림이다. */
+/* 코트 — 화면 세로 중앙의 네트와 화면 바닥의 모래사장.
+   창 하나가 둘을 함께 덮는다 (`Court::rect`). */
 
 html,
 body {
@@ -23,20 +24,37 @@ body {
   pointer-events: none;
 }
 
+/* 값은 Rust의 `tuning.rs`와 맞아야 한다 — `volley.test.ts`가 대조한다.
+   창 높이는 화면마다 다르지만 이 둘은 고정이라, 창을 늘여도 네트와 모래의
+   두께가 안 변한다. */
 #court-root {
+  --vb-net-h: 120px;
+  --vb-net-w: 96px;
+  --vb-sand-depth: 80px;
+  /* 모래 물결이 모래 선 위로 솟는 높이. 그림뿐이라 Rust에 짝이 없다. */
+  --vb-sand-lip: 44px;
+
+  position: relative;
   width: 100%;
   height: 100%;
-  /* 아래에서 밀려 올라온다 — 판이 열리는 것이 한 동작으로 읽힌다. */
-  animation: vb-court-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.vb-court {
-  width: 100%;
-  height: 100%;
+/* ── 모래사장 — 창 바닥에 붙는다 ─────────────────────────────── */
+
+/* **가로로만 늘어난다.** 세로는 위 변수가 고정하므로 화면이 넓어져도 모래가
+   두꺼워지지 않는다. 좌우는 세계 밖까지 뻗어(`VOLLEY_COURT_BLEED`) 끝이
+   화면 안에서 안 끊긴다. */
+.vb-sand {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--vb-sand-depth) + var(--vb-sand-lip));
   display: block;
+  animation: vb-sand-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-@keyframes vb-court-rise {
+@keyframes vb-sand-rise {
   0% {
     transform: translateY(28px);
     opacity: 0;
@@ -47,19 +65,45 @@ body {
   }
 }
 
-/* 네트가 바람에 아주 조금 흔들린다 — 완전히 굳으면 붙여 놓은 그림으로 보인다. */
+/* ── 네트 — 창 위쪽 한가운데. 판에 매달려 있다 ────────────────── */
+
+/* `left: 50%`로 맞는 근거는 `Court::rect`에 있다 — 창이 `net_cx`를 중심으로
+   대칭이라 웹뷰가 좌표를 하나도 안 받아도 된다. */
+.vb-net {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: var(--vb-net-w);
+  height: var(--vb-net-h);
+  margin-left: calc(var(--vb-net-w) / -2);
+  display: block;
+  animation: vb-net-drop 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes vb-net-drop {
+  0% {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 그물이 바람에 아주 조금 흔들린다 — 완전히 굳으면 붙여 놓은 그림으로 보인다. */
 @keyframes vb-net-sway {
   0%,
   100% {
-    transform: skewX(-0.6deg);
+    transform: skewX(-0.8deg);
   }
   50% {
-    transform: skewX(0.6deg);
+    transform: skewX(0.8deg);
   }
 }
 
 .vb-net-mesh {
-  transform-origin: 50% 100%;
+  transform-origin: 50% 0%;
   animation: vb-net-sway 3.2s ease-in-out infinite;
 }
 

@@ -1,7 +1,8 @@
 use crate::pet::test_support::*;
 use crate::pet::*;
 
-const 자리: (f64, f64) = (600.0, BOUNDS.floor_y);
+/// 판은 화면 세로 중앙이다 — 모래(화면 바닥)가 아니다.
+const 자리: (f64, f64) = (600.0, (BOUNDS.top + BOUNDS.floor_y) / 2.0);
 const 폭: (f64, f64) = (400.0, 800.0);
 
 fn 코트로(pet: &mut Pet, now_ms: u64) {
@@ -39,13 +40,22 @@ fn 자기_자리에_도착하면_선다() {
 }
 
 #[test]
-fn 모이는_중에는_공중이고_서면_바닥이다() {
+fn 판_위에서는_내내_공중이다() {
+    // **판이 화면 세로 중앙으로 올라가면서 뒤집힌 전제다.** 예전에는 코트가
+    // 모래사장이라 서면 지상이었지만, 이제는 볼링 핀처럼 떠 있다 — 한 국면이라도
+    // 지상이면 `clamp`가 그때 펭귄을 바닥으로 끌어내려 코트에서 떨어진다.
+    // "국면마다 `air`가 맞게 서 있는가"를 보는 이 테스트의 의도는 그대로다.
     let world = world();
     let mut pet = Pet::new(1, 0, &world);
     코트로(&mut pet, 0);
     assert!(pet.snapshot().air, "모이는 중에는 날아가야 한다");
     세운다_그대로(&mut pet, &world);
-    assert!(!pet.snapshot().air, "서면 모래 위다");
+    assert!(pet.snapshot().air, "서 있을 때도 판 위에 떠 있다");
+    assert!(
+        (pet.snapshot().y - 자리.1).abs() < 1e-9,
+        "판 높이에서 벗어났다: {}",
+        pet.snapshot().y
+    );
 }
 
 #[test]
@@ -191,8 +201,10 @@ fn 이긴_쪽은_좋아하고_진_쪽은_약_오른다() {
 }
 
 #[test]
-fn 축하가_끝나면_선_자리에서_유휴로_간다() {
-    // 원래 자리로 되돌려 보내지 않는다 (R12).
+fn 축하가_끝나면_선_자리에서_그대로_떨어진다() {
+    // **판이 공중이라 나가는 길이 낙하다** (볼링의 `Scatter`와 같은 자리).
+    // 지키려던 것은 "원래 있던 자리로 되돌려 보내지 않는다"(R12)이고, 그건
+    // **가로 자리가 안 변한다**는 뜻이라 그대로 유효하다.
     let world = world();
     let mut pet = Pet::new(1, 0, &world);
     let mut now = 세운다(&mut pet, &world, 0);
@@ -200,16 +212,26 @@ fn 축하가_끝나면_선_자리에서_유휴로_간다() {
     pet.volley_finish(now, true);
     now += VOLLEY_CHEER_MS + 50;
     pet.step(now, &world);
-    assert!(
-        matches!(pet.snapshot().behavior, Behavior::Idle { .. }),
-        "유휴로 안 갔다: {:?}",
-        pet.snapshot().behavior
+    assert_eq!(
+        pet.snapshot().behavior,
+        Behavior::Falling,
+        "공중에서 축하가 끝났으면 떨어져야 한다"
     );
     assert!(
         (pet.snapshot().x - 선_자리).abs() < 1e-6,
-        "자리가 움직였다: {} → {}",
+        "가로 자리가 움직였다: {} → {}",
         선_자리,
         pet.snapshot().x
+    );
+    // 떨어지고 나면 평소 동작으로 돌아간다.
+    for _ in 0..200 {
+        now += 50;
+        pet.step(now, &world);
+    }
+    assert!(
+        !matches!(pet.snapshot().behavior, Behavior::Volleyball { .. }),
+        "아직 코트에 있다: {:?}",
+        pet.snapshot().behavior
     );
 }
 

@@ -9,7 +9,6 @@ use crate::pet::*;
         assert_eq!(before.facing, Facing::Right);
 
         let after = p.step(1_000, &world());
-        // 1초에 WALK_SPEED만큼 — MAX_STEP_MS(250ms)로 잘리므로 그 몫만 이동한다
         assert!(after.x > before.x, "오른쪽을 보면 x가 커져야 한다");
     }
     #[test]
@@ -49,10 +48,6 @@ use crate::pet::*;
         p.step(200, &world()).behavior
     }
     /// 벽에서 굴러떨어지는 시드 하나를 찾는다.
-    ///
-    /// 시드를 상수로 박아 두지 않는 이유는 **확률 갈래이기 때문**이다. 굴림은
-    /// 코어가 소유한 PRNG를 쓰므로, 앞에서 난수를 한 번 더 뽑는 변경만 들어가도
-    /// 박아 둔 시드가 반대 갈래로 넘어가 테스트가 통째로 무너진다.
     fn 굴러떨어지는_시드() -> u64 {
         (1u64..10_000)
             .find(|s| 벽_반응(*s) == Behavior::Tumble)
@@ -129,7 +124,6 @@ use crate::pet::*;
     }
     #[test]
     fn 굴러떨어지기_뒤에는_약을_올리거나_유휴로_간다() {
-        // 착지(Land/Splat/Sprawl)와 출구를 공유한다 — 같은 규칙이 두 벌이 되지 않게
         let mut 나온_동작 = Vec::new();
         for seed in 1u64..300 {
             let mut p = Pet::new(seed, 0, &world());
@@ -174,8 +168,6 @@ use crate::pet::*;
     }
     #[test]
     fn 걸을_폭이_없는_화면에서는_굴러떨어지지_않는다() {
-        // 양쪽 경계가 겹치는 화면에서는 벽 판정이 매 step 참이 된다. 여기서
-        // 굴림을 돌리면 영원히 구르며 제자리를 맴돈다.
         let narrow = World::single(Bounds {
             left: 10.0,
             right: 10.0,
@@ -196,7 +188,6 @@ use crate::pet::*;
     fn 걷기_뒤(seed: u64) -> Behavior {
         let w = world();
         let mut p = Pet::new(seed, 0, &w);
-        // 벽에 닿아 hit_wall로 새지 않게 가운데에서 출발시킨다
         p.x = 400.0;
         let mut t = 50;
         while t < 20_000 {
@@ -238,8 +229,6 @@ use crate::pet::*;
     }
     #[test]
     fn 유휴가_끝났을_때는_미끄러지지_않는다() {
-        // 서 있다가 갑자기 배를 깔면 준비 동작이 없다. 걷던 관성이 있어야
-        // 미끄러지는 것으로 읽힌다
         for seed in 1u64..300 {
             let mut p = Pet::new(seed, 0, &world());
             p.behavior = Behavior::Idle { idle: IdleKind::Shake };
@@ -300,7 +289,6 @@ use crate::pet::*;
     }
     #[test]
     fn 미끄러진_거리는_매번_다르다() {
-        // 길이는 고정이고 출발 속도를 뽑는다 — 길이를 뽑으면 CSS와 맞출 수 없다
         let w = world();
         let mut 거리 = Vec::new();
         for seed in 1u64..400 {
@@ -329,17 +317,14 @@ use crate::pet::*;
     }
     #[test]
     fn 슬라이딩이_걷기보다_멀리_간다() {
-        // 가장 느리게 출발해도 가장 오래 걷는 것보다 멀리 간다
         let 최소_거리 = SLIDE_SPEED.0 * (SLIDE_MS as f64 / 1000.0) / 2.0;
         let 걷기_최대 = WALK_SPEED * (WALK_MS.1 as f64 / 1000.0);
         assert!(최소_거리 > 걷기_최대, "{최소_거리} vs {걷기_최대}");
     }
     #[test]
     fn 미끄러지다_벽에_닿으면_돌아서거나_굴러떨어진다() {
-        // 벽 판정이 걷기와 두 벌이 되면 한쪽만 고쳐지고 조용히 갈라진다
         let w = world();
         let (mut p, _) = 미끄러지는_펭귄();
-        // 진행 방향 벽 바로 앞에 갖다 놓는다
         let 벽 = if p.snapshot().facing == Facing::Right {
             BOUNDS.right
         } else {

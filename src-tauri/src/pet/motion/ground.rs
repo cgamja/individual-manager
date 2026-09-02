@@ -4,50 +4,37 @@ use super::super::*;
 
 impl Pet {
     pub(in crate::pet) fn tick_walk(&mut self, now_ms: u64, bounds: Bounds, dt: f64) {
-            self.x += self.facing.sign() * WALK_SPEED * dt;
-            self.after_ground_move(now_ms, bounds);
+        self.x += self.facing.sign() * WALK_SPEED * dt;
+        self.after_ground_move(now_ms, bounds);
     }
 
     pub(in crate::pet) fn tick_turn(&mut self, now_ms: u64) {
-            if now_ms >= self.behavior_until_ms {
-                self.facing = self.facing.flipped();
-                let until = now_ms + self.range(WALK_MS);
-                self.enter(Behavior::Walk, until);
-            }
+        if now_ms >= self.behavior_until_ms {
+            self.facing = self.facing.flipped();
+            let until = now_ms + self.range(WALK_MS);
+            self.enter(Behavior::Walk, until);
+        }
     }
 
     pub(in crate::pet) fn tick_slide(&mut self, now_ms: u64, bounds: Bounds, dt: f64) {
-            // 감속은 남은 시간 비율로 한다. 마찰 상수를 두면 정지 판정이 따로
-            // 필요해지고 그게 틀리면 영원히 미끄러지는데, 이 방식은 끝나는
-            // 순간 속도가 정확히 0이라 그 상태를 표현할 수 없다 (굴러떨어지기와 같다).
-            let remaining =
-                self.behavior_until_ms.saturating_sub(now_ms) as f64 / SLIDE_MS as f64;
-            self.x += self.facing.sign() * self.slide_speed * remaining * dt;
-            self.after_ground_move(now_ms, bounds);
+        let remaining =
+            self.behavior_until_ms.saturating_sub(now_ms) as f64 / SLIDE_MS as f64;
+        self.x += self.facing.sign() * self.slide_speed * remaining * dt;
+        self.after_ground_move(now_ms, bounds);
     }
 
     pub(in crate::pet) fn tick_tumble(&mut self, now_ms: u64, dt: f64) {
-            // 남은 시간에 비례해 감속한다. 마찰 상수를 두면 정지 판정이 따로
-            // 필요해지고 그게 틀리면 영원히 미끄러지는데, 이 방식은 동작이
-            // 끝나는 순간 속도가 정확히 0이라 그 상태를 표현할 수 없다.
-            let remaining =
-                self.behavior_until_ms.saturating_sub(now_ms) as f64 / TUMBLE_MS as f64;
-            self.x += self.facing.sign() * TUMBLE_SPEED * remaining * dt;
-            if now_ms >= self.behavior_until_ms {
-                self.get_up(now_ms);
-            }
+        let remaining =
+            self.behavior_until_ms.saturating_sub(now_ms) as f64 / TUMBLE_MS as f64;
+        self.x += self.facing.sign() * TUMBLE_SPEED * remaining * dt;
+        if now_ms >= self.behavior_until_ms {
+            self.get_up(now_ms);
+        }
     }
 
     /// 지상 이동 한 틱을 마무리한다 — 경계에 닿았으면 벽 반응, 시간이 다 됐으면 다음 동작.
-    ///
-    /// **걷기와 슬라이딩이 이 함수를 공유한다.** `hit_wall`만 나눠 쓰고 그 앞의
-    /// 분기 사슬을 복사해 두면, 경계 처리를 고칠 때(F2의 화면 넘기가 그렇다)
-    /// 한쪽만 고쳐지고 조용히 갈라진다. 실제로 복사해 뒀다가 리뷰에서 잡혔다.
     fn after_ground_move(&mut self, now_ms: u64, bounds: Bounds) {
         if bounds.right <= bounds.left {
-            // 걸어다닐 폭이 없는 화면(펭귄보다 좁은 작업 영역)에서는 양쪽 경계가
-            // 겹쳐 매 step마다 Turn으로 들어가 영원히 제자리에서 돈다.
-            // 그럴 때는 회전을 건너뛰고 평소처럼 유휴로 넘어가게 둔다.
             self.x = bounds.left;
             if now_ms >= self.behavior_until_ms {
                 self.pick_next(now_ms, bounds);
@@ -64,14 +51,8 @@ impl Pet {
     }
 
     /// 벽에 닿았을 때 — 얌전히 돌아서거나, 그대로 박고 굴러 넘어진다.
-    ///
-    /// 좌우 경계가 이 함수를 **공유한다.** "벽에 닿았다"를 판정하는 코드가 두 곳이
-    /// 되면 한쪽만 고쳐지고 조용히 갈라진다.
     pub(in crate::pet) fn hit_wall(&mut self, now_ms: u64) {
         if self.range((0, 99)) < TUMBLE_AT_WALL_PERCENT {
-            // 반동으로 벽 반대쪽으로 굴러간다. 방향을 **여기서** 뒤집는 이유는
-            // 진행 방향과 `facing`이 어긋나면 웹뷰가 회전을 반대로 그리기
-            // 때문이다. `Turn`은 끝날 때 뒤집지만 최종 결과는 같다.
             self.facing = self.facing.flipped();
             self.enter(Behavior::Tumble, now_ms + TUMBLE_MS);
         } else {
@@ -88,19 +69,7 @@ impl Pet {
     }
 
     /// 사용자가 시켜서 미끄러진다 (설정 창의 "슬라이딩").
-    ///
-    /// **낚시와 달리 바닥에서만 먹는다.** 낚시는 허공에 앉는 게 더 웃겼지만
-    /// 미끄러지는 것은 **바닥과 닿아야** 성립한다 — 공중에서 배를 깔면 그냥
-    /// 헤엄이다. 들려 있을 때도 거절한다.
-    ///
-    /// 걸을 폭이 없는 화면에서는 미끄러질 자리도 없다 — 그 판정은 세계를 아는
-    /// 쪽(`step`)이 하므로 여기서는 보지 않고, 진입해도 첫 틱에 정리된다.
     pub fn start_slide(&mut self, now_ms: u64) -> bool {
-        // **이미 미끄러지는 중이면 거절한다.** 여기서 다시 진입하면 코어는 길이를
-        // 늘리는데 웹뷰는 클래스가 그대로라 애니메이션을 되감지 않는다 — 누운
-        // 그림이 끝나고도 펭귄이 선 채로 최대 2.4초를 더 미끄러진다.
-        // `shouldRestart`가 "같은 한 번짜리 클래스가 연달아 오지 않는다"에 기대고
-        // 있으므로, 그 전제를 깨지 않는 쪽을 고른다.
         if self.air || matches!(self.behavior, Behavior::Dragged | Behavior::Slide) {
             return false;
         }

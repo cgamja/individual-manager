@@ -29,11 +29,6 @@ pub struct Screen {
 
 impl Screen {
     /// 기준점(펭귄 발밑 중앙)이 이 화면 위에 있다고 볼 범위 — `(x0, x1, y0, y1)`.
-    ///
-    /// [`Bounds`]는 **펭귄 좌상단**의 범위라 기준점 기준으로는 그만큼 밀려 있다.
-    /// 창 크기를 이미 빼 놓은 값이므로, 화면 둘이 실제로 맞닿아 있어도 이 범위
-    /// 사이에는 **창 하나만큼 빈틈이 남는다.** 화면이 하나뿐인 지금은 드러나지
-    /// 않지만, 경계를 넘나들게 만들 때는 그 빈틈을 메워야 한다.
     fn anchor_area(self) -> (f64, f64, f64, f64) {
         (
             self.bounds.left + PET_SIZE / 2.0,
@@ -50,10 +45,6 @@ impl Screen {
     }
 
     /// 기준점에서 이 화면까지의 거리. 화면 위에 있으면 0이다.
-    ///
-    /// 안일 때 **정확히** `0.0`이 나오는 것이 [`World::screen_at`]의 포함 판정을
-    /// 떠받친다 — `dx`/`dy`가 각각 `max(0.0)`을 거치므로 부동소수 오차가 낄 자리가
-    /// 없다. 여기에 클램프되지 않은 항을 더하면 그 성질이 깨진다.
     fn anchor_distance(self, ax: f64, ay: f64) -> f64 {
         let (_, _, y0, y1) = self.anchor_area();
         let dx = self.horizontal_distance(ax);
@@ -63,10 +54,6 @@ impl Screen {
 }
 
 /// 펭귄이 노는 세계 — 연결된 화면 전부 (PRD §5.2).
-///
-/// **불변식: 비어 있지 않다.** 화면이 하나도 없는 세계에는 펭귄이 있을 자리가 없고,
-/// 그 상태를 표현할 수 있게 두면 모든 판정에 `Option`이 번진다. 그래서 생성자에서
-/// 한 번만 막는다.
 #[derive(Clone, PartialEq, Debug)]
 pub struct World {
     screens: Vec<Screen>,

@@ -14,9 +14,6 @@ pub enum Facing {
 }
 
 impl Facing {
-    // 아래 둘은 `pub(super)`다 — 상태머신(부모 모듈)이 부르는데, 부모는 자식의
-    // 비공개 항목을 볼 수 없다. 타입을 자식 모듈로 내리면 따라오는 기계적
-    // 결과이지 배치가 틀렸다는 신호가 아니다. `pet` 밖으로는 여전히 안 나간다.
     pub(super) fn flipped(self) -> Self {
         match self {
             Facing::Left => Facing::Right,
@@ -83,9 +80,6 @@ pub enum SassyKind {
 }
 
 /// 얼음낚시 한 판이 거쳐 가는 국면.
-///
-/// 국면을 코어가 갖는 이유는 **잡았나 꽝인가가 "무슨 동작"이기 때문**이다
-/// (PRINCIPLE 4). 웹뷰가 뽑으면 같은 시드가 같은 결과를 내지 않는다.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FishingPhase {
@@ -104,11 +98,6 @@ pub enum FishingPhase {
 }
 
 /// 발작 한 판이 거쳐 가는 국면.
-///
-/// **얼음낚시와 같은 구조다.** 국면을 둘로 나누면 두 문제가 한 번에 풀린다 —
-/// 판 길이가 2~4초 난수라 CSS 길이 대조를 쓸 수 없는데 `Dash`는 무한 반복이라
-/// 대조 대상이 아니고, 떨던 자세에서 곧장 유휴로 가면 `.pg-all`에 걸린 변형이
-/// 한 프레임에 사라져 펭귄이 튀는 것을 `Pant`가 막는다.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FreakoutPhase {
@@ -197,8 +186,6 @@ impl Behavior {
             Behavior::Swim
                 | Behavior::Falling
                 | Behavior::Thrown
-                // 사방으로 튀려면 떠 있어야 한다. 숨 고르기는 바닥이므로 빠진다 —
-                // 그러면 `enter()`의 기본 갈래가 국면마다 옳게 동작한다.
                 | Behavior::Freakout { freakout: FreakoutPhase::Dash }
         )
     }

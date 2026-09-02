@@ -51,3 +51,11 @@ pub fn drive(pet: &mut Pet, from: u64, to: u64, dt: u64, world: &World) -> Vec<S
     }
     out
 }
+
+/// **실제 클릭 한 번**을 흉내 낸다. 프론트는 클릭인지 드래그인지 알기 전에
+/// 모든 pointerdown에서 `drag_start`를 부르므로, `whack`만 부르면 실제로는
+/// 지나지 않는 경로를 테스트하게 된다.
+pub fn 클릭(p: &mut Pet, now_ms: u64) {
+    p.drag_start(now_ms);
+    p.whack(now_ms, &world(), 0.0, 0.0);
+}

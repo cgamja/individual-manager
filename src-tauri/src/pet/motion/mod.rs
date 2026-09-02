@@ -28,3 +28,4 @@
 //! 그대로 닿는다.
 
 mod fishing;
+mod freakout;

@@ -26,6 +26,25 @@ const BOUNDS_REFRESH_MS: u64 = 2_000;
 /// 상태와 창이 어긋난 것을 보고 **정리하기까지 기다리는 시간**.
 const RECONCILE_GRACE_MS: u64 = 1_000;
 
+/// 공 창 만들기를 이만큼 잇달아 실패하면 판을 접는다. **재시도에 끝이 없으면**
+/// 20Hz로 영원히 두드리면서 사용자에게는 아무 신호도 안 가고, 버튼은 비활성인
+/// 채로 남는다. 핀볼이 판을 못 깔았을 때 모드가 스스로 되돌아가는 것과 같은 규칙이다.
+pub(super) const BALL_WINDOW_MAX_FAILS: u32 = 5;
+
+/// 틱 스레드가 공에 대해 들고 있는 유일한 기억.
+#[derive(Default)]
+pub(super) struct BallView {
+    /// 웹뷰에 마지막으로 알린 겉모습. `Some`이면 창이 떠 있다는 뜻이다.
+    look: Option<BallLook>,
+    /// 마지막으로 창에 건 위치. 같으면 `set_position`을 부르지 않는다 —
+    /// 서 있는 공을 20Hz로 옮기면 IPC만 낭비한다.
+    at: Option<(f64, f64)>,
+    /// 직전 틱에 **판이** 살아 있었는가. 공과 따로 센다 ([`bowling_over`]).
+    board_alive: bool,
+    /// 잇달아 창 만들기에 실패한 횟수.
+    fails: u32,
+}
+
 /// 이번 틱에 창을 실제로 옮길지. 자는 펭귄은 안 옮긴다.
 /// **경계를 못 읽어 주 모니터로 구조된 마리(`rescued`)는 동작과 무관하게 옮긴다** —
 /// 안 옮기면 사라진 화면의 좌표에 남아 다시는 안 보인다.
@@ -60,7 +79,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
     std::thread::spawn(move || {
         let mut worlds: HashMap<PetId, (World, u64)> = HashMap::new();
         let mut last_look: HashMap<PetId, Look> = HashMap::new();
-        let mut last_ball: Option<BallLook> = None;
+        let mut ball_view = BallView::default();
         let mut mismatch_since: HashMap<PetId, u64> = HashMap::new();
         loop {
             let ids = app.state::<PetState>().pets.lock().unwrap().ids();
@@ -100,7 +119,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             if ids.is_empty() {
                 // 펭귄을 전부 껐거나 마지막 마리가 사라졌다. 공만 남겨 두면
                 // 굴릴 핀이 없는 공이 바탕화면에 영원히 놓여 있다 (R11).
-                apply_ball(&app, None, &mut last_ball);
+                apply_ball(&app, false, None, &mut ball_view);
                 std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
                 continue;
             }
@@ -135,7 +154,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
 
             // 2) 코어를 한 번에 진행시킨다. **락을 마리마다 잡지 않는다** — 틱 하나가
             //    전 마리에 대해 원자적이어야 서로를 보는 판정을 여기에 얹을 수 있다.
-            let (stepped, ball) = {
+            let (stepped, ball, board_alive) = {
                 let state = app.state::<PetState>();
                 let mut pets = state.pets.lock().unwrap();
                 let stepped = pets.step_all(now, |id| {
@@ -147,7 +166,8 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 // 공은 **같은 락 안에서** 읽는다. 밖에서 다시 잡으면 그 사이에
                 // 커맨드가 판을 끝내 공과 펭귄이 다른 틱을 보게 된다.
                 let ball = pets.bowling().and_then(|b| b.ball());
-                (stepped, ball)
+                let board_alive = pets.bowling().is_some();
+                (stepped, ball, board_alive)
             };
 
             // 3) 창 위치와 웹뷰에 반영한다. **락 밖에서** 한다 — 창 IPC는 이벤트 루프를
@@ -172,7 +192,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 last_look.insert(id, look);
             }
             any_moves |= ball.is_some_and(|b| b.rolling);
-            apply_ball(&app, ball, &mut last_ball);
+            apply_ball(&app, board_alive, ball, &mut ball_view);
 
             std::thread::sleep(Duration::from_millis(tick_interval(any_moves)));
         }
@@ -202,32 +222,64 @@ pub(super) fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: boo
 /// 시점이 곧 "다 섰다"는 신호가 된다.
 pub(super) fn apply_ball(
     app: &AppHandle,
+    board_alive: bool,
     ball: Option<BallSnapshot>,
-    last: &mut Option<BallLook>,
+    view: &mut BallView,
 ) {
     let Some(ball) = ball else {
-        if last.take().is_some() {
+        if view.look.take().is_some() {
             close_ball_window(app);
+            view.at = None;
+        }
+        if bowling_over(view.board_alive, board_alive) {
             let _ = app.emit(EVENT_BOWLING_OVER, ());
         }
+        view.board_alive = board_alive;
+        view.fails = 0;
         return;
     };
+    view.board_alive = board_alive;
+
     let at = ball_window_origin(ball.x, ball.y);
     let window = match ball_window(app) {
         Some(window) => window,
         None => match create_ball_window(app, at) {
-            Ok(window) => window,
+            Ok(window) => {
+                view.fails = 0;
+                view.at = Some(at);
+                window
+            }
             Err(err) => {
-                eprintln!("[penguin] 공 창을 못 만들었다: {err}");
+                view.fails += 1;
+                eprintln!(
+                    "[penguin] 공 창을 못 만들었다 ({}/{BALL_WINDOW_MAX_FAILS}): {err}",
+                    view.fails
+                );
+                if view.fails >= BALL_WINDOW_MAX_FAILS {
+                    // 포기한다 — 펭귄을 핀 자세에서 풀어 주고 버튼을 되살린다.
+                    // 조용히 계속 두드리면 사용자는 굳은 펭귄만 보게 된다.
+                    app.state::<PetState>()
+                        .pets
+                        .lock()
+                        .unwrap()
+                        .end_bowling(now_ms());
+                    view.fails = 0;
+                    view.board_alive = false;
+                    let _ = app.emit(EVENT_BOWLING_OVER, ());
+                }
                 return;
             }
         },
     };
-    let _ = window.set_position(LogicalPosition::new(at.0, at.1));
+
+    if view.at != Some(at) {
+        let _ = window.set_position(LogicalPosition::new(at.0, at.1));
+        view.at = Some(at);
+    }
     let look = ball_look_of(&ball);
-    if *last != Some(look) {
+    if view.look != Some(look) {
         let _ = window.emit_to(EventTarget::webview_window(BALL_LABEL), EVENT_BALL_STATE, ball);
-        *last = Some(look);
+        view.look = Some(look);
     }
 }
 

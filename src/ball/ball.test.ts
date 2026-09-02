@@ -9,8 +9,11 @@ interface Call {
 
 let calls: Call[] = [];
 
-/** 공 창이 부르는 IPC를 기록한다. `ball_drag_start`는 "집었다"로 답한다. */
-function mockBall(grabbed = true): Call[] {
+/** 공 창이 부르는 IPC를 기록한다.
+ *
+ * `grabbed`는 코어의 대답이다 — **굴러가는 중이면 `false`가 온다.**
+ * `delayMs`를 주면 그 답이 늦게 와서, 사용자가 이미 손을 뗀 뒤에 도착한다. */
+function mockBall({ grabbed = true, delayMs = 0 } = {}): Call[] {
   const recorded: Call[] = [];
   mockWindows("bowling-ball");
   (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
@@ -21,7 +24,11 @@ function mockBall(grabbed = true): Call[] {
     recorded.push({ cmd, args: a });
     if (cmd === "plugin:event|listen") return 1;
     if (cmd === "plugin:event|unlisten") return undefined;
-    if (cmd === "ball_drag_start") return grabbed;
+    if (cmd === "ball_drag_start") {
+      return delayMs > 0
+        ? new Promise((resolve) => setTimeout(() => resolve(grabbed), delayMs))
+        : grabbed;
+    }
     return undefined;
   });
   return recorded;
@@ -49,7 +56,7 @@ async function flush() {
   }
 }
 
-/** 드래그 한 번. `dt`ms 동안 (dx, dy)만큼 끌었다 놓는다. */
+/** 드래그 한 번. 집기 응답을 기다린 뒤 끌었다 놓는다. */
 async function 끈다(dx: number, dy: number, steps = 4) {
   pointer("pointerdown", { screenX: 0, screenY: 0 });
   await flush();
@@ -57,6 +64,15 @@ async function 끈다(dx: number, dy: number, steps = 4) {
     pointer("pointermove", { screenX: (dx * i) / steps, screenY: (dy * i) / steps });
   }
   pointer("pointerup", { screenX: dx, screenY: dy });
+  await flush();
+}
+
+/** **집기 응답을 기다리지 않고** 끌었다 놓는다 — 빠르게 튕겼을 때의 순서다. */
+async function 튕긴다(dx: number, dy: number, waitMs = 40) {
+  pointer("pointerdown", { screenX: 0, screenY: 0 });
+  pointer("pointermove", { screenX: dx / 2, screenY: dy / 2 });
+  pointer("pointerup", { screenX: dx, screenY: dy });
+  await new Promise((resolve) => setTimeout(resolve, waitMs));
   await flush();
 }
 
@@ -120,6 +136,43 @@ describe("볼링 공 창", () => {
     for (const move of moves) {
       expect(Object.keys(move.args)).toEqual(["dx"]);
     }
+  });
+
+  it("집기가_거절되면_놓기를_보내지_않는다", async () => {
+    // 굴러가는 중에는 코어가 집기를 거절한다. 그런데도 놓기를 보내면
+    // **굴러가던 공의 속도를 덮어써** 판이 그 자리에서 끝난다.
+    clearMocks();
+    calls = mockBall({ grabbed: false });
+    await 끈다(200, 0);
+    expect(calls.some((c) => c.cmd === "ball_drag_end")).toBe(false);
+    expect(calls.some((c) => c.cmd === "ball_drag_by")).toBe(false);
+  });
+
+  it("집기_응답보다_놓기가_먼저_와도_거절을_지킨다", async () => {
+    // 빠르게 튕기면 pointerup이 ball_drag_start의 왕복보다 먼저 도착한다.
+    // 그 순간에는 아직 거절인지 모르므로, 결과를 끝까지 들고 가야 한다.
+    clearMocks();
+    calls = mockBall({ grabbed: false, delayMs: 10 });
+    await 튕긴다(300, 0);
+    expect(calls.some((c) => c.cmd === "ball_drag_end")).toBe(false);
+  });
+
+  it("응답이_늦어도_집었으면_굴린다", async () => {
+    clearMocks();
+    calls = mockBall({ grabbed: true, delayMs: 10 });
+    await 튕긴다(300, 0);
+    const end = calls.find((c) => c.cmd === "ball_drag_end");
+    expect(end, "늦게 도착한 승낙은 정상으로 처리해야 한다").toBeDefined();
+  });
+
+  it("pointercancel도_놓기로_친다", async () => {
+    // 취소를 놓기로 안 치면 공이 코어에서 들린 채로 남아 물리가 영영 안 돈다.
+    pointer("pointerdown");
+    await flush();
+    pointer("pointermove", { screenX: 200 });
+    pointer("pointercancel", { screenX: 200 });
+    await flush();
+    expect(calls.some((c) => c.cmd === "ball_drag_end")).toBe(true);
   });
 
   it("오른쪽_클릭은_아무것도_안_한다", async () => {

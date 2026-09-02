@@ -76,7 +76,16 @@ impl Pet {
     /// 판이 열려 이 마리가 핀이 된다. 들려 있거나 이미 볼링 중이면 거절한다 —
     /// `start_fishing`·`start_slide`와 같은 꼴이다.
     pub fn start_bowling(&mut self, now_ms: u64, pin_x: f64, floor_y: f64) -> bool {
-        if matches!(self.behavior, Behavior::Dragged | Behavior::Bowling { .. }) {
+        // **흩어지는 중(`Scatter`)은 거절하지 않는다.** 판이 끝나면 곧바로
+        // 버튼이 살아나는데, 그 0.6초 동안 새 판을 거절하면 눌리는데 아무 일도
+        // 안 일어나는 구간이 생긴다.
+        if matches!(
+            self.behavior,
+            Behavior::Dragged
+                | Behavior::Bowling {
+                    bowling: BowlingPhase::Gather | BowlingPhase::Ready | BowlingPhase::Struck
+                }
+        ) {
             return false;
         }
         self.last_stimulus_ms = now_ms;
@@ -117,7 +126,12 @@ impl Pet {
     /// 아직 판에 서 있는가. 판이 매 틱 참여 목록을 추리는 데 쓴다 —
     /// 드래그·빠따로 다른 동작에 넘어간 마리는 여기서 걸러진다 (A4).
     pub(in crate::pet) fn is_bowling(&self) -> bool {
-        matches!(self.behavior, Behavior::Bowling { .. })
+        matches!(
+            self.behavior,
+            Behavior::Bowling {
+                bowling: BowlingPhase::Gather | BowlingPhase::Ready | BowlingPhase::Struck
+            }
+        )
     }
 
     /// 자기 자리에 다 섰는가. 판이 "전부 섰는가"를 묻는 자리다.

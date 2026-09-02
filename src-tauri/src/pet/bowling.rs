@@ -35,6 +35,10 @@ struct Ball {
     /// 공 **중심**의 세계 좌표. 펭귄의 `x`가 왼쪽 위 모서리인 것과 다르다 —
     /// 히트 판정이 중심끼리의 거리라 중심으로 들고 있는 편이 헷갈리지 않는다.
     x: f64,
+    /// 직전 틱의 x. **히트 판정은 점이 아니라 이번 틱에 지나온 구간으로 한다** —
+    /// 틱이 밀리면(`MAX_STEP_MS` 250ms) 한 틱에 260px을 지나므로, 지금 위치만
+    /// 보면 히트 반경(52px)보다 좁은 핀을 통째로 뛰어넘는다.
+    prev_x: f64,
     y: f64,
     vx: f64,
     /// 사용자가 집고 있는가. 집고 있는 동안에는 물리가 돌지 않는다.
@@ -67,6 +71,11 @@ pub struct Bowling {
     ball: Option<Ball>,
     /// `Settling`의 뜸이 끝나는 시각.
     until_ms: u64,
+    /// **판 자체의 마감 시각.** 마리마다 안전 상한이 있어도 그것만으로는
+    /// 부족하다 — 마리들이 서로 다른 시각에 만료되면 마지막 한 마리가 빠질
+    /// 때까지 판이(그리고 공 창이) 남는다. 판을 통째로 끊는 시계가 따로 있어야
+    /// 방치된 한 판이 화면에 2분씩 놓여 있지 않는다.
+    deadline_ms: u64,
     /// 판이 마지막으로 진행된 시각. 공은 마리와 따로 도므로 자기 시계를 갖는다.
     last_step_ms: u64,
 }
@@ -80,6 +89,7 @@ impl Bowling {
             lane,
             ball: None,
             until_ms: 0,
+            deadline_ms: now_ms + BOWLING_MAX_MS,
             last_step_ms: now_ms,
         }
     }
@@ -133,6 +143,7 @@ impl Bowling {
         let (x, y) = ball_home(self.lane);
         self.ball = Some(Ball {
             x,
+            prev_x: x,
             y,
             vx: 0.0,
             held: false,
@@ -163,16 +174,29 @@ impl Bowling {
         };
         if ball.held {
             ball.x = (ball.x + dx).clamp(lo, hi);
+            // 손으로 옮기는 것은 굴러간 게 아니다 — 스윕 구간을 남기면 끌고
+            // 지나간 핀이 놓는 순간 한꺼번에 맞는다.
+            ball.prev_x = ball.x;
         }
     }
 
     /// 공을 놓는다. **가로 속도만 쓴다** (R6) — 세로는 버린다. 문턱보다 살살
     /// 놓으면 굴러가지 않고 그 자리에 남아, 사용자가 다시 집을 수 있다.
     pub(super) fn release(&mut self, now_ms: u64, vx: f64) {
+        // **집고 있던 공만 놓을 수 있다.** 웹뷰가 보내는 것을 그대로 믿으면
+        // 안 된다: 빠르게 튕기면 `pointerup`이 `ball_drag_start`의 왕복보다
+        // 먼저 도착해, 집기가 거절됐는데도 놓기가 온다. 그때 그대로 반영하면
+        // **굴러가던 공의 속도를 도중에 덮어써** 판이 그 자리에서 끝난다.
+        if self.phase != BoardPhase::Ready {
+            return;
+        }
         let vx = clamp_roll(vx, self.lane_width());
         let Some(ball) = self.ball.as_mut() else {
             return;
         };
+        if !ball.held {
+            return;
+        }
         ball.held = false;
         if vx.abs() < BOWLING_MIN_ROLL_SPEED {
             ball.vx = 0.0;
@@ -190,6 +214,7 @@ impl Bowling {
         let Some(ball) = self.ball.as_mut() else {
             return;
         };
+        ball.prev_x = ball.x;
         ball.x += ball.vx * dt;
         ball.vx = if ball.vx.abs() <= 감속 {
             0.0
@@ -210,7 +235,10 @@ impl Bowling {
         let Some(ball) = self.ball.as_mut() else {
             return false;
         };
-        if (ball.x - pet_center_x).abs() > BOWLING_HIT_RADIUS {
+        // **점이 아니라 이번 틱에 지나온 구간으로 잰다.** 지금 위치만 보면
+        // 틱이 밀렸을 때 핀을 통째로 뛰어넘는다.
+        let (lo, hi) = (ball.prev_x.min(ball.x), ball.prev_x.max(ball.x));
+        if pet_center_x < lo - BOWLING_HIT_RADIUS || pet_center_x > hi + BOWLING_HIT_RADIUS {
             return false;
         }
         ball.vx *= 1.0 - BOWLING_SPEED_LOSS_PER_PIN;
@@ -243,6 +271,12 @@ impl Bowling {
         now_ms >= self.until_ms
     }
 
+    /// 판이 통째로 시간을 다 썼는가. 아무도 공을 굴리지 않고 자리를 뜬 판이
+    /// 화면에 영원히 놓여 있지 않게 하는 마지막 장치다 (R11).
+    pub(super) fn expired(&self, now_ms: u64) -> bool {
+        now_ms >= self.deadline_ms
+    }
+
     /// 이 판의 세계 폭. 속도 상한과 감속이 여기에 비례한다 — 판이 도는 동안은
     /// 레인이 세계이므로 바깥 `World::width()`를 다시 묻지 않는다.
     fn lane_width(&self) -> f64 {
@@ -263,7 +297,7 @@ pub(super) fn clamp_roll(vx: f64, world_width: f64) -> f64 {
     } else {
         FALLBACK_WORLD_WIDTH
     };
-    let max = (width * BOWLING_MAX_WORLDS_PER_SEC).max(THROW_MIN_SPEED);
+    let max = (width * BOWLING_MAX_WORLDS_PER_SEC).max(BOWLING_MIN_MAX_SPEED);
     vx.clamp(-max, max)
 }
 

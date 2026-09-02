@@ -54,6 +54,9 @@ pub fn create_ball_window(app: &AppHandle, at: (f64, f64)) -> tauri::Result<Webv
         .focused(false)
         .focusable(false)
         .visible(true)
+        // 펭귄 창과 같은 정책을 쓴다. 공 웹뷰에는 JS 타이머가 없어 지금은
+        // 차이가 없지만, 한쪽만 다르면 다음 사람이 "왜 다르지"부터 뒤진다.
+        .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .build()
         .inspect(|window| {
             let _ = window.show();

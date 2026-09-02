@@ -91,6 +91,15 @@ pub fn ball_look_of(ball: &BallSnapshot) -> BallLook {
     (ball.rolling, ball.held)
 }
 
+/// 이번 틱에 "판이 끝났다"를 알려야 하는가.
+///
+/// **공이 아니라 판을 보고 정한다.** 공은 전부 서기 전에는 없으므로(R4),
+/// 모으는 중에 참여 마리가 전부 빠져 판이 끝나면 공 쪽 기억만으로는 끝난 줄을
+/// 모른다 — 그러면 설정 창의 "볼링 한 판" 버튼이 비활성인 채로 남는다.
+pub fn bowling_over(was_alive: bool, is_alive: bool) -> bool {
+    was_alive && !is_alive
+}
+
 mod ball_window;
 mod bounds;
 pub mod commands;

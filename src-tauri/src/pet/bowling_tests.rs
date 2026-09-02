@@ -449,3 +449,111 @@ fn 판_도중_드래그로_빼낸_마리는_판에서_빠진다() {
     let board = pets.bowling().expect("남은 둘로 판은 계속 돈다");
     assert!(!board.participants().contains(&뺄));
 }
+
+// ── 리뷰에서 잡힌 것들 ──────────────────────────────────────────
+
+#[test]
+fn 집지_않은_공은_놓아도_굴러가지_않는다() {
+    // 빠르게 튕기면 `pointerup`이 `ball_drag_start`의 왕복보다 먼저 도착해,
+    // 집기가 거절됐는데도 놓기가 온다. 웹뷰가 보내는 것을 그대로 믿으면 안 된다.
+    let (mut pets, w, t) = 다_선_판(2);
+    let 시작 = pets.bowling().and_then(|b| b.ball()).unwrap().x;
+    pets.ball_drag_end(t, 100_000.0); // 집지 않고 놓기만
+    pets.step_all(t + 50, |_| Some(&w));
+    let board = pets.bowling().expect("판이 살아 있어야 한다");
+    assert_eq!(board.phase(), BoardPhase::Ready, "굴러가기 시작하면 안 된다");
+    assert_eq!(board.ball().unwrap().x, 시작);
+}
+
+#[test]
+fn 굴러가는_공에_놓기가_와도_속도가_안_바뀐다() {
+    // 이게 없으면 늦게 도착한 놓기가 굴러가던 공의 속도를 덮어써,
+    // 세기가 문턱 미만일 때 판이 그 자리에서 끝난다.
+    let (mut pets, w, t) = 다_선_판(3);
+    pets.ball_drag_start();
+    pets.ball_drag_end(t, 1_200.0);
+    let mut tt = t;
+    for _ in 0..6 {
+        tt += 50;
+        pets.step_all(tt, |_| Some(&w));
+    }
+    let 중간 = pets.bowling().and_then(|b| b.ball()).unwrap().x;
+    // 늦게 도착한 놓기 — 아주 살살 놓은 값이라 그대로 반영되면 공이 멎는다.
+    pets.ball_drag_end(tt, 1.0);
+    tt += 50;
+    pets.step_all(tt, |_| Some(&w));
+    let board = pets.bowling().expect("판이 살아 있어야 한다");
+    assert_eq!(board.phase(), BoardPhase::Rolling, "판이 끊기면 안 된다");
+    assert!(
+        board.ball().unwrap().x > 중간,
+        "공이 계속 굴러가야 한다"
+    );
+}
+
+#[test]
+fn 틱이_밀려도_핀을_지나치지_않는다() {
+    // 20Hz 틱이 밀리면 한 step이 최대 `MAX_STEP_MS`(250ms)를 정산한다. 그때
+    // **지금 위치만** 보고 판정하면 히트 반경(52px)보다 좁은 핀을 통째로 뛰어넘는다.
+    let mut pins = std::collections::BTreeMap::new();
+    pins.insert(1, 500.0);
+    let mut board = Bowling::new(pins, 레인(), 0);
+    board.open_ball();
+    let 중심 = 500.0 + PET_SIZE / 2.0;
+    // 핀 왼쪽, 히트 반경 밖에서 출발한다.
+    let 출발 = 중심 - BOWLING_HIT_RADIUS * 2.0;
+    assert!(board.grab());
+    board.drag(출발 - ball_home(레인()).0);
+    board.release(0, 100_000.0);
+
+    board.roll(MAX_STEP_MS as f64 / 1000.0);
+    let 도착 = board.ball().expect("공이 있다").x;
+    assert!(
+        (도착 - 중심).abs() > BOWLING_HIT_RADIUS,
+        "한 틱에 핀을 건너뛰는 상황이어야 의미 있는 테스트다 (도착 {도착}, 핀 {중심})"
+    );
+    assert!(
+        board.hit(1, 중심),
+        "지나온 구간 안에 있던 핀을 놓쳤다 — 점이 아니라 구간으로 재야 한다"
+    );
+}
+
+#[test]
+fn 판을_방치하면_스스로_접힌다() {
+    // 마리별 안전 상한만으로는 부족하다 — 서로 다른 시각에 만료되면 마지막
+    // 한 마리가 빠질 때까지 판과 공 창이 화면에 남는다 (R11).
+    let (mut pets, w, t) = 다_선_판(3);
+    let mut tt = t;
+    while tt < t + BOWLING_MAX_MS + 5_000 {
+        tt += 200;
+        pets.step_all(tt, |_| Some(&w));
+        if pets.bowling().is_none() {
+            return;
+        }
+    }
+    panic!("아무도 굴리지 않은 판이 스스로 접히지 않았다");
+}
+
+#[test]
+fn 판을_강제로_접으면_전_마리가_흩어진다() {
+    // 브릿지가 공 창을 못 만들었을 때 쓰는 길이다.
+    let (mut pets, _, t) = 다_선_판(3);
+    pets.end_bowling(t);
+    assert!(pets.bowling().is_none());
+    for id in pets.ids() {
+        assert!(
+            matches!(
+                pets.get(id).map(Pet::behavior),
+                Some(Behavior::Bowling {
+                    bowling: BowlingPhase::Scatter
+                })
+            ),
+            "{id}번이 흩어지기를 건너뛰었다"
+        );
+    }
+}
+
+#[test]
+fn 속도_상한의_바닥은_볼링_자기_상수다() {
+    // 던지기의 `THROW_MIN_SPEED`를 빌려 쓰면 던지기를 튜닝할 때 볼링이 따라 바뀐다.
+    assert_eq!(clamp_roll(1_000_000.0, 1.0), BOWLING_MIN_MAX_SPEED);
+}

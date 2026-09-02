@@ -201,3 +201,22 @@ fn 볼링은_pick_next에서_뽑히지_않는다() {
         }
     }
 }
+
+#[test]
+fn 흩어지는_중에는_새_판에_낄_수_있다() {
+    // 판이 끝나면 곧바로 버튼이 살아나는데, 흩어지는 0.6초 동안 새 판을
+    // 거절하면 눌리는데 아무 일도 안 일어나는 구간이 생긴다.
+    let mut p = 핀이_된_펭귄();
+    국면들(&mut p, 20_000);
+    p.bowling_scatter(20_000);
+    assert!(
+        p.start_bowling(20_100, 핀, BOUNDS.floor_y),
+        "흩어지는 중에는 다시 낄 수 있어야 한다"
+    );
+    assert!(matches!(
+        p.snapshot().behavior,
+        Behavior::Bowling {
+            bowling: BowlingPhase::Gather
+        }
+    ));
+}

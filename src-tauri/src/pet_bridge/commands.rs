@@ -331,7 +331,13 @@ pub fn bowling_start(state: State<'_, PetState>, app: AppHandle) -> Result<(), S
     if !started {
         return Err("이미 볼링 판이 돌고 있거나, 펭귄을 들고 계세요".into());
     }
-    for id in state.pets.lock().unwrap().ids() {
+    // **id를 먼저 꺼내 가드를 떨군다.** `for id in <락>.ids()`로 쓰면 반복자
+    // 식의 임시 `MutexGuard`가 **루프 전체 동안 살아 있고**, `flush`가 같은
+    // 뮤텍스를 다시 잡아 자기 데드락이 난다 (std `Mutex`는 재진입 불가).
+    // 증상은 "버튼을 누르면 앱이 통째로 멈춘다" 하나뿐이라 원인이 안 보인다.
+    // `pet_set_pinball`이 같은 이유로 같은 모양을 쓴다.
+    let ids = state.pets.lock().unwrap().ids();
+    for id in ids {
         flush(&app, id);
     }
     Ok(())

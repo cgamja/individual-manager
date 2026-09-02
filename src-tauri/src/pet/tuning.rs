@@ -235,6 +235,12 @@ pub(super) const BOWLING_STOP_SPEED: f64 = 40.0;
 pub(super) const BOWLING_MIN_ROLL_SPEED: f64 = 120.0;
 const _: () = assert!(BOWLING_MIN_ROLL_SPEED > BOWLING_STOP_SPEED);
 
+/// 세계가 아주 좁을 때 속도 **상한**이 내려갈 수 있는 바닥. 던지기의
+/// `THROW_MIN_SPEED`를 빌려 쓰지 않는다 — 빌리면 던지기를 튜닝할 때 볼링의
+/// 최소 굴리기 속도가 조용히 따라 바뀐다. 볼링 상수는 전부 독립이다.
+pub(super) const BOWLING_MIN_MAX_SPEED: f64 = 260.0;
+const _: () = assert!(BOWLING_MIN_MAX_SPEED > BOWLING_MIN_ROLL_SPEED);
+
 /// 공 중심이 펭귄 중심에서 이 거리 안에 들어오면 맞는다.
 pub(super) const BOWLING_HIT_RADIUS: f64 = 52.0;
 

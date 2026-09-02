@@ -257,6 +257,21 @@ impl Pets {
         }
     }
 
+    /// 판을 지금 접는다. **코어 밖의 이유로 판을 이어갈 수 없을 때** 쓴다 —
+    /// 브릿지가 공 창을 못 만든 경우가 그렇다. 참여 마리는 전부 흩어져
+    /// 평소로 돌아간다.
+    pub fn end_bowling(&mut self, now_ms: u64) {
+        let Self { pets, bowling, .. } = self;
+        let Some(board) = bowling.take() else {
+            return;
+        };
+        for id in board.participants() {
+            if let Some(pet) = pets.get_mut(&id) {
+                pet.bowling_scatter(now_ms);
+            }
+        }
+    }
+
     /// 볼링 판을 한 틱 진행시킨다. **마리별 `step`보다 먼저** 돈다 — 판이
     /// 마리를 몰지 그 반대가 아니라서, 이번 틱에 정해진 국면이 곧바로 그 틱의
     /// 마리 동작에 반영되어야 한다 (KTD8).
@@ -271,12 +286,26 @@ impl Pets {
 
         // 1) 판을 떠난 마리를 추린다. 드래그·빠따로 다른 동작에 넘어갔거나(A4)
         //    사라진(AE4) 마리가 여기서 빠지고, 아무도 안 남으면 판을 접는다.
+        //    `Scatter`는 이미 판을 나가는 중이라 참여로 세지 않는다.
         for id in board.participants() {
             if !pets.get(&id).is_some_and(Pet::is_bowling) {
                 board.leave(id);
             }
         }
         if board.is_empty() {
+            *bowling = None;
+            return;
+        }
+
+        // 2) 판이 통째로 시간을 다 썼으면 접는다. 마리별 안전 상한만으로는
+        //    부족하다 — 서로 다른 시각에 만료되면 마지막 한 마리가 빠질 때까지
+        //    판과 공 창이 남는다 (R11).
+        if board.expired(now_ms) {
+            for id in board.participants() {
+                if let Some(pet) = pets.get_mut(&id) {
+                    pet.bowling_scatter(now_ms);
+                }
+            }
             *bowling = None;
             return;
         }

@@ -11,14 +11,19 @@ use serde::Serialize;
 mod test_support;
 mod tuning;
 
-/// 브릿지가 창 크기를 계산하는 데 쓴다 — 코어 밖으로 나가는 유일한 튜닝 값이다.
-pub use tuning::PET_SIZE;
+/// 브릿지가 창 크기를 계산하는 데 쓴다 — 코어 밖으로 나가는 튜닝 값은 이 둘뿐이다.
+pub use tuning::{BOWLING_BALL_SIZE, PET_SIZE};
 use tuning::*;
 
 mod behavior;
+mod bowling;
+
+pub use bowling::{BallSnapshot, BoardPhase, Bowling};
+use bowling::{dist2_to_segment, pin_positions};
 
 pub use behavior::{
-    Behavior, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech, Vertical,
+    Behavior, BowlingPhase, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech,
+    Vertical,
 };
 use behavior::{IDLE_KINDS, SASSY_KINDS};
 
@@ -116,6 +121,9 @@ pub struct Pets {
     /// **증가만 한다.** 지운 자리의 id를 다시 쓰면, 닫히는 중인 창과 새 창이
     /// 같은 라벨을 다퉈 창 이동이 엉뚱한 쪽으로 간다.
     next_id: PetId,
+    /// 지금 도는 볼링 판. 없으면 볼링 중이 아니다. **`Pet`이 아니라 여기가
+    /// 소유한다** — 지우기와 판 정합성을 한 자리에서 원자적으로 처리해야 한다 (KTD2).
+    bowling: Option<Bowling>,
 }
 
 impl Pets {
@@ -148,13 +156,18 @@ impl Pets {
         if self.pets.len() <= 1 {
             return false;
         }
-        self.pets.remove(&id).is_some()
+        let removed = self.pets.remove(&id).is_some();
+        if removed {
+            self.leave_bowling(id);
+        }
+        removed
     }
 
     /// 창이 사라진 펭귄을 정리한다. 마지막 한 마리 보호를 받지 않는다 —
     /// 창이 없는 펭귄은 사용자의 선택이 아니라 이미 없어진 것이다.
     pub fn forget(&mut self, id: PetId) {
         self.pets.remove(&id);
+        self.leave_bowling(id);
     }
 
     pub fn get_mut(&mut self, id: PetId) -> Option<&mut Pet> {
@@ -181,6 +194,208 @@ impl Pets {
     /// 닫히는 중인 창과 라벨이 겹치지 않는다.
     pub fn clear(&mut self) {
         self.pets.clear();
+        self.bowling = None;
+    }
+
+    /// 한 마리를 볼링 판에서 뺀다. 마지막 참여 마리가 빠지면 판을 접는다 (R11).
+    fn leave_bowling(&mut self, id: PetId) {
+        let Some(board) = self.bowling.as_mut() else {
+            return;
+        };
+        board.leave(id);
+        if board.is_empty() {
+            self.bowling = None;
+        }
+    }
+
+    /// 지금 도는 판. 브릿지가 공 창을 만들지 정하는 데 쓴다.
+    pub fn bowling(&self) -> Option<&Bowling> {
+        self.bowling.as_ref()
+    }
+
+    /// 볼링 한 판을 연다 — **화면의 펭귄 전부**가 참여한다 (R1). 이미 판이
+    /// 도는 중이면 무시한다 (A3). 들려 있는 마리는 빠지고, 아무도 못 서면
+    /// 판을 열지 않는다.
+    pub fn start_bowling(&mut self, now_ms: u64, lane: Bounds) -> bool {
+        if self.bowling.is_some() {
+            return false;
+        }
+        let ids = self.ids();
+        let mut pins = std::collections::BTreeMap::new();
+        for (id, (pin_x, pin_y)) in ids.iter().zip(pin_positions(ids.len(), lane)) {
+            let joined = self
+                .pets
+                .get_mut(id)
+                .is_some_and(|pet| pet.start_bowling(now_ms, pin_x, pin_y));
+            if joined {
+                pins.insert(*id, (pin_x, pin_y));
+            }
+        }
+        if pins.is_empty() {
+            return false;
+        }
+        self.bowling = Some(Bowling::new(pins, lane, now_ms));
+        true
+    }
+
+    /// 공을 집는다. 판이 없거나 굴러가는 중이면 `false`.
+    pub fn ball_drag_start(&mut self) -> bool {
+        self.bowling.as_mut().is_some_and(Bowling::grab)
+    }
+
+    /// 집은 공을 가로로 옮긴다. **세로는 받지 않는다** — 조준 각도가 없다 (R6).
+    pub fn ball_drag_by(&mut self, dx: f64) {
+        if let Some(board) = self.bowling.as_mut() {
+            board.drag(dx);
+        }
+    }
+
+    /// 공을 놓는다. 놓는 순간의 **가로** 속도가 굴러가는 거리를 정한다 (R5).
+    pub fn ball_drag_end(&mut self, now_ms: u64, vx: f64) {
+        if let Some(board) = self.bowling.as_mut() {
+            board.release(now_ms, vx);
+        }
+    }
+
+    /// 판을 지금 접는다. **코어 밖의 이유로 판을 이어갈 수 없을 때** 쓴다 —
+    /// 브릿지가 공 창을 못 만든 경우가 그렇다. 참여 마리는 전부 흩어져
+    /// 평소로 돌아간다.
+    pub fn end_bowling(&mut self, now_ms: u64) {
+        let Self { pets, bowling, .. } = self;
+        let Some(board) = bowling.take() else {
+            return;
+        };
+        for id in board.participants() {
+            if let Some(pet) = pets.get_mut(&id) {
+                pet.bowling_scatter(now_ms);
+            }
+        }
+    }
+
+    /// 볼링 판을 한 틱 진행시킨다. **마리별 `step`보다 먼저** 돈다 — 판이
+    /// 마리를 몰지 그 반대가 아니라서, 이번 틱에 정해진 국면이 곧바로 그 틱의
+    /// 마리 동작에 반영되어야 한다 (KTD8).
+    ///
+    /// 여기가 **전 마리를 가로지르는 유일한 자리**다. "공이 지나갔는가"는
+    /// 마리 하나의 `step`으로는 답할 수 없다.
+    fn step_bowling(&mut self, now_ms: u64) {
+        let Self { pets, bowling, .. } = self;
+        let Some(board) = bowling.as_mut() else {
+            return;
+        };
+
+        // 1) 판을 떠난 마리를 추린다. 드래그·빠따로 다른 동작에 넘어갔거나(A4)
+        //    사라진(AE4) 마리가 여기서 빠진다. 맞아서 `Thrown`이 된 마리도
+        //    여기서 자연히 빠져나간다 — 맞은 상태는 볼링 국면이 아니다.
+        for id in board.participants() {
+            if !pets.get(&id).is_some_and(Pet::is_bowling) {
+                board.leave(id);
+            }
+        }
+        // 착지한 마리는 더는 아무것도 못 친다.
+        board.retain_knocked(|id| pets.get(&id).is_some_and(Pet::is_flying));
+
+        // 굴러가는 중에는 핀이 하나도 안 남아도 판을 접지 않는다 — 스트라이크가
+        // 나면 공이 아직 날아가는 중인데 창이 닫혀 버린다.
+        let 접을까 = board.is_empty()
+            && matches!(board.phase(), BoardPhase::Gathering | BoardPhase::Ready);
+        if 접을까 {
+            *bowling = None;
+            return;
+        }
+
+        // 2) 판이 통째로 시간을 다 썼으면 접는다. 마리별 안전 상한만으로는
+        //    부족하다 — 서로 다른 시각에 만료되면 마지막 한 마리가 빠질 때까지
+        //    판과 공 창이 남는다 (R11).
+        if board.expired(now_ms) {
+            for id in board.participants() {
+                if let Some(pet) = pets.get_mut(&id) {
+                    pet.bowling_scatter(now_ms);
+                }
+            }
+            *bowling = None;
+            return;
+        }
+
+        let dt = board.tick(now_ms);
+        let world = board.lane_width();
+        match board.phase() {
+            BoardPhase::Gathering => {
+                let 다_섰다 = board
+                    .participants()
+                    .iter()
+                    .all(|id| pets.get(id).is_some_and(Pet::bowling_stood));
+                if 다_섰다 {
+                    board.open_ball();
+                }
+            }
+            // 사용자가 굴리기 전까지는 아무 일도 없다.
+            BoardPhase::Ready => {}
+            BoardPhase::Rolling => {
+                board.roll(dt);
+
+                // 공이 핀을 친다. **판정도 2차원이다** — 공이 지나는 줄에서 먼
+                // 핀은 직접 맞지 않고 아래의 연쇄로만 쓰러진다.
+                for id in board.participants() {
+                    let Some(pet) = pets.get(&id) else { continue };
+                    let at = (pet.center_x(), pet.center_y());
+                    let Some((dx, dy)) = board.ball_hit(at.0, at.1) else {
+                        continue;
+                    };
+                    if let Some(pet) = pets.get_mut(&id) {
+                        pet.bowling_knocked(now_ms, dx, dy, world);
+                    }
+                    board.knock(id, at);
+                }
+
+                // 튕겨 나간 마리가 아직 선 핀을 친다 — **연쇄**. 이게 없으면
+                // 공이 지나는 한 줄만 쓰러져 삼각형을 세운 보람이 없다.
+                //
+                // **판정은 지나온 구간으로 한다.** 튕기는 속도가 세계 폭에
+                // 비례하므로 넓은 화면에서는 한 틱에 140px 넘게 날아, 지금
+                // 위치만 보면 이웃 옆을 스쳐 지나가면서도 어느 틱에도 반경
+                // 안에 안 잡힌다 (공 판정과 똑같은 함정이다).
+                let 반경2 = BOWLING_KNOCK_RADIUS * BOWLING_KNOCK_RADIUS;
+                for (hitter, 직전) in board.knocked() {
+                    let Some(h) = pets.get(&hitter) else { continue };
+                    let 지금 = (h.center_x(), h.center_y());
+                    for id in board.participants() {
+                        let Some(pet) = pets.get(&id) else { continue };
+                        let at = (pet.center_x(), pet.center_y());
+                        let (d2, 가까운) = dist2_to_segment(at, 직전, 지금);
+                        if d2 > 반경2 {
+                            continue;
+                        }
+                        // 지나간 자리에서 **밀려나는** 방향이다. 정확히 겹쳤으면
+                        // 때린 쪽이 가던 방향으로 민다.
+                        let (mut dx, mut dy) = (at.0 - 가까운.0, at.1 - 가까운.1);
+                        if dx * dx + dy * dy <= f64::EPSILON {
+                            dx = 지금.0 - 직전.0;
+                            dy = 지금.1 - 직전.1;
+                        }
+                        if let Some(pet) = pets.get_mut(&id) {
+                            pet.bowling_knocked(now_ms, dx, dy, world);
+                        }
+                        board.knock(id, at);
+                    }
+                    board.track_knocked(hitter, 지금);
+                }
+
+                if board.ball_done() {
+                    board.settle(now_ms);
+                }
+            }
+            BoardPhase::Settling => {
+                if board.settled(now_ms) {
+                    for id in board.participants() {
+                        if let Some(pet) = pets.get_mut(&id) {
+                            pet.bowling_scatter(now_ms);
+                        }
+                    }
+                    *bowling = None;
+                }
+            }
+        }
     }
 
     /// 한 틱 동안 전 마리를 진행시킨다.
@@ -205,6 +420,7 @@ impl Pets {
         now_ms: u64,
         world_of: impl Fn(PetId) -> Option<&'w World>,
     ) -> Vec<(PetId, Snapshot)> {
+        self.step_bowling(now_ms);
         let mut stepped = Vec::with_capacity(self.pets.len());
         for id in self.ids() {
             let Some(world) = world_of(id) else {
@@ -303,6 +519,16 @@ impl Pet {
         self.behavior
     }
 
+    /// 몸통 가운데. `x`/`y`는 왼쪽 위 모서리라 마리끼리·공과의 거리를 잴 때는
+    /// 이쪽을 써야 크기(`PET_SIZE`)만큼 어긋나지 않는다.
+    pub(in crate::pet) fn center_x(&self) -> f64 {
+        self.x + PET_SIZE / 2.0
+    }
+
+    pub(in crate::pet) fn center_y(&self) -> f64 {
+        self.y + PET_SIZE / 2.0
+    }
+
     /// 판정의 기준점 — **발밑 중앙**이다 (PRD §5.2).
     fn anchor(&self) -> (f64, f64) {
         (self.x + PET_SIZE / 2.0, self.y + PET_SIZE)
@@ -349,6 +575,7 @@ impl Pet {
             Behavior::Tumble => self.tick_tumble(now_ms, dt),
             Behavior::Freakout { freakout } => self.tick_freakout(now_ms, freakout, bounds, dt),
             Behavior::IceFishing { fishing } => self.tick_fishing(now_ms, fishing),
+            Behavior::Bowling { bowling } => self.tick_bowling(now_ms, bowling, bounds, dt),
             Behavior::Idle { .. } | Behavior::Sleep => {
                 if now_ms >= self.behavior_until_ms {
                     self.pick_next(now_ms, bounds);

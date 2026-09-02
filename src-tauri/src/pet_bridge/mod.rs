@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
-use crate::pet::{Behavior, Facing, PetId, Pets, Snapshot, Vertical};
+use crate::pet::{BallSnapshot, Behavior, Facing, PetId, Pets, Snapshot, Vertical};
 
 /// 지금(epoch ms). 코어(`pet.rs`)는 시간을 주입받는 순수 모듈이라 시계를 갖지 않는다 —
 /// 시계를 읽는 곳은 브릿지 하나뿐이어야 테스트가 시간을 마음대로 돌릴 수 있다.
@@ -23,6 +23,16 @@ pub const EVENT_PET_STATE: &str = "pet://state";
 
 /// 설정이 **이 창 밖에서** 바뀌었음을 설정 창에 알린다.
 pub const EVENT_PET_SETTINGS: &str = "pet://settings";
+
+/// 공 창이 구독하는 상태 이벤트. 펭귄과 나누는 이유는 받는 창이 다르고
+/// 페이로드도 다르기 때문이다 — 하나로 합치면 공 창이 스무 마리치 이벤트를
+/// 걸러 내야 한다.
+pub const EVENT_BALL_STATE: &str = "bowling://ball";
+
+/// 볼링 판이 **끝났음**을 설정 창에 알린다. 판을 끝내는 것은 공이지 사용자가
+/// 아니라서, 이걸 안 보내면 "볼링 한 판" 버튼이 비활성인 채로 남는다
+/// (설정 창을 닫았다 다시 열기 전까지).
+pub const EVENT_BOWLING_OVER: &str = "bowling://over";
 
 pub struct PetState {
     pub pets: Mutex<Pets>,
@@ -47,6 +57,8 @@ pub struct PetSummary {
     pub count: usize,
     pub max: usize,
     pub focused: Option<PetId>,
+    /// 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로(A3) 버튼을 끈다.
+    pub bowling: bool,
 }
 
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
@@ -71,6 +83,24 @@ pub fn should_notify(last: Option<Look>, now: Look) -> bool {
     last != Some(now)
 }
 
+/// 공 웹뷰가 보는 "겉모습". 위치는 창이 옮기므로 여기 들어가지 않는다 —
+/// 넣으면 굴러가는 내내 20Hz로 리렌더한다.
+pub type BallLook = (bool, bool);
+
+pub fn ball_look_of(ball: &BallSnapshot) -> BallLook {
+    (ball.rolling, ball.held)
+}
+
+/// 이번 틱에 "판이 끝났다"를 알려야 하는가.
+///
+/// **공이 아니라 판을 보고 정한다.** 공은 전부 서기 전에는 없으므로(R4),
+/// 모으는 중에 참여 마리가 전부 빠져 판이 끝나면 공 쪽 기억만으로는 끝난 줄을
+/// 모른다 — 그러면 설정 창의 "볼링 한 판" 버튼이 비활성인 채로 남는다.
+pub fn bowling_over(was_alive: bool, is_alive: bool) -> bool {
+    was_alive && !is_alive
+}
+
+mod ball_window;
 mod bounds;
 pub mod commands;
 mod pinball;
@@ -79,6 +109,7 @@ mod settings;
 mod tick;
 mod window;
 
+pub use ball_window::*;
 pub use bounds::*;
 pub use commands::*;
 pub use pinball::*;

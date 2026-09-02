@@ -15,6 +15,13 @@ export type FishingPhase = "dig" | "wait" | "bite" | "catch" | "miss" | "pack";
 /** 발작 한 판이 거쳐 가는 국면. 어느 국면인지는 코어가 정한다. */
 export type FreakoutPhase = "dash" | "pant";
 
+/** 볼링 한 판에서 **마리 하나가** 거쳐 가는 국면. 판 전체의 국면은 코어 안에만
+ * 있다 — 웹뷰는 자기 펭귄이 무엇을 하는지만 알면 된다.
+ *
+ * **"맞은 상태"가 없다.** 맞은 핀은 `thrown`이 되어 평소 던져졌을 때의 그림을
+ * 그대로 쓴다 (2026-09-02 사용자 지시). */
+export type BowlingPhase = "gather" | "ready" | "scatter";
+
 /** 클릭했을 때의 반응 — 놀라지 않고 싸가지 없게 군다. */
 export type SassyKind =
   | "turn_away"
@@ -41,7 +48,8 @@ export type Behavior =
   | { kind: "sprawl" }
   | { kind: "tumble" }
   | { kind: "slide" }
-  | { kind: "ice_fishing"; fishing: FishingPhase };
+  | { kind: "ice_fishing"; fishing: FishingPhase }
+  | { kind: "bowling"; bowling: BowlingPhase };
 
 /** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
 export interface Speech {
@@ -108,6 +116,14 @@ export const normalizeTaunts = (lines: readonly string[]): string[] =>
 
 export const EVENT_PET_STATE = "pet://state";
 
+/** 공 창이 구독하는 상태 이벤트. 펭귄과 나누는 이유는 받는 창과 페이로드가
+ * 다르기 때문이다 — 하나로 합치면 공 창이 마릿수만큼의 이벤트를 걸러 내야 한다. */
+export const EVENT_BALL_STATE = "bowling://ball";
+
+/** 볼링 판이 **끝났을 때** 온다. 판을 끝내는 것은 공이지 사용자가 아니라서,
+ * 이게 없으면 "볼링 한 판" 버튼이 비활성인 채로 남는다. */
+export const EVENT_BOWLING_OVER = "bowling://over";
+
 /** 설정이 **이 창 밖에서** 바뀌었을 때 오는 알림 (핀볼 판의 Esc 등). */
 export const EVENT_PET_SETTINGS = "pet://settings";
 
@@ -126,6 +142,7 @@ export const behaviorClass = (behavior: Behavior): string => {
   if (behavior.kind === "sassy") return `pg--sassy-${kebab(behavior.sassy)}`;
   if (behavior.kind === "ice_fishing") return `pg--fishing-${kebab(behavior.fishing)}`;
   if (behavior.kind === "freakout") return `pg--freakout-${kebab(behavior.freakout)}`;
+  if (behavior.kind === "bowling") return `pg--bowling-${kebab(behavior.bowling)}`;
   return `pg--${kebab(behavior.kind)}`;
 };
 
@@ -139,6 +156,7 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--slide" ||
   cls === "pg--squawk" ||
   cls === "pg--freakout-pant" ||
+  cls === "pg--bowling-scatter" ||
   cls.startsWith("pg--sassy-") ||
   (cls.startsWith("pg--fishing-") && cls !== "pg--fishing-wait");
 
@@ -155,6 +173,17 @@ export interface PetSummary {
   max: number;
   /** 마지막으로 우클릭된 펭귄 — "이 펭귄 삭제"의 대상. */
   focused: number | null;
+  /** 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로 버튼을 끈다 (A3). */
+  bowling: boolean;
+}
+
+/** 볼링 공의 상태. **위치는 여기 없다** — 창이 옮기므로, 넣으면 굴러가는
+ * 내내 20Hz로 리렌더한다. */
+export interface BallSnapshot {
+  x: number;
+  y: number;
+  rolling: boolean;
+  held: boolean;
 }
 
 export const getPetSummary = (): Promise<PetSummary> => invoke("pet_summary");
@@ -176,6 +205,20 @@ export const squawkPet = (): Promise<void> => invoke("pet_squawk");
 
 /** 우클릭해서 연 그 펭귄을 발작시킨다. */
 export const freakoutPet = (): Promise<void> => invoke("pet_freakout");
+
+/** 볼링 한 판을 연다. **우클릭한 한 마리가 아니라 화면의 펭귄 전부**가
+ * 참여한다 (R1) — 그래서 다른 동작들과 달리 대상을 안 고른다. */
+export const startBowling = (): Promise<void> => invoke("bowling_start");
+
+/** 공을 집는다. 굴러가는 중이면 `false` — 한 판에 한 번 굴린다. */
+export const startBallDrag = (): Promise<boolean> => invoke("ball_drag_start");
+
+/** 공의 가로 이동량만 보낸다 — 조준 각도가 없다 (R6). 펭귄과 마찬가지로
+ * 창 위치의 소유자는 Rust 하나다. */
+export const dragBallBy = (dx: number): Promise<void> => invoke("ball_drag_by", { dx });
+
+/** 공을 놓는다. **가로 속도만** 넘긴다 — 세로는 버린다 (R6). */
+export const endBallDrag = (vx: number): Promise<void> => invoke("ball_drag_end", { vx });
 
 /** 빠따 — 왼쪽 클릭 한 번에 한 번 날아간다 (참고: 쇼핑카트히어로). */
 /** 왼쪽 클릭을 코어에 넘긴다. `nx`/`ny`는 **맞은 지점**을 펭귄 기준으로 */
@@ -233,6 +276,14 @@ export const setPetPinball = (on: boolean): Promise<void> =>
 /** 자기 창의 펭귄 상태만 구독한다. */
 export const onPetState = (cb: (snapshot: PetSnapshot) => void): Promise<UnlistenFn> =>
   getCurrentWebviewWindow().listen<PetSnapshot>(EVENT_PET_STATE, (event) => cb(event.payload));
+
+/** 자기 창의 공 상태만 구독한다. 펭귄과 같은 이유로 **창에 묶는다.** */
+export const onBallState = (cb: (ball: BallSnapshot) => void): Promise<UnlistenFn> =>
+  getCurrentWebviewWindow().listen<BallSnapshot>(EVENT_BALL_STATE, (event) => cb(event.payload));
+
+/** 볼링 판이 끝나면 알려 준다. 설정 창이 버튼을 되살리는 데 쓴다. */
+export const onBowlingOver = (cb: () => void): Promise<UnlistenFn> =>
+  listen(EVENT_BOWLING_OVER, () => cb());
 
 /** 설정이 이 창 밖에서 바뀌면 알려 준다 — 지금은 핀볼 판의 Esc가 유일한 경우다. */
 export const onPetSettings = (

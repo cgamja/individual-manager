@@ -16,6 +16,9 @@ interface SettingsCardProps {
   /** 핀볼 모드 여부. **기본은 꺼짐** — 켜면 착지 4단계가 가려진다. */
   pinballEnabled: boolean;
   onPinballEnabledChange: (enabled: boolean) => void;
+  /** 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로 버튼을 끈다 (A3). */
+  bowlingRunning: boolean;
+  onBowling: () => void;
 }
 
 /** 설정 카드. */
@@ -30,6 +33,8 @@ export function SettingsCard({
   onThemeChange,
   pinballEnabled,
   onPinballEnabledChange,
+  bowlingRunning,
+  onBowling,
 }: SettingsCardProps) {
   return (
     <section className="card settings-card">
@@ -83,6 +88,21 @@ export function SettingsCard({
           <option value="dark">다크</option>
         </select>
       </div>
+
+      {/* **토글이 아니라 버튼이다.** 볼링은 켜 두는 모드가 아니라 몇 초짜리
+          한 판이고, 그래서 저장하지도 않는다. `MotionCard`가 아니라 여기 있는
+          이유는 그쪽 규칙("우클릭한 펭귄이 없으면 비활성")을 볼링이 안 따르기
+          때문이다 — 판에는 화면의 펭귄 전부가 참여한다 (R1). */}
+      <div className="settings-row">
+        <span>볼링</span>
+        <button type="button" onClick={onBowling} disabled={bowlingRunning}>
+          {bowlingRunning ? "굴리는 중…" : "볼링 한 판"}
+        </button>
+      </div>
+      <p className="settings-hint">
+        펭귄들이 오른쪽 바닥에 한 줄로 서요. 다 서면 왼쪽에 공이 놓이고, 마우스로
+        집어 뿌리면 굴러가요. 공이 멎으면 끝나요 — 점수는 안 세요.
+      </p>
 
       <div className="settings-row">
         <label htmlFor="pinball-enabled">핀볼 모드</label>

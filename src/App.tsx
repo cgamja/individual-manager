@@ -9,6 +9,7 @@ import {
   emitPetSound,
   fishPet,
   getPetSummary,
+  onBowlingOver,
   onPetSettings,
   removePet,
   setPetEnabled,
@@ -16,6 +17,7 @@ import {
   setPetTheme,
   slidePet,
   squawkPet,
+  startBowling,
   freakoutPet,
   type PetSummary,
 } from "./lib/pet";
@@ -63,7 +65,12 @@ function App() {
   const [theme, setThemeState] = useState(DEFAULT_PET_SETTINGS.theme);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
   /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
-  const [petSummary, setPetSummary] = useState<PetSummary>({ count: 1, max: 8, focused: null });
+  const [petSummary, setPetSummary] = useState<PetSummary>({
+    count: 1,
+    max: 8,
+    focused: null,
+    bowling: false,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +109,20 @@ function App() {
     };
     document.addEventListener("visibilitychange", onVisibility);
 
+    // 판이 끝나는 것은 공이 정한다 — 사용자가 아니라서 여기서 다시 읽어야
+    // "볼링 한 판" 버튼이 되살아난다.
+    let unlistenBowling: UnlistenFn | undefined;
+    void onBowlingOver(() => {
+      getPetSummary()
+        .then(setPetSummary)
+        .catch(() => {});
+    })
+      .then((off) => {
+        if (cancelled) off();
+        else unlistenBowling = off;
+      })
+      .catch(() => {});
+
     let unlisten: UnlistenFn | undefined;
     void onPetSettings(({ pinball }) => {
       setPinballEnabledState(pinball);
@@ -119,6 +140,7 @@ function App() {
       cancelled = true;
       document.removeEventListener("visibilitychange", onVisibility);
       unlisten?.();
+      unlistenBowling?.();
     };
   }, []);
 
@@ -239,6 +261,13 @@ function App() {
     await refreshPets();
   }, [refreshPets]);
 
+  /** 볼링 한 판 — **저장하지 않는다.** 켜 두는 모드가 아니라 몇 초짜리
+   * 한 판이라, 앱을 껐다 켜면 판은 그냥 없다 (KTD11). */
+  const handleBowling = useCallback(async () => {
+    await startBowling().catch((err) => console.error("볼링을 못 열었어요:", err));
+    await refreshPets();
+  }, [refreshPets]);
+
   /** 대사 편집 — 화면을 먼저 바꾸고 저장한다. 실패하면 되돌린다. */
   const handleTauntsChange = useCallback(
     async (next: string[]) => {
@@ -278,6 +307,8 @@ function App() {
         onThemeChange={(next) => void handleThemeChange(next)}
         pinballEnabled={pinballEnabled}
         onPinballEnabledChange={(next) => void handlePinballEnabledChange(next)}
+        bowlingRunning={petSummary.bowling}
+        onBowling={() => void handleBowling()}
       />
       {saveFailed && (
         <p className="notif-hint" role="status">

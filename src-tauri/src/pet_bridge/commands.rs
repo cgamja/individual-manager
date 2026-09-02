@@ -18,6 +18,12 @@ pub(super) fn target_pet(window: &WebviewWindow, state: &PetState) -> Option<Pet
     caller_pet(window).or_else(|| *state.focused.lock().unwrap())
 }
 
+/// 공 조작을 부른 창이 **정말 공 창인가.** 웹뷰가 보내는 값이 아니라 창
+/// 라벨로 정한다 — 빠따·드래그가 자기 펭귄에게만 가는 것과 같은 규칙이다.
+pub(super) fn is_ball_window(window: &WebviewWindow) -> bool {
+    window.label() == BALL_LABEL
+}
+
 /// 빠따 — 왼쪽 클릭 한 번에 펭귄이 한 번 날아간다 (R14).
 /// 왼쪽 클릭. `nx`/`ny`는 **맞은 지점**을 펭귄 기준으로 정규화한 값(-0.5~0.5)이다.
 #[tauri::command]
@@ -164,10 +170,12 @@ pub fn pet_get_state(window: WebviewWindow, state: State<'_, PetState>) -> Optio
 pub fn pet_summary(state: State<'_, PetState>) -> PetSummary {
     let count = state.pets.lock().unwrap().len();
     let focused = *state.focused.lock().unwrap();
+    let bowling = state.pets.lock().unwrap().bowling().is_some();
     PetSummary {
         count,
         max: MAX_PETS,
         focused,
+        bowling,
     }
 }
 
@@ -311,4 +319,53 @@ pub fn pet_remove(
     let count = state.pets.lock().unwrap().len();
     save_pet_count(&app, count);
     Ok(())
+}
+
+/// 설정 창의 "볼링 한 판" — **전역 커맨드다.** 우클릭한 그 한 마리가 아니라
+/// 화면의 펭귄 **전부**가 참여한다 (R1). 그래서 `pet_fish`류의
+/// `target_pet` 패턴이 아니라 `pet_set_pinball`의 전역 패턴을 따른다 (KTD10).
+#[tauri::command]
+pub fn bowling_start(state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let lane = world_or_flat_any(&app).first().bounds;
+    let started = state.pets.lock().unwrap().start_bowling(now_ms(), lane);
+    if !started {
+        return Err("이미 볼링 판이 돌고 있거나, 펭귄을 들고 계세요".into());
+    }
+    // **id를 먼저 꺼내 가드를 떨군다.** `for id in <락>.ids()`로 쓰면 반복자
+    // 식의 임시 `MutexGuard`가 **루프 전체 동안 살아 있고**, `flush`가 같은
+    // 뮤텍스를 다시 잡아 자기 데드락이 난다 (std `Mutex`는 재진입 불가).
+    // 증상은 "버튼을 누르면 앱이 통째로 멈춘다" 하나뿐이라 원인이 안 보인다.
+    // `pet_set_pinball`이 같은 이유로 같은 모양을 쓴다.
+    let ids = state.pets.lock().unwrap().ids();
+    for id in ids {
+        flush(&app, id);
+    }
+    Ok(())
+}
+
+/// 공을 집는다. 굴러가는 중이면 `false` — 한 판에 한 번 굴린다.
+#[tauri::command]
+pub fn ball_drag_start(window: WebviewWindow, state: State<'_, PetState>) -> bool {
+    is_ball_window(&window) && state.pets.lock().unwrap().ball_drag_start()
+}
+
+/// 공의 이동량(논리 px). **가로만 받는다** — 조준 각도가 없다 (R6).
+/// 창 위치의 소유자는 Rust 하나뿐이라 웹뷰는 이동량만 보낸다.
+#[tauri::command]
+pub fn ball_drag_by(dx: f64, window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
+    if !is_ball_window(&window) {
+        return;
+    }
+    state.pets.lock().unwrap().ball_drag_by(dx);
+    flush_ball(&app);
+}
+
+/// 공을 놓는다. 웹뷰가 잰 놓는 순간의 **가로** 속도가 굴러가는 거리를 정한다 (R5).
+#[tauri::command]
+pub fn ball_drag_end(vx: f64, window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
+    if !is_ball_window(&window) {
+        return;
+    }
+    state.pets.lock().unwrap().ball_drag_end(now_ms(), vx);
+    flush_ball(&app);
 }

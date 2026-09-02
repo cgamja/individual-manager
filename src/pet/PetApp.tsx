@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Penguin } from "./Penguin";
+import { advance, newDragTrack, pushSample, type DragTrack } from "../lib/drag";
 import { loadPetSettings, loadTaunts } from "../lib/settings";
 import { SoundPlayer, soundsFor } from "./sound";
 import {
@@ -23,29 +24,12 @@ import {
   type PetSnapshot,
 } from "../lib/pet";
 
-/** 드래그 진행 정보 — 화면 좌표 기준의 직전 지점과 누적 이동량. */
-interface DragTrack {
-  /** 이 드래그를 소유한 포인터. 다른 포인터의 이벤트는 무시한다. */
-  pointerId: number;
-  screenX: number;
-  screenY: number;
-  moved: number;
-  /** **누른 지점**을 펭귄 기준으로 정규화한 값(-0.5~0.5). 핀볼 모드에서 */
+/** 드래그 진행 정보. 공 창과 공유하는 부분은 `lib/drag`에 있다 — 여기서
+ * 더하는 것은 **누른 지점**뿐이고, 그건 핀볼 모드에서만 쓴다. */
+interface PetDragTrack extends DragTrack {
+  /** 누른 지점을 펭귄 기준으로 정규화한 값(-0.5~0.5). */
   hitX: number;
   hitY: number;
-  /** 최근 궤적 — 놓는 순간의 속도를 재는 데 쓴다 (던지기 세기). */
-  samples: { x: number; y: number; t: number }[];
-}
-
-/** 속도 계산에 남겨 둘 궤적의 길이. 개수로 자르면 포인터 보고 주기(60Hz vs 120Hz)에 */
-const SAMPLE_KEEP_MS = 400;
-
-function pushSample(track: DragTrack, x: number, y: number): void {
-  const t = performance.now();
-  track.samples.push({ x, y, t });
-  while (track.samples.length > 2 && t - track.samples[0].t > SAMPLE_KEEP_MS) {
-    track.samples.shift();
-  }
 }
 
 /** 눈동자가 흰자를 벗어나지 않을 만큼만 움직인다 (SVG 좌표 단위). */
@@ -55,7 +39,7 @@ const clampGaze = (v: number) => Math.max(-GAZE_LIMIT, Math.min(GAZE_LIMIT, v));
 /** 바탕화면 펭귄의 웹뷰. 창 위치는 Rust가 소유하므로 여기서는 */
 export function PetApp() {
   const [snapshot, setSnapshot] = useState<PetSnapshot | null>(null);
-  const dragRef = useRef<DragTrack | null>(null);
+  const dragRef = useRef<PetDragTrack | null>(null);
   /** 코어가 Dragged로 넘어갔는지 — 그 전의 이동량은 pendingRef에 모은다. */
   const armedRef = useRef(false);
   const pendingRef = useRef({ dx: 0, dy: 0 });
@@ -138,14 +122,10 @@ export function PetApp() {
     if (dragRef.current) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const rect = e.currentTarget.getBoundingClientRect();
-    const track: DragTrack = {
-      pointerId: e.pointerId,
-      screenX: e.screenX,
-      screenY: e.screenY,
-      moved: 0,
+    const track: PetDragTrack = {
+      ...newDragTrack(e.pointerId, e.screenX, e.screenY),
       hitX: rect.width > 0 ? (e.clientX - rect.left) / rect.width - 0.5 : 0,
       hitY: rect.height > 0 ? (e.clientY - rect.top) / rect.height - 0.5 : 0,
-      samples: [{ x: e.screenX, y: e.screenY, t: performance.now() }],
     };
     dragRef.current = track;
     armedRef.current = false;
@@ -175,13 +155,9 @@ export function PetApp() {
       return;
     }
     if (track.pointerId !== e.pointerId) return;
-    const dx = e.screenX - track.screenX;
-    const dy = e.screenY - track.screenY;
-    if (dx === 0 && dy === 0) return;
-    track.screenX = e.screenX;
-    track.screenY = e.screenY;
-    track.moved += Math.abs(dx) + Math.abs(dy);
-    pushSample(track, e.screenX, e.screenY);
+    const moved = advance(track, e.screenX, e.screenY);
+    if (!moved) return;
+    const { dx, dy } = moved;
     if (!armedRef.current) {
       pendingRef.current.dx += dx;
       pendingRef.current.dy += dy;

@@ -97,6 +97,20 @@ pub enum FishingPhase {
     Pack,
 }
 
+/// 볼링 한 판에서 **마리 하나가** 거쳐 가는 국면. 판 전체의 국면은 따로 있다
+/// (`bowling::BoardPhase`) — 나눈 이유는 "전부 섰는가"를 물어볼 자리가
+/// 필요해서다 (KTD8).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BowlingPhase {
+    /// 자기 핀 자리로 걸어간다
+    Gather,
+    /// 자리에 떠서 공을 기다린다
+    Ready,
+    /// 안 맞은 채로 판이 끝났다. 흩어져 돌아간다
+    Scatter,
+}
+
 /// 발작 한 판이 거쳐 가는 국면.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -173,6 +187,13 @@ pub enum Behavior {
     IceFishing {
         fishing: FishingPhase,
     },
+    /// 볼링 — 핀이 되어 화면 중앙에 삼각형으로 뜨고, 공이 지나가면 튕겨
+    /// 나간다(그때는 `Thrown`이 된다). **여러 마리가 하나의 사건에 함께
+    /// 참여하는 첫 동작**이라 국면을 혼자 진행하지 않는다: `Gather`만 스스로
+    /// 끝나고 나머지는 판(`Pets::bowling`)이 몰아 준다.
+    Bowling {
+        bowling: BowlingPhase,
+    },
 }
 
 impl Behavior {
@@ -197,6 +218,8 @@ impl Behavior {
                 | Behavior::Freakout {
                     freakout: FreakoutPhase::Dash
                 }
+                // 판이 바닥이 아니라 **화면 세로 중앙**에 서므로 핀은 떠 있다.
+                | Behavior::Bowling { .. }
         )
     }
 }

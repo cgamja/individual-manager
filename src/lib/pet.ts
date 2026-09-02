@@ -157,12 +157,32 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--squawk" ||
   cls === "pg--freakout-pant" ||
   cls === "pg--bowling-scatter" ||
+  cls === "pg--swing" ||
   cls.startsWith("pg--sassy-") ||
   (cls.startsWith("pg--fishing-") && cls !== "pg--fishing-wait");
 
-/** 한 번짜리 애니메이션을 처음부터 다시 재생해야 하는가. */
-export const shouldRestart = (prev: string | null, next: string): boolean =>
-  isOneShot(next) && prev !== next;
+/** 되감기 판정에 필요한 것 — 동작 클래스와 빠따 횟수. */
+export interface RestartKey {
+  cls: string;
+  whackSeq: number;
+}
+
+/** 한 번짜리 애니메이션을 처음부터 다시 재생해야 하는가.
+ *
+ * **클래스가 그대로여도 자극이 새로 왔으면 되감아야 한다.** 방망이가 그
+ * 경우다 — 360ms 안에 다시 때리면 코어는 `Swing`을 다시 걸지만 클래스가 안
+ * 바뀌어 브라우저가 애니메이션을 재생하지 않는다. `whack_seq`가 "새로 때렸다"의
+ * 유일한 신호다.
+ *
+ * **되감기를 방망이로만 한정한다.** 빽빽거리기는 때리는 동안 판이 계속
+ * 연장되므로(`MOTIONS.md` 빽빽거리기 절), 매 클릭에 되감으면 애니메이션의 첫
+ * 100ms만 반복하며 **영원히 부풀기만 한다.** 그건 이 항목이 고치려는 것과
+ * 정확히 반대다. */
+export const shouldRestart = (prev: RestartKey | null, next: RestartKey): boolean => {
+  if (!isOneShot(next.cls)) return false;
+  if (prev === null || prev.cls !== next.cls) return true;
+  return next.cls === "pg--swing" && next.whackSeq > prev.whackSeq;
+};
 
 /** 자기 창의 펭귄 상태. 펫 창이 아닌 곳에서 부르면 `null`이다. */
 export const getPetState = (): Promise<PetSnapshot | null> => invoke("pet_get_state");

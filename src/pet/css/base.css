@@ -157,5 +157,9 @@ body,
   .penguin *,
   .penguin {
     animation: none !important;
+    /* **전환도 함께 꺼야 한다.** `animation`만 끄면 `.penguin`의
+       `transform 0.25s`가 그대로 남아, 움직임 감소를 켠 사용자에게 방향 전환이
+       여전히 회전한다 — 절반만 듣는 접근성 설정이 안 듣는 것보다 나쁘다. */
+    transition: none !important;
   }
 }

@@ -167,6 +167,34 @@ describe("동작 길이 동기화", () => {
   });
 });
 
+describe("움직임 감소", () => {
+  it("애니메이션과_전환을_함께_끈다", () => {
+    // `animation`만 끄면 `.penguin`의 `transform 0.25s` 전환이 그대로 남아
+    // 방향 전환이 여전히 회전한다 — 절반만 듣는 접근성 설정은 안 듣는 것보다 나쁘다.
+    const m = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/);
+    expect(m, "prefers-reduced-motion 블록을 못 찾았다").not.toBeNull();
+    expect(m![1]).toMatch(/animation:\s*none\s*!important/);
+    expect(m![1]).toMatch(/transition:\s*none\s*!important/);
+  });
+});
+
+describe("반복 횟수", () => {
+  it("정수가_아닌_반복은_없다", () => {
+    // 정수가 아니면 keyframe 중간에서 잘려 **자세가 중간에 멈춘 채 끝난다.**
+    // `pg-butt-wiggle`이 0.7s × 1.3(=910ms)이라 30% 지점에서 잘렸다.
+    const 어긋난: string[] = [];
+    for (const m of css.matchAll(/animation:\s*([^;]+);/g)) {
+      // `cubic-bezier(0.22, 1, 0.36, 1)`의 인자는 반복 횟수가 아니다.
+      const 값 = m[1].replace(/\([^)]*\)/g, "");
+      // 시간(`0.45s`)이 아닌 맨 소수가 반복 횟수다.
+      for (const n of 값.matchAll(/(?<![\w.])(\d+\.\d+)(?![\w.]|s\b)/g)) {
+        어긋난.push(`${값.trim()} (${n[1]})`);
+      }
+    }
+    expect(어긋난, `정수가 아닌 반복 횟수: ${어긋난.join(" / ")}`).toEqual([]);
+  });
+});
+
 describe("평소 숨기는 도형", () => {
   const 숨기는_도형 = ["pg-hole", "pg-rod", "pg-line", "pg-float", "pg-fish", "pg-beak-lower"];
 

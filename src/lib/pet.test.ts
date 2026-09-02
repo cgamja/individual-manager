@@ -89,13 +89,16 @@ describe("behaviorClass", () => {
 });
 
 describe("shouldRestart", () => {
+  /** 빠따 횟수가 그대로인 평범한 전이. */
+  const k = (cls: string, whackSeq = 0) => ({ cls, whackSeq });
+
   it("동작이_바뀌면_되감는다", () => {
-    expect(shouldRestart("pg--fishing-bite", "pg--fishing-catch")).toBe(true);
-    expect(shouldRestart(null, "pg--fishing-catch")).toBe(true);
+    expect(shouldRestart(k("pg--fishing-bite"), k("pg--fishing-catch"))).toBe(true);
+    expect(shouldRestart(null, k("pg--fishing-catch"))).toBe(true);
   });
 
   it("말풍선_때문에_온_스냅샷은_애니메이션을_건드리지_않는다", () => {
-    expect(shouldRestart("pg--fishing-catch", "pg--fishing-catch")).toBe(false);
+    expect(shouldRestart(k("pg--fishing-catch"), k("pg--fishing-catch"))).toBe(false);
   });
 
   it("슬라이딩은_한_번짜리다", () => {
@@ -106,21 +109,43 @@ describe("shouldRestart", () => {
     expect(isOneShot("pg--squawk")).toBe(true);
   });
 
+  it("방망이_스윙은_한_번짜리다", () => {
+    expect(isOneShot("pg--swing")).toBe(true);
+  });
+
   it("숨_고르기는_한_번짜리고_광란은_아니다", () => {
     expect(isOneShot("pg--freakout-pant")).toBe(true);
     expect(isOneShot("pg--freakout-dash")).toBe(false);
   });
 
   it("반복_애니메이션은_되감지_않는다", () => {
-    expect(shouldRestart(null, "pg--walk")).toBe(false);
-    expect(shouldRestart(null, "pg--fishing-wait")).toBe(false);
+    expect(shouldRestart(null, k("pg--walk"))).toBe(false);
+    expect(shouldRestart(null, k("pg--fishing-wait"))).toBe(false);
   });
 
   it("한_번짜리_낚시_국면은_모두_되감는다", () => {
     for (const fishing of ["dig", "bite", "catch", "miss", "pack"] as const) {
       const cls = behaviorClass({ kind: "ice_fishing", fishing });
-      expect(shouldRestart("pg--fishing-wait", cls), cls).toBe(true);
+      expect(shouldRestart(k("pg--fishing-wait"), k(cls)), cls).toBe(true);
     }
+  });
+
+  it("연타하면_스윙을_되감는다", () => {
+    // 360ms 안에 다시 때리면 코어는 `Swing`을 다시 걸지만 클래스가 그대로라
+    // 브라우저가 애니메이션을 재생하지 않는다 — 방망이가 한 번만 휘둘러진다.
+    expect(shouldRestart(k("pg--swing", 1), k("pg--swing", 2))).toBe(true);
+  });
+
+  it("같은_스윙이_다시_와도_되감지_않는다", () => {
+    // 말풍선처럼 빠따와 무관한 이유로 온 스냅샷이다.
+    expect(shouldRestart(k("pg--swing", 3), k("pg--swing", 3))).toBe(false);
+  });
+
+  it("빽빽거리는_중에_때려도_되감지_않는다", () => {
+    // 되감으면 판이 계속 연장되는 동안 애니메이션의 첫 조각만 반복하며
+    // **영원히 부풀기만 한다** (`MOTIONS.md` 빽빽거리기 절). 이 항목이
+    // 고치려던 것과 정확히 반대다.
+    expect(shouldRestart(k("pg--squawk", 5), k("pg--squawk", 6))).toBe(false);
   });
 });
 

@@ -595,3 +595,62 @@ fn 한_마리라도_움직이면_틱이_빨라진다() {
 fn 전부_멈춰_있으면_틱이_느려진다() {
     assert_eq!(tick_interval(false), SLEEP_TICK_MS);
 }
+
+// ── 여럿 만들기: 전부 아니면 하나도 ────────────────────────────
+
+#[test]
+fn 전부_성공하면_되돌리지_않는다() {
+    let mut 만든 = Vec::new();
+    let mut 되돌림 = 0;
+    let r: Result<(), ()> = build_all_or_none(
+        3,
+        |i| {
+            만든.push(i);
+            Ok(())
+        },
+        || 되돌림 += 1,
+    );
+    assert!(r.is_ok());
+    assert_eq!(만든, vec![0, 1, 2]);
+    assert_eq!(되돌림, 0);
+}
+
+/// 둘째 화면에서 실패하면 첫째 판 창이 그대로 남는다 — 커맨드는 모드를 "꺼짐"으로
+/// 되돌리므로 **화면은 판이고 상태는 꺼짐**이 되어 Esc도 트레이도 그 판을 못 닫는다.
+/// "나가는 문이 둘"이 이 경로 하나에서만 무너진다.
+#[test]
+fn 중간에_실패하면_앞서_만든_것을_되돌린다() {
+    let mut 시도 = Vec::new();
+    let mut 되돌림 = 0;
+    let r = build_all_or_none(
+        3,
+        |i| {
+            시도.push(i);
+            if i == 1 {
+                Err("둘째 화면에서 실패")
+            } else {
+                Ok(())
+            }
+        },
+        || 되돌림 += 1,
+    );
+    assert_eq!(r, Err("둘째 화면에서 실패"));
+    assert_eq!(시도, vec![0, 1], "실패한 뒤로는 더 시도하지 않는다");
+    assert_eq!(되돌림, 1, "앞서 만든 것을 되돌려야 한다");
+}
+
+#[test]
+fn 첫_번째에서_실패해도_되돌린다() {
+    let mut 되돌림 = 0;
+    let r = build_all_or_none(2, |_| Err("첫 화면부터 실패"), || 되돌림 += 1);
+    assert_eq!(r, Err("첫 화면부터 실패"));
+    assert_eq!(되돌림, 1, "만든 게 없어도 되돌리기는 안전해야 한다");
+}
+
+#[test]
+fn 만들_것이_없으면_아무것도_안_한다() {
+    let mut 되돌림 = 0;
+    let r: Result<(), ()> = build_all_or_none(0, |_| unreachable!(), || 되돌림 += 1);
+    assert!(r.is_ok());
+    assert_eq!(되돌림, 0);
+}

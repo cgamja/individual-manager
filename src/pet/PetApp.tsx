@@ -22,6 +22,7 @@ import {
   DEFAULT_TAUNTS,
   whackPet,
   type PetSnapshot,
+  type RestartKey,
 } from "../lib/pet";
 
 /** 드래그 진행 정보. 공 창과 공유하는 부분은 `lib/drag`에 있다 — 여기서
@@ -47,8 +48,9 @@ export function PetApp() {
   const startPromiseRef = useRef<Promise<void> | null>(null);
   /** 한 번짜리 애니메이션을 되감기 위한 remount 카운터. */
   const [restartKey, setRestartKey] = useState(0);
-  /** 직전 스냅샷의 동작 클래스 — 되감기 판정의 근거 (`shouldRestart` 참고). */
-  const lastClassRef = useRef<string | null>(null);
+  /** 직전 스냅샷의 동작 클래스와 빠따 횟수 — 되감기 판정의 근거
+   * (`shouldRestart` 참고). 클래스만으로는 연타한 스윙을 구분할 수 없다. */
+  const lastRestartRef = useRef<RestartKey | null>(null);
   /** 눈동자가 커서를 향해 밀리는 양 (SVG 좌표, R7). */
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
   /** 사용자가 팝오버에서 고칠 수 있으므로 저장소가 원천이다. */
@@ -102,9 +104,9 @@ export function PetApp() {
         }
         prevSnapRef.current = next;
         if (next.speech) loadTaunts().then(setTaunts).catch(() => {});
-        const cls = behaviorClass(next.behavior);
-        if (shouldRestart(lastClassRef.current, cls)) setRestartKey((k) => k + 1);
-        lastClassRef.current = cls;
+        const key = { cls: behaviorClass(next.behavior), whackSeq: next.whack_seq };
+        if (shouldRestart(lastRestartRef.current, key)) setRestartKey((k) => k + 1);
+        lastRestartRef.current = key;
       });
     })();
     return () => {

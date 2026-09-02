@@ -290,6 +290,32 @@ describe("성별은 창 라벨에서 결정적으로 나온다", () => {
     expect(결과.some((f) => !f), "수컷이 하나도 없다").toBe(true);
   });
 
+  it("홀짝으로_안_갈린다", () => {
+    // **팀 배정(`assign_sides`)이 id 홀짝 교대다.** 성별도 홀짝이면 매 판이
+    // 여자팀 대 남자팀이 된다 — 실제로 `(id * 11) % 2`로 썼다가 그랬다
+    // (그건 `id % 2`와 같은 식이다).
+    const 성별 = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => isFemalePet(`pet-${n}`));
+    const 홀짝 = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => n % 2 === 1);
+    expect(성별, "성별이 id 홀짝과 똑같다 — 팀과 붙어 버린다").not.toEqual(홀짝);
+    expect(성별, "성별이 id 홀짝의 반대일 뿐이다").not.toEqual(홀짝.map((x) => !x));
+  });
+
+  it("한_팀에_암수가_섞인다", () => {
+    // 왼쪽 팀은 id 오름차순의 짝수 번째(= id 1,3,5,7), 오른쪽은 나머지다.
+    const 왼쪽 = [1, 3, 5, 7].map((n) => isFemalePet(`pet-${n}`));
+    const 오른쪽 = [2, 4, 6, 8].map((n) => isFemalePet(`pet-${n}`));
+    for (const [이름, 팀] of [["왼쪽", 왼쪽], ["오른쪽", 오른쪽]] as const) {
+      expect(팀.some(Boolean), `${이름} 팀이 전원 수컷이다`).toBe(true);
+      expect(팀.some((f) => !f), `${이름} 팀이 전원 암컷이다`).toBe(true);
+    }
+  });
+
+  it("여덟_마리에서_성비가_한쪽으로_안_쏠린다", () => {
+    const 암컷 = [1, 2, 3, 4, 5, 6, 7, 8].filter((n) => isFemalePet(`pet-${n}`)).length;
+    expect(암컷).toBeGreaterThanOrEqual(3);
+    expect(암컷).toBeLessThanOrEqual(5);
+  });
+
   it("목소리와_따로_논다", () => {
     // 같은 곱수를 쓰면 "높은 목소리 = 암컷"이라는, 아무도 요구하지 않은
     // 규칙이 생긴다.

@@ -1,0 +1,270 @@
+/* 그림자는 "떠 있는가" 하나로 지운다. 동작별로 나열하면 새 동작을 추가할 때마다
+ * 빠뜨리고, 공중에서 클릭했을 때처럼 지상 동작인데 떠 있는 경우를 놓친다. */
+.pg-air .pg-shadow {
+  opacity: 0;
+}
+
+/* 낙하 — 날개를 뒤로 젖히고 떨어진다 */
+.pg--falling .pg-wing-near {
+  transform: rotate(-22deg);
+}
+.pg--falling .pg-wing-far {
+  transform: rotate(22deg);
+}
+
+/* 착지 — 통, 하고 눌렸다 펴진다 (R6).
+ *
+ * **본체 전체를 누른다.** 예전에는 몸통과 머리를 각각 눌렀는데, 축이 달라서
+ * 몸통만 내려앉고 머리는 제자리에 남아 목이 끊겨 보였다. 0.3초라 눈에 잘
+ * 띄지 않았을 뿐 철푸덕·널브러짐에서는 그대로 드러난다. */
+@keyframes pg-land {
+  0% {
+    transform: scale(1.12, 0.78);
+  }
+  60% {
+    transform: scale(0.98, 1.04);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+.pg--land .pg-all {
+  animation: pg-land 0.3s ease-out;
+}
+
+/* 철푸덕 — 세게 박으면 배를 깔고 납작하게 퍼졌다가 끙 하고 일어난다.
+ * 착지 스쿼시(pg-land)와 다른 점은 **퍼진 상태를 한 박자 버틴다**는 것이다.
+ * 바로 펴지면 그냥 세게 부딪힌 것으로 보이고 철푸덕한 맛이 없다. */
+@keyframes pg-splat {
+  0% {
+    transform: scale(1.24, 0.58);
+  }
+  /* 퍼진 채로 버티는 구간 */
+  40% {
+    transform: scale(1.2, 0.62);
+  }
+  /* 끙, 하고 일어난다 */
+  74% {
+    transform: scale(0.95, 1.06);
+  }
+  90% {
+    transform: scale(1.02, 0.98);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+.pg--splat .pg-all {
+  animation: pg-splat 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 날개는 옆으로 조금 벌어진다 — 몸만 눌리면 팔이 몸에 박힌 것처럼 보인다 */
+@keyframes pg-splat-wing {
+  0%,
+  40% {
+    transform: rotate(46deg);
+  }
+  74% {
+    transform: rotate(8deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.pg--splat .pg-wing-near {
+  animation: pg-splat-wing 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pg--splat .pg-wing-far {
+  animation: pg-splat-wing 0.85s cubic-bezier(0.22, 1, 0.36, 1) reverse;
+}
+
+/* 널브러짐 — 아주 세게 박으면 바닥에 아예 뻗는다.
+ *
+ * 철푸덕이 "배를 깔고 퍼졌다"라면 이건 "뻗었다"이다. 본체를 통째로 더 세게,
+ * 더 오래 누른다.
+ *
+ * **가로 배율 상한이 있다.** SVG는 기본이 overflow:hidden이라 viewBox(0 0 100 130)
+ * 밖은 창에 여백이 있어도 잘린다. 본체는 중심(50)에서 최대 34까지 뻗어 있으므로
+ * scaleX는 1.47을 넘길 수 없다. 늘리고 싶으면 이 계산을 먼저 다시 한다. */
+@keyframes pg-sprawl {
+  0% {
+    transform: scale(1.42, 0.3);
+  }
+  /* 뻗은 채로 한참 있는다 — 이 구간이 널브러짐의 전부다 */
+  60% {
+    transform: scale(1.38, 0.32);
+  }
+  /* 꾸역꾸역 일어난다 */
+  80% {
+    transform: scale(0.94, 1.08);
+  }
+  92% {
+    transform: scale(1.03, 0.97);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+/* 날개가 양옆으로 완전히 펴져 깔린다 */
+@keyframes pg-sprawl-wing {
+  0%,
+  60% {
+    transform: rotate(96deg);
+  }
+  80% {
+    transform: rotate(12deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* 머리는 옆으로 툭 떨어지되 **부피는 지킨다.**
+ *
+ * `scaleY(1.7)`은 본체 전체에 걸린 세로 눌림(0.3)을 머리에서만 되돌리는 보정이다.
+ * 이게 없으면 얼굴까지 같이 납작해져 눈도 부리도 선 하나가 되고, 널브러진 펭귄이
+ * 아니라 그냥 검은 덩어리가 된다. 몸은 팬케이크인데 얼굴은 남아야 웃기다.
+ * (변형 4종을 나란히 렌더해서 고른 값이다.) */
+@keyframes pg-sprawl-head {
+  0%,
+  60% {
+    transform: rotate(-22deg) translate(-6px, 2px) scaleY(1.7);
+  }
+  80% {
+    transform: rotate(-4deg) translate(0, 0) scaleY(1.05);
+  }
+  100% {
+    transform: rotate(0deg) translate(0, 0) scaleY(1);
+  }
+}
+
+/* 그림자도 함께 퍼진다 — 본체만 넓어지면 떠 있는 것처럼 보인다 */
+@keyframes pg-sprawl-shadow {
+  0%,
+  60% {
+    transform: scaleX(1.5);
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+.pg--sprawl .pg-all {
+  animation: pg-sprawl 1.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pg--sprawl .pg-head {
+  animation: pg-sprawl-head 1.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pg--sprawl .pg-wing-near {
+  animation: pg-sprawl-wing 1.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pg--sprawl .pg-wing-far {
+  animation: pg-sprawl-wing 1.7s cubic-bezier(0.16, 1, 0.3, 1) reverse;
+}
+.pg--sprawl .pg-shadow {
+  transform-origin: 50px 123px;
+  animation: pg-sprawl-shadow 1.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
+/* ── 헤엄 — 공중을 날개로 저어 이동한다 (R11) ──────────────────── */
+
+/* 아델리 펭귄은 날개로 물을 젓는다. 공중 이동도 같은 동작으로 표현하면
+ * "나는" 것보다 이 펭귄답다. */
+@keyframes pg-paddle {
+  0%,
+  100% {
+    transform: rotate(-38deg);
+  }
+  50% {
+    transform: rotate(18deg);
+  }
+}
+@keyframes pg-paddle-far {
+  0%,
+  100% {
+    transform: rotate(38deg);
+  }
+  50% {
+    transform: rotate(-18deg);
+  }
+}
+/* 발은 뒤로 모아 뻗는다 */
+@keyframes pg-trail {
+  0%,
+  100% {
+    transform: translateY(2px) rotate(-12deg);
+  }
+  50% {
+    transform: translateY(4px) rotate(-18deg);
+  }
+}
+
+.pg--swim .pg-wing-near {
+  animation: pg-paddle 0.34s ease-in-out infinite;
+}
+.pg--swim .pg-wing-far {
+  animation: pg-paddle-far 0.34s ease-in-out infinite;
+}
+.pg--swim .pg-foot--near,
+.pg--swim .pg-foot--far {
+  animation: pg-trail 0.34s ease-in-out infinite;
+}
+/* ── 세로 방향에 따른 몸 기울기 ───────────────────────────────────
+ * 진행 방향으로 몸을 눕히면 오르내림이 읽힌다. 지상 동작은 level이라
+ * 이 규칙이 걸리지 않는다(코어가 Level로 고정해 보낸다). */
+/* 기울기는 SVG 루트에 건다. 몸통·머리에 걸면 그 요소에서 돌고 있는 숨쉬기
+ * 애니메이션이 일반 transform 선언을 이겨 기울기가 아예 적용되지 않는다.
+ * 루트는 헤엄 중에 애니메이션이 없어 안전하다(회전은 Turn 전용인데 배타적이다).
+ * 좌우 반전은 부모(.pg-stage)가 하므로, 왼쪽을 볼 때는 이 회전도 함께 미러링돼
+ * 화면상 올바른 방향으로 보인다. */
+.penguin {
+  transition: transform 0.25s ease-out;
+}
+.pg--swim.pg-v--up {
+  transform: rotate(-20deg);
+}
+.pg--swim.pg-v--down {
+  transform: rotate(20deg);
+}
+
+/* ── 던져짐 — 포물선을 그리며 구른다 (R12) ─────────────────────── */
+
+/* **이름이 `pg-tumble`이었다.** 굴러떨어지기(`.pg--tumble`)가 쓰는 이름과 겹쳐서,
+ * 나중에 정의된 이 규칙이 이겨 **굴러떨어지기 그림이 통째로 죽어 있었다** — 벽에
+ * 박고 나자빠지는 대신 제자리에서 한 바퀴 돌았다. 아무 테스트도 실패하지 않았고
+ * 눈으로만 잡히는 종류다. `pet-css.test.ts`에 중복 정의 가드를 넣었다. */
+@keyframes pg-thrown-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 창 안에서 몸 전체가 구른다. 창의 궤적(포물선)은 Rust가 그린다. */
+.pg--thrown .pg-body,
+.pg--thrown .pg-head {
+  transform-origin: 50px 76px;
+  animation: pg-thrown-spin 0.65s linear infinite;
+}
+.pg--thrown .pg-wing-near {
+  transform: rotate(-50deg);
+}
+.pg--thrown .pg-wing-far {
+  transform: rotate(50deg);
+}
+
+/* 움직임을 줄이는 시스템 설정을 존중한다 */
+@media (prefers-reduced-motion: reduce) {
+  .penguin *,
+  .penguin {
+    animation: none !important;
+  }
+}

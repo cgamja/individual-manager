@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
  * 복잡하게 만든다. 그래서 중복을 두고 **대조로 막는다.**
  */
 const field = readFileSync(resolve("src/field/field.css"), "utf8");
-const pet = readFileSync(resolve("src/pet/pet.css"), "utf8");
+const pet = readFileSync(resolve("src/pet/css/pinball.css"), "utf8");
 
 /** CSS에서 `url("data:image/svg+xml,...")` 안의 그림들을 뽑는다. */
 function bats(css: string): string[] {

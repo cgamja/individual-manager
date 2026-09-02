@@ -1,0 +1,12 @@
+/* 펭귄 창 스타일. 동작별로 나뉘어 있고 Rust의 pet/motion/*.rs와 짝이다. */
+
+@import "./base.css";
+@import "./ground.css";
+@import "./rest.css";
+@import "./react.css";
+@import "./pinball.css";
+@import "./drag.css";
+@import "./air.css";
+@import "./speech.css";
+@import "./fishing.css";
+@import "./freakout.css";

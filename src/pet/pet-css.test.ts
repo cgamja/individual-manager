@@ -13,7 +13,9 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 /** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
 // vitest는 프로젝트 루트에서 돈다. `?raw`는 vitest의 CSS 처리에 걸려 원본을
 // 주지 않으므로 파일을 직접 읽는다 (그래서 @types/node가 dev 의존성에 있다)
-const css = readFileSync(resolve("src/pet/pet.css"), "utf8");
+const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout"]
+  .map((n) => readFileSync(resolve(`src/pet/css/${n}.css`), "utf8"))
+  .join("\n");
 // 상수가 어느 모듈에 있든 값만 맞으면 된다 — 튜닝 값은 코어의 tuning.rs로 모았고
 // 창 여백은 창을 만드는 브릿지에 남았다. 셋을 이어 붙여 읽는다.
 //

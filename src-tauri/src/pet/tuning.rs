@@ -99,6 +99,9 @@ const _: () = assert!(SWING_REACH_V < PET_SIZE);
 /// 붙든다 — 볼링 핀(1.5) > 던지기(1.4) > 스윙 넉백 > 핀볼 채(0.8) 순이다.
 pub(super) const SWING_KNOCK_WORLDS_PER_SEC: f64 = 1.0;
 const _: () = assert!(SWING_KNOCK_WORLDS_PER_SEC < THROW_MAX_WORLDS_PER_SEC);
+/// 아래쪽 절반도 함께 붙든다 — 주장하는 관계마다 단언을 하나씩 다는 것이 이
+/// 파일의 관행이고, 주석만 있고 단언이 없으면 다음 사람이 0.7로 내려도 조용하다.
+const _: () = assert!(SWING_KNOCK_WORLDS_PER_SEC > PINBALL_HIT_WORLDS_PER_SEC);
 
 /// 날아가는 각도 — 앞으로 1일 때 **위로** 얼마인가. 0이면 바닥을 기고, 1에
 /// 가까우면 옆으로 안 가고 제자리에서 솟았다 떨어진다.

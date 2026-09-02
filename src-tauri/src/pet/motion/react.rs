@@ -36,7 +36,11 @@ impl Pet {
     }
 
     /// 클릭 — 졸고 있어도 깨워서 놀라게 한다 (R5).
-    pub fn whack(&mut self, now_ms: u64, world: &World, nx: f64, ny: f64) {
+    ///
+    /// **코어 밖에서 부르지 않는다.** 이건 자기 자신만 보는 절반이고, 브릿지가
+    /// 부를 자리는 이웃 판정까지 하는 [`Pets::whack`]이다. `pub`로 열어 두면
+    /// `pets.get_mut(id).whack(..)`이 그대로 컴파일되면서 넉백만 조용히 빠진다.
+    pub(in crate::pet) fn whack(&mut self, now_ms: u64, world: &World, nx: f64, ny: f64) {
         self.last_stimulus_ms = now_ms;
         if self.pinball {
             self.flip(now_ms, world, nx, ny);
@@ -70,7 +74,8 @@ impl Pet {
     ///
     /// **`whack_seq`를 올리지 않는다.** 그 값은 웹뷰에서 "방망이를 한 번
     /// 휘두른다"는 신호인데 이 마리는 맞는 쪽이다 — 올리면 방망이가 두 개 보인다.
-    /// 대신 "퍽" 소리도 안 난다(핀볼 채 타격과 같은 취급이다).
+    /// 그래서 **"퍽"은 안 난다** (핀볼 채 타격과 같은 취급이다). `Thrown`에
+    /// 들어가면서 나는 "휙"은 그대로 난다.
     ///
     /// **착지 등급을 그대로 탄다.** 사용자가 방금 클릭해서 만든 결과라 철푸덕이
     /// 나오는 편이 "내가 날렸다"는 인과가 선명하다 — 저절로 나는 철푸덕과 성격이

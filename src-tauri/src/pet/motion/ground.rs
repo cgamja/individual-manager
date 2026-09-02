@@ -17,15 +17,13 @@ impl Pet {
     }
 
     pub(in crate::pet) fn tick_slide(&mut self, now_ms: u64, bounds: Bounds, dt: f64) {
-        let remaining =
-            self.behavior_until_ms.saturating_sub(now_ms) as f64 / SLIDE_MS as f64;
+        let remaining = self.behavior_until_ms.saturating_sub(now_ms) as f64 / SLIDE_MS as f64;
         self.x += self.facing.sign() * self.slide_speed * remaining * dt;
         self.after_ground_move(now_ms, bounds);
     }
 
     pub(in crate::pet) fn tick_tumble(&mut self, now_ms: u64, dt: f64) {
-        let remaining =
-            self.behavior_until_ms.saturating_sub(now_ms) as f64 / TUMBLE_MS as f64;
+        let remaining = self.behavior_until_ms.saturating_sub(now_ms) as f64 / TUMBLE_MS as f64;
         self.x += self.facing.sign() * TUMBLE_SPEED * remaining * dt;
         if now_ms >= self.behavior_until_ms {
             self.get_up(now_ms);

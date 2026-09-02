@@ -12,33 +12,37 @@ impl Pet {
         dt: f64,
     ) {
         match freakout {
-        FreakoutPhase::Dash => {
-            let (tx, ty) = self.target;
-            let (dx, dy) = (tx - self.x, ty - self.y);
-            let dist = (dx * dx + dy * dy).sqrt();
-            if now_ms >= self.behavior_until_ms {
-                self.behavior_until_ms = now_ms + FREAKOUT_MS.1;
-                self.freakout_go_home(now_ms, bounds);
-            } else if dist <= ARRIVE_EPSILON {
-                if now_ms < self.freakout_until_ms {
-                    self.target = self.next_freakout_target(bounds);
-                } else {
+            FreakoutPhase::Dash => {
+                let (tx, ty) = self.target;
+                let (dx, dy) = (tx - self.x, ty - self.y);
+                let dist = (dx * dx + dy * dy).sqrt();
+                if now_ms >= self.behavior_until_ms {
+                    self.behavior_until_ms = now_ms + FREAKOUT_MS.1;
                     self.freakout_go_home(now_ms, bounds);
-                }
-            } else {
-                let step = (FREAKOUT_SPEED * dt).min(dist);
-                self.x += dx / dist * step;
-                self.y += dy / dist * step;
-                if dx.abs() > 1.0 {
-                    self.facing = if dx > 0.0 { Facing::Right } else { Facing::Left };
+                } else if dist <= ARRIVE_EPSILON {
+                    if now_ms < self.freakout_until_ms {
+                        self.target = self.next_freakout_target(bounds);
+                    } else {
+                        self.freakout_go_home(now_ms, bounds);
+                    }
+                } else {
+                    let step = (FREAKOUT_SPEED * dt).min(dist);
+                    self.x += dx / dist * step;
+                    self.y += dy / dist * step;
+                    if dx.abs() > 1.0 {
+                        self.facing = if dx > 0.0 {
+                            Facing::Right
+                        } else {
+                            Facing::Left
+                        };
+                    }
                 }
             }
-        }
-        FreakoutPhase::Pant => {
-            if now_ms >= self.behavior_until_ms {
-                self.enter_idle(now_ms);
+            FreakoutPhase::Pant => {
+                if now_ms >= self.behavior_until_ms {
+                    self.enter_idle(now_ms);
+                }
             }
-        }
         }
     }
 
@@ -47,7 +51,12 @@ impl Pet {
         self.freakout_until_ms = now_ms + self.range(FREAKOUT_MS);
         self.target = (self.x, self.y);
         let until = self.freakout_until_ms + FREAKOUT_MS.1;
-        self.enter(Behavior::Freakout { freakout: FreakoutPhase::Dash }, until);
+        self.enter(
+            Behavior::Freakout {
+                freakout: FreakoutPhase::Dash,
+            },
+            until,
+        );
     }
 
     /// 다음으로 튈 곳. 방향은 균등, 거리는 [`FREAKOUT_HOP`]에서 뽑고 **경계 안으로
@@ -57,8 +66,7 @@ impl Pet {
         let (lo, hi) = FREAKOUT_HOP;
         let hop = lo + self.fraction() * (hi - lo);
         let tx = (self.x + angle.cos() * hop).clamp(bounds.left, bounds.right.max(bounds.left));
-        let ty = (self.y + angle.sin() * hop)
-            .clamp(bounds.top.min(bounds.floor_y), bounds.floor_y);
+        let ty = (self.y + angle.sin() * hop).clamp(bounds.top.min(bounds.floor_y), bounds.floor_y);
         (tx, ty)
     }
 
@@ -75,7 +83,9 @@ impl Pet {
     /// `.pg-all`에 걸린 변형이 한 프레임에 사라져 펭귄이 튄다 (얼음낚시의 `Pack`).
     fn enter_freakout_pant(&mut self, now_ms: u64) {
         self.enter(
-            Behavior::Freakout { freakout: FreakoutPhase::Pant },
+            Behavior::Freakout {
+                freakout: FreakoutPhase::Pant,
+            },
             now_ms + FREAKOUT_PANT_MS,
         );
     }

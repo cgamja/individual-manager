@@ -128,12 +128,16 @@ pub enum Behavior {
     Walk,
     /// 제자리에서 도는 중 — 끝나면 방향이 뒤집힌다 (R4)
     Turn,
-    Idle { idle: IdleKind },
+    Idle {
+        idle: IdleKind,
+    },
     /// 공중을 헤엄쳐 목적지로 이동한다 — 위아래로 다니는 수단 (R11)
     Swim,
     Sleep,
     /// 클릭에 대한 반응 — 놀라지 않고 싸가지 없게 군다 (R5)
-    Sassy { sassy: SassyKind },
+    Sassy {
+        sassy: SassyKind,
+    },
     /// 빽빽거리기 — 짧은 시간에 여러 번 맞으면 몸을 부풀리고 날개를 퍼덕이며
     /// 정면으로 화낸다. 싸가지 다섯이 전부 "무시하는" 결이라, 대비를 주는 것이
     /// 이 동작의 존재 이유다. **소리는 내지 않는다** (PRD §5.5).
@@ -161,10 +165,14 @@ pub enum Behavior {
     /// 발작 — 며칠에 한 번 이유 없이 터지는 광란. 사방으로 마구 튀다가 바닥으로
     /// 돌아와 숨을 고르고 **아무 일 없었다는 듯** 평소로 돌아간다.
     /// 원인이 없는 것이 이 동작의 정의다 — 원인이 있으면 화(`Squawk`)다.
-    Freakout { freakout: FreakoutPhase },
+    Freakout {
+        freakout: FreakoutPhase,
+    },
     /// 얼음낚시 — 바닥에 앉아 구멍을 뚫고 드리운다. 30~60초로 이 앱에서
     /// 가장 긴 동작이고, **안에서 갈래가 갈리는 첫 동작**이다 (잡음/꽝).
-    IceFishing { fishing: FishingPhase },
+    IceFishing {
+        fishing: FishingPhase,
+    },
 }
 
 impl Behavior {
@@ -186,7 +194,9 @@ impl Behavior {
             Behavior::Swim
                 | Behavior::Falling
                 | Behavior::Thrown
-                | Behavior::Freakout { freakout: FreakoutPhase::Dash }
+                | Behavior::Freakout {
+                    freakout: FreakoutPhase::Dash
+                }
         )
     }
 }

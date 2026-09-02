@@ -69,9 +69,7 @@ impl Pet {
             if self.y >= bounds.floor_y - ARRIVE_EPSILON {
                 self.vy = 0.0;
                 self.enter(Behavior::Land, now_ms + LAND_MS);
-            } else if !self.swim_descending
-                && self.range((0, 99)) < SWIM_FREEFALL_PERCENT
-            {
+            } else if !self.swim_descending && self.range((0, 99)) < SWIM_FREEFALL_PERCENT {
                 self.vy = 0.0;
                 self.enter(Behavior::Falling, now_ms);
             } else {
@@ -91,7 +89,11 @@ impl Pet {
             self.x += dx / dist * step;
             self.y += dy / dist * step;
             if dx.abs() > 1.0 {
-                self.facing = if dx > 0.0 { Facing::Right } else { Facing::Left };
+                self.facing = if dx > 0.0 {
+                    Facing::Right
+                } else {
+                    Facing::Left
+                };
             }
         }
     }
@@ -100,16 +102,18 @@ impl Pet {
         self.vy += GRAVITY * dt;
         self.x += self.vx * dt;
         self.y += self.vy * dt;
-        if (self.x <= bounds.left && self.vx < 0.0)
-            || (self.x >= bounds.right && self.vx > 0.0)
-        {
+        if (self.x <= bounds.left && self.vx < 0.0) || (self.x >= bounds.right && self.vx > 0.0) {
             self.vx = -self.vx * self.wall_damping();
         }
         if self.y <= bounds.top && self.vy < 0.0 {
             self.vy = -self.vy * self.wall_damping();
         }
         if self.vx.abs() > 1.0 {
-            self.facing = if self.vx > 0.0 { Facing::Right } else { Facing::Left };
+            self.facing = if self.vx > 0.0 {
+                Facing::Right
+            } else {
+                Facing::Left
+            };
         }
         if self.y >= bounds.floor_y && self.vy >= 0.0 {
             self.y = bounds.floor_y;

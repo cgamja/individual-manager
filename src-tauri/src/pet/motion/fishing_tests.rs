@@ -117,10 +117,7 @@ fn 입질_뒤에는_잡거나_꽝이다() {
             }
             let 다음 = 국면.get(i + 1);
             assert!(
-                matches!(
-                    다음,
-                    Some(FishingPhase::Catch) | Some(FishingPhase::Miss)
-                ),
+                matches!(다음, Some(FishingPhase::Catch) | Some(FishingPhase::Miss)),
                 "시드 {seed}: 입질 뒤가 {다음:?}다 — {국면:?}"
             );
         }

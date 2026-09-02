@@ -21,11 +21,21 @@ pub fn 두_화면() -> World {
     World::new(vec![
         Screen {
             id: 1,
-            bounds: Bounds { left: 0.0, right: 1_000.0, top: 0.0, floor_y: 800.0 },
+            bounds: Bounds {
+                left: 0.0,
+                right: 1_000.0,
+                top: 0.0,
+                floor_y: 800.0,
+            },
         },
         Screen {
             id: 2,
-            bounds: Bounds { left: 2_000.0, right: 3_000.0, top: 100.0, floor_y: 900.0 },
+            bounds: Bounds {
+                left: 2_000.0,
+                right: 3_000.0,
+                top: 100.0,
+                floor_y: 900.0,
+            },
         },
     ])
     .expect("화면이 둘이면 세계가 만들어진다")

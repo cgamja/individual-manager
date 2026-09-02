@@ -6,32 +6,28 @@ impl Pet {
     /// 얼음낚시 국면 진행 — 매 틱. 이 부른다.
     pub(in crate::pet) fn tick_fishing(&mut self, now_ms: u64, fishing: FishingPhase) {
         if now_ms >= self.behavior_until_ms {
-        match fishing {
-            FishingPhase::Dig => self.enter_fishing_wait(now_ms),
-            FishingPhase::Wait => self.enter_fishing(
-                FishingPhase::Bite,
-                now_ms + FISHING_BITE_MS,
-            ),
-            FishingPhase::Bite => {
-                let (phase, hold) =
-                    if self.range((0, 99)) < FISHING_CATCH_PERCENT {
+            match fishing {
+                FishingPhase::Dig => self.enter_fishing_wait(now_ms),
+                FishingPhase::Wait => {
+                    self.enter_fishing(FishingPhase::Bite, now_ms + FISHING_BITE_MS)
+                }
+                FishingPhase::Bite => {
+                    let (phase, hold) = if self.range((0, 99)) < FISHING_CATCH_PERCENT {
                         (FishingPhase::Catch, FISHING_CATCH_MS)
                     } else {
                         (FishingPhase::Miss, FISHING_MISS_MS)
                     };
-                self.enter_fishing(phase, now_ms + hold);
-            }
-            FishingPhase::Miss | FishingPhase::Catch => {
-                self.enter_fishing_wait(now_ms)
-            }
-            FishingPhase::Pack => {
-                if self.air {
-                    self.enter(Behavior::Falling, now_ms);
-                } else {
-                    self.enter_idle(now_ms);
+                    self.enter_fishing(phase, now_ms + hold);
+                }
+                FishingPhase::Miss | FishingPhase::Catch => self.enter_fishing_wait(now_ms),
+                FishingPhase::Pack => {
+                    if self.air {
+                        self.enter(Behavior::Falling, now_ms);
+                    } else {
+                        self.enter_idle(now_ms);
+                    }
                 }
             }
-        }
         }
     }
 

@@ -37,7 +37,9 @@ pub fn pet_whack(
     state: State<'_, PetState>,
     app: AppHandle,
 ) {
-    let Some(id) = caller_pet(&window) else { return };
+    let Some(id) = caller_pet(&window) else {
+        return;
+    };
     let world = world_or_flat(&app, id);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
         pet.whack(now_ms(), &world, nx, ny);
@@ -49,7 +51,9 @@ pub fn pet_whack(
 /// 메뉴바 밑에서 열면 눌렀는데 화면 반대편에서 뜨는 셈이라 연결이 끊긴다.
 #[tauri::command]
 pub fn pet_open_popover(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
-    let Some(id) = caller_pet(&window) else { return };
+    let Some(id) = caller_pet(&window) else {
+        return;
+    };
     let Some(snapshot) = state.pets.lock().unwrap().get(id).map(|p| p.snapshot()) else {
         return;
     };
@@ -61,7 +65,9 @@ pub fn pet_open_popover(window: WebviewWindow, state: State<'_, PetState>, app: 
 /// 드래그 시작 — 자율 이동을 멈춘다 (R6).
 #[tauri::command]
 pub fn pet_drag_start(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
-    let Some(id) = caller_pet(&window) else { return };
+    let Some(id) = caller_pet(&window) else {
+        return;
+    };
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
         pet.drag_start(now_ms());
     }
@@ -71,8 +77,16 @@ pub fn pet_drag_start(window: WebviewWindow, state: State<'_, PetState>, app: Ap
 /// 드래그 이동량(논리 px). 창 위치의 소유자는 Rust 하나뿐이라 웹뷰는
 /// 이동량만 보내고 직접 `setPosition`을 부르지 않는다 (KTD4).
 #[tauri::command]
-pub fn pet_drag_by(dx: f64, dy: f64, window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
-    let Some(id) = caller_pet(&window) else { return };
+pub fn pet_drag_by(
+    dx: f64,
+    dy: f64,
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) {
+    let Some(id) = caller_pet(&window) else {
+        return;
+    };
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
         pet.drag_by(dx, dy);
     }
@@ -82,8 +96,16 @@ pub fn pet_drag_by(dx: f64, dy: f64, window: WebviewWindow, state: State<'_, Pet
 /// 드래그 놓기 (R6, R12). 웹뷰가 잰 놓는 순간의 속도(논리 px/초)를 그대로 넘긴다 —
 /// 세게 던졌으면 포물선을 그리고, 살짝 놓았으면 제자리에서 떨어진다.
 #[tauri::command]
-pub fn pet_drag_end(vx: f64, vy: f64, window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
-    let Some(id) = caller_pet(&window) else { return };
+pub fn pet_drag_end(
+    vx: f64,
+    vy: f64,
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) {
+    let Some(id) = caller_pet(&window) else {
+        return;
+    };
     let world = world_or_flat(&app, id);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
         pet.drag_end(now_ms(), vx, vy, &world);
@@ -160,7 +182,11 @@ pub fn pet_summary(state: State<'_, PetState>) -> PetSummary {
 
 /// 펭귄 한 마리를 **부른 펭귄 옆에** 추가한다.
 #[tauri::command]
-pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<PetId, String> {
+pub fn pet_add(
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) -> Result<PetId, String> {
     let origin = target_pet(&window, &state);
     let world = origin
         .map(|id| world_or_flat(&app, id))
@@ -191,7 +217,11 @@ pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle
 
 /// 설정 창의 "얼음낚시" — 십 분에 한 번짜리 동작을 지금 보게 한다.
 #[tauri::command]
-pub fn pet_fish(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+pub fn pet_fish(
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) -> Result<(), String> {
     let id = target_pet(&window, &state).ok_or("낚시할 펭귄을 우클릭해서 열어 주세요")?;
     let started = state
         .pets
@@ -208,7 +238,11 @@ pub fn pet_fish(window: WebviewWindow, state: State<'_, PetState>, app: AppHandl
 
 /// 설정 창의 "슬라이딩". 대상 규칙은 [`pet_fish`]와 같다.
 #[tauri::command]
-pub fn pet_slide(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+pub fn pet_slide(
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) -> Result<(), String> {
     let id = target_pet(&window, &state).ok_or("미끄러뜨릴 펭귄을 우클릭해서 열어 주세요")?;
     let started = state
         .pets
@@ -225,7 +259,11 @@ pub fn pet_slide(window: WebviewWindow, state: State<'_, PetState>, app: AppHand
 
 /// 설정 창의 "빽빽거리기". 대상 규칙은 [`pet_fish`]와 같다.
 #[tauri::command]
-pub fn pet_squawk(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+pub fn pet_squawk(
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) -> Result<(), String> {
     let id = target_pet(&window, &state).ok_or("화나게 할 펭귄을 우클릭해서 열어 주세요")?;
     let started = state
         .pets
@@ -242,7 +280,11 @@ pub fn pet_squawk(window: WebviewWindow, state: State<'_, PetState>, app: AppHan
 
 /// 설정 창의 "발작". 대상 규칙은 [`pet_fish`]와 같다.
 #[tauri::command]
-pub fn pet_freakout(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+pub fn pet_freakout(
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) -> Result<(), String> {
     let id = target_pet(&window, &state).ok_or("발작시킬 펭귄을 우클릭해서 열어 주세요")?;
     let started = state
         .pets
@@ -259,7 +301,11 @@ pub fn pet_freakout(window: WebviewWindow, state: State<'_, PetState>, app: AppH
 
 /// 우클릭한 펭귄을 삭제한다. **마지막 한 마리는 거부한다** (PRD §5.5).
 #[tauri::command]
-pub fn pet_remove(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+pub fn pet_remove(
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) -> Result<(), String> {
     let id = target_pet(&window, &state).ok_or("어느 펭귄인지 모르겠어요")?;
     if !state.pets.lock().unwrap().remove(id) {
         return Err("마지막 한 마리는 지울 수 없어요. 전부 없애려면 펭귄을 꺼 주세요".into());

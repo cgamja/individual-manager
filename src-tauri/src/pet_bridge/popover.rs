@@ -72,6 +72,10 @@ pub fn popover_position_near(
 pub fn next_to(x: f64, bounds: Bounds) -> f64 {
     let gap = PET_SIZE * 0.75;
     let right = x + gap;
-    let candidate = if right <= bounds.right { right } else { x - gap };
+    let candidate = if right <= bounds.right {
+        right
+    } else {
+        x - gap
+    };
     candidate.clamp(bounds.left, bounds.right.max(bounds.left))
 }

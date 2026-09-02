@@ -95,7 +95,11 @@ pub fn any_pet_window(app: &AppHandle) -> Option<WebviewWindow> {
 }
 
 /// 펫 창을 만든다. 이미 있으면 그것을 돌려준다 (중복 생성 방지).
-pub fn create_pet_window(app: &AppHandle, id: PetId, at: (f64, f64)) -> tauri::Result<WebviewWindow> {
+pub fn create_pet_window(
+    app: &AppHandle,
+    id: PetId,
+    at: (f64, f64),
+) -> tauri::Result<WebviewWindow> {
     if let Some(existing) = pet_window(app, id) {
         return Ok(existing);
     }

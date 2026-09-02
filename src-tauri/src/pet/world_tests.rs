@@ -54,7 +54,11 @@ fn 화면_판정_범위는_기준점만큼_밀려_있다() {
 fn 정확히_같은_거리면_앞_화면이_이긴다() {
     let w = 두_화면();
     let mid = (1_070.0 + 2_070.0) / 2.0;
-    assert_eq!(w.nearest(mid, 800.0 + PET_SIZE).id, 1, "동거리면 목록 앞이 이긴다");
+    assert_eq!(
+        w.nearest(mid, 800.0 + PET_SIZE).id,
+        1,
+        "동거리면 목록 앞이 이긴다"
+    );
 }
 
 #[test]
@@ -69,11 +73,21 @@ fn 폭이_0인_화면이_섞여도_세계_폭은_전체를_덮는다() {
     let w = World::new(vec![
         Screen {
             id: 1,
-            bounds: Bounds { left: 0.0, right: 0.0, top: 0.0, floor_y: 800.0 },
+            bounds: Bounds {
+                left: 0.0,
+                right: 0.0,
+                top: 0.0,
+                floor_y: 800.0,
+            },
         },
         Screen {
             id: 2,
-            bounds: Bounds { left: 2_000.0, right: 3_000.0, top: 0.0, floor_y: 800.0 },
+            bounds: Bounds {
+                left: 2_000.0,
+                right: 3_000.0,
+                top: 0.0,
+                floor_y: 800.0,
+            },
         },
     ])
     .expect("화면이 둘이면 세계가 만들어진다");

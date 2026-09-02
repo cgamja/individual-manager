@@ -1,8 +1,8 @@
 use crate::pet::test_support::*;
 use crate::pet::*;
 
-use super::*;
 use super::test_support::*;
+use super::*;
 
 #[test]
 fn 같은_시드는_같은_동작_시퀀스를_낳는다() {
@@ -28,8 +28,10 @@ fn 같은_시드는_같은_동작_시퀀스를_낳는다() {
 #[test]
 fn 여러_종류의_동작이_나타난다() {
     let mut p = pet();
-    let kinds: std::collections::HashSet<Behavior> =
-        drive(&mut p, 100, 80_000, 100, &world()).iter().map(|s| s.behavior).collect();
+    let kinds: std::collections::HashSet<Behavior> = drive(&mut p, 100, 80_000, 100, &world())
+        .iter()
+        .map(|s| s.behavior)
+        .collect();
     assert!(
         kinds.len() >= 3,
         "80초 동안 최소 3가지 동작이 나와야 한다 (실제: {kinds:?})"
@@ -112,7 +114,10 @@ fn 대사_추첨값은_배정밀도에서_안전한_범위다() {
     for i in 0..200u64 {
         p.say(1_000 + i);
         let roll = p.snapshot().speech.unwrap().roll;
-        assert!(roll < (1u64 << 53), "배정밀도로 정확히 표현돼야 한다: {roll}");
+        assert!(
+            roll < (1u64 << 53),
+            "배정밀도로 정확히 표현돼야 한다: {roll}"
+        );
     }
 }
 
@@ -130,7 +135,10 @@ fn 같은_대사가_연달아_나와도_새_발화로_구분된다() {
 fn 말풍선은_시간이_지나면_사라진다() {
     let mut p = pet();
     p.say(1_000);
-    assert!(p.step(1_500, &world()).speech.is_some(), "금방 사라지면 못 읽는다");
+    assert!(
+        p.step(1_500, &world()).speech.is_some(),
+        "금방 사라지면 못 읽는다"
+    );
     assert!(
         p.step(1_000 + SPEECH_MS + 100, &world()).speech.is_none(),
         "계속 떠 있으면 안 된다"
@@ -141,14 +149,21 @@ fn 말풍선은_시간이_지나면_사라진다() {
 fn 가만_둬도_가끔_한마디_한다() {
     let mut p = pet();
     let seen = drive(&mut p, 100, 120_000, 100, &world());
-    let spoke: std::collections::HashSet<u64> =
-        seen.iter().filter_map(|s| s.speech.map(|v| v.seq)).collect();
-    assert!(spoke.len() >= 2, "2분 동안 한마디도 안 하면 심심하다 (실제 {})", spoke.len());
+    let spoke: std::collections::HashSet<u64> = seen
+        .iter()
+        .filter_map(|s| s.speech.map(|v| v.seq))
+        .collect();
+    assert!(
+        spoke.len() >= 2,
+        "2분 동안 한마디도 안 하면 심심하다 (실제 {})",
+        spoke.len()
+    );
 }
 
 fn pets_with_one() -> Pets {
     let mut pets = Pets::new();
-    pets.add(1, 0, &world(), BOUNDS.left).expect("첫 마리는 들어간다");
+    pets.add(1, 0, &world(), BOUNDS.left)
+        .expect("첫 마리는 들어간다");
     pets
 }
 

@@ -4,9 +4,9 @@
 //! `pet/tuning.rs`에 있다.
 
 mod air;
-mod fishing;
-mod ground;
 mod drag;
+mod fishing;
+mod freakout;
+mod ground;
 mod pinball;
 mod react;
-mod freakout;

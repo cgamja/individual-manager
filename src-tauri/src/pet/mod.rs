@@ -7,9 +7,9 @@
 
 use serde::Serialize;
 
-mod tuning;
 #[cfg(test)]
 mod test_support;
+mod tuning;
 
 /// 브릿지가 창 크기를 계산하는 데 쓴다 — 코어 밖으로 나가는 유일한 튜닝 값이다.
 pub use tuning::PET_SIZE;
@@ -17,7 +17,9 @@ use tuning::*;
 
 mod behavior;
 
-pub use behavior::{Behavior, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech, Vertical};
+pub use behavior::{
+    Behavior, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech, Vertical,
+};
 use behavior::{IDLE_KINDS, SASSY_KINDS};
 
 mod motion;
@@ -222,7 +224,11 @@ impl Pet {
             swim_descending: false,
             freakout_until_ms: 0,
             fishing_until_ms: 0,
-            rng: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
+            rng: if seed == 0 {
+                0x9E37_79B9_7F4A_7C15
+            } else {
+                seed
+            },
         };
         pet.next_taunt_ms = start_ms + pet.range(TAUNT_GAP_MS);
         pet
@@ -374,7 +380,12 @@ impl Pet {
             self.last_stimulus_ms = now_ms;
             self.last_idle = Some(IdleKind::Stretch);
             let until = now_ms + self.range(IDLE_MS);
-            self.enter(Behavior::Idle { idle: IdleKind::Stretch }, until);
+            self.enter(
+                Behavior::Idle {
+                    idle: IdleKind::Stretch,
+                },
+                until,
+            );
             return;
         }
         if !self.air && self.range((0, FREAKOUT_ONE_IN - 1)) == 0 {
@@ -437,7 +448,6 @@ impl Pet {
     fn range(&mut self, (lo, hi): (u64, u64)) -> u64 {
         lo + self.next_u64() % (hi - lo + 1)
     }
-
 }
 
 #[cfg(test)]

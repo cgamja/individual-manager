@@ -125,7 +125,12 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 let moves = snapshot.behavior.moves_window() || rescued;
                 any_moves |= snapshot.behavior.moves_window();
                 let look = look_of(&snapshot);
-                apply(&window, snapshot, moves, should_notify(last_look.get(&id).copied(), look));
+                apply(
+                    &window,
+                    snapshot,
+                    moves,
+                    should_notify(last_look.get(&id).copied(), look),
+                );
                 last_look.insert(id, look);
             }
 
@@ -156,7 +161,13 @@ pub fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, noti
 /// 이동과 통지를 모두 한다.
 pub fn flush(app: &AppHandle, id: PetId) -> Option<Snapshot> {
     let window = pet_window(app, id)?;
-    let snapshot = app.state::<PetState>().pets.lock().unwrap().get(id)?.snapshot();
+    let snapshot = app
+        .state::<PetState>()
+        .pets
+        .lock()
+        .unwrap()
+        .get(id)?
+        .snapshot();
     apply(&window, snapshot, true, true);
     Some(snapshot)
 }

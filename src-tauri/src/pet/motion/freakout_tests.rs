@@ -129,7 +129,9 @@ fn 발작이_끝나면_바닥에서_숨을_고른다() {
         let s = p.step(now, &world());
         if matches!(
             s.behavior,
-            Behavior::Freakout { freakout: FreakoutPhase::Pant }
+            Behavior::Freakout {
+                freakout: FreakoutPhase::Pant
+            }
         ) {
             assert_eq!(s.y, BOUNDS.floor_y, "숨은 바닥에서 고른다");
             assert!(!s.air, "숨 고르기는 지상 동작이다");
@@ -176,7 +178,12 @@ fn 발작_한_판은_예산_안에_끝난다() {
 
 #[test]
 fn 걸을_폭이_없는_화면에서도_발작이_갇히지_않는다() {
-    let 좁은 = World::single(Bounds { left: 0.0, right: 0.0, top: 800.0, floor_y: 800.0 });
+    let 좁은 = World::single(Bounds {
+        left: 0.0,
+        right: 0.0,
+        top: 800.0,
+        floor_y: 800.0,
+    });
     let mut p = Pet::new(42, 0, &좁은);
     assert!(p.start_freakout(1_000));
     let mut t = 1_000;
@@ -201,7 +208,9 @@ fn 상한을_넘겨도_공중에서_바닥으로_순간이동하지_않는다() 
     assert!(
         matches!(
             s.behavior,
-            Behavior::Freakout { freakout: FreakoutPhase::Dash }
+            Behavior::Freakout {
+                freakout: FreakoutPhase::Dash
+            }
         ),
         "아직 내려오는 중이어야 한다 (실제: {:?})",
         s.behavior
@@ -216,7 +225,9 @@ fn 상한을_넘겨도_공중에서_바닥으로_순간이동하지_않는다() 
     while now < t + FREAKOUT_MS.1 * 10
         && matches!(
             p.behavior(),
-            Behavior::Freakout { freakout: FreakoutPhase::Dash }
+            Behavior::Freakout {
+                freakout: FreakoutPhase::Dash
+            }
         )
     {
         now += 50;
@@ -225,7 +236,9 @@ fn 상한을_넘겨도_공중에서_바닥으로_순간이동하지_않는다() 
     assert!(
         matches!(
             p.behavior(),
-            Behavior::Freakout { freakout: FreakoutPhase::Pant }
+            Behavior::Freakout {
+                freakout: FreakoutPhase::Pant
+            }
         ),
         "내려와서 숨을 골라야 한다 (실제: {:?})",
         p.behavior()
@@ -249,8 +262,12 @@ fn 발작_중에_들어_올릴_수_있다() {
 
 #[test]
 fn 발작은_국면마다_고도가_다르다() {
-    let 돌진 = Behavior::Freakout { freakout: FreakoutPhase::Dash };
-    let 숨 = Behavior::Freakout { freakout: FreakoutPhase::Pant };
+    let 돌진 = Behavior::Freakout {
+        freakout: FreakoutPhase::Dash,
+    };
+    let 숨 = Behavior::Freakout {
+        freakout: FreakoutPhase::Pant,
+    };
     assert!(돌진.is_airborne(), "사방으로 튀려면 떠 있어야 한다");
     assert!(!숨.is_airborne(), "숨은 바닥에서 고른다");
     assert!(!돌진.is_landing() && !숨.is_landing());
@@ -270,18 +287,28 @@ fn 들려_있거나_이미_발작_중이면_시켜도_안_한다() {
     assert!(!p.start_freakout(1_050), "손에 쥔 채로는 안 된다");
 
     let (mut q, t) = 발작하는_펭귄();
-    assert!(!q.start_freakout(t + 100), "재진입하면 웹뷰가 되감지 못한다");
+    assert!(
+        !q.start_freakout(t + 100),
+        "재진입하면 웹뷰가 되감지 못한다"
+    );
 }
 
 #[test]
 fn 세계가_좁아지면_밖에_있던_펭귄이_끌려_들어온다() {
-    let 넓은 = World::single(Bounds { left: 0.0, right: 3_000.0, ..BOUNDS });
+    let 넓은 = World::single(Bounds {
+        left: 0.0,
+        right: 3_000.0,
+        ..BOUNDS
+    });
     let mut p = Pet::new(7, 0, &넓은);
     p.drag_start(100);
     p.drag_by(2_900.0, 0.0);
     p.drag_end(200, 0.0, 0.0, &넓은);
     let 멀리 = p.step(250, &넓은).x;
-    assert!(멀리 > 1_500.0, "먼저 오른쪽 끝에 가 있어야 한다 (실제: {멀리})");
+    assert!(
+        멀리 > 1_500.0,
+        "먼저 오른쪽 끝에 가 있어야 한다 (실제: {멀리})"
+    );
 
     let 좁은 = World::single(BOUNDS);
     let s = p.step(300, &좁은);
@@ -321,7 +348,10 @@ fn 빈도_측정() {
             총틱 += 1;
             if 이름 != 직전 {
                 *진입.entry(이름.clone()).or_default() += 1;
-                if matches!(s.behavior, Behavior::Splat | Behavior::Sprawl | Behavior::Land) {
+                if matches!(
+                    s.behavior,
+                    Behavior::Splat | Behavior::Sprawl | Behavior::Land
+                ) {
                     *출처.entry(format!("{이름} ← {직전}")).or_default() += 1;
                 }
                 직전 = 이름;
@@ -329,13 +359,23 @@ fn 빈도_측정() {
         }
     }
     let 총_시간 = 시간 as f64 / 3_600_000.0 * 시드들.len() as f64;
-    println!("\n=== {총_시간:.0}시간 (시드 {}개 × 4시간) ===", 시드들.len());
-    println!("{:<12} {:>8} {:>12} {:>9}", "동작", "진입", "시간당", "화면비율");
+    println!(
+        "\n=== {총_시간:.0}시간 (시드 {}개 × 4시간) ===",
+        시드들.len()
+    );
+    println!(
+        "{:<12} {:>8} {:>12} {:>9}",
+        "동작", "진입", "시간당", "화면비율"
+    );
     let mut 줄: Vec<_> = 진입.iter().collect();
     줄.sort_by_key(|(_, n)| std::cmp::Reverse(**n));
     for (이름, n) in 줄 {
         let 시간당 = *n as f64 / 총_시간;
-        let 간격 = if 시간당 > 0.0 { 3600.0 / 시간당 } else { f64::INFINITY };
+        let 간격 = if 시간당 > 0.0 {
+            3600.0 / 시간당
+        } else {
+            f64::INFINITY
+        };
         let 비율 = *틱.get(이름).unwrap_or(&0) as f64 / 총틱 as f64 * 100.0;
         println!("{이름:<12} {n:>8} {시간당:>9.1}/h {비율:>8.1}%   (평균 {간격:.0}초에 한 번)");
     }
@@ -378,9 +418,18 @@ fn 화면이_하나면_동작_수열이_그대로다() {
 
     let mut 오래 = Pet::new(42, 0, &w);
     let 긴_수열 = drive(&mut 오래, 0, 600_000, 50, &w);
-    assert!(긴_수열.iter().any(|s| s.x == BOUNDS.left), "왼쪽 끝에 닿는다");
-    assert!(긴_수열.iter().any(|s| s.x == BOUNDS.right), "오른쪽 끝에 닿는다");
-    assert!(긴_수열.iter().any(|s| s.y == BOUNDS.floor_y), "바닥에 닿는다");
+    assert!(
+        긴_수열.iter().any(|s| s.x == BOUNDS.left),
+        "왼쪽 끝에 닿는다"
+    );
+    assert!(
+        긴_수열.iter().any(|s| s.x == BOUNDS.right),
+        "오른쪽 끝에 닿는다"
+    );
+    assert!(
+        긴_수열.iter().any(|s| s.y == BOUNDS.floor_y),
+        "바닥에 닿는다"
+    );
 }
 
 #[test]

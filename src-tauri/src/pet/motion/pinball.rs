@@ -58,7 +58,11 @@ impl Pet {
         self.vx = dx * speed;
         self.vy = dy * speed;
         if self.vx.abs() > 1.0 {
-            self.facing = if self.vx > 0.0 { Facing::Right } else { Facing::Left };
+            self.facing = if self.vx > 0.0 {
+                Facing::Right
+            } else {
+                Facing::Left
+            };
         }
         self.enter(Behavior::Thrown, now_ms);
     }

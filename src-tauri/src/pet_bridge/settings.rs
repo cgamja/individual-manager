@@ -107,9 +107,7 @@ pub fn save_pet_count(app: &AppHandle, count: usize) {
     let Ok(store) = app.store(SETTINGS_FILE) else {
         return;
     };
-    let mut value = store
-        .get(PET_KEY)
-        .unwrap_or_else(|| serde_json::json!({}));
+    let mut value = store.get(PET_KEY).unwrap_or_else(|| serde_json::json!({}));
     if let Some(obj) = value.as_object_mut() {
         obj.insert("count".into(), serde_json::json!(count));
         store.set(PET_KEY, value);

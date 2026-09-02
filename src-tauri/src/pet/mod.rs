@@ -19,7 +19,7 @@ mod behavior;
 mod bowling;
 
 pub use bowling::{BallSnapshot, BoardPhase, Bowling};
-use bowling::{ball_home, pin_positions};
+use bowling::pin_positions;
 
 pub use behavior::{
     Behavior, BowlingPhase, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech,
@@ -238,6 +238,91 @@ impl Pets {
         true
     }
 
+    /// 공을 집는다. 판이 없거나 굴러가는 중이면 `false`.
+    pub fn ball_drag_start(&mut self) -> bool {
+        self.bowling.as_mut().is_some_and(Bowling::grab)
+    }
+
+    /// 집은 공을 가로로 옮긴다. **세로는 받지 않는다** — 조준 각도가 없다 (R6).
+    pub fn ball_drag_by(&mut self, dx: f64) {
+        if let Some(board) = self.bowling.as_mut() {
+            board.drag(dx);
+        }
+    }
+
+    /// 공을 놓는다. 놓는 순간의 **가로** 속도가 굴러가는 거리를 정한다 (R5).
+    pub fn ball_drag_end(&mut self, now_ms: u64, vx: f64) {
+        if let Some(board) = self.bowling.as_mut() {
+            board.release(now_ms, vx);
+        }
+    }
+
+    /// 볼링 판을 한 틱 진행시킨다. **마리별 `step`보다 먼저** 돈다 — 판이
+    /// 마리를 몰지 그 반대가 아니라서, 이번 틱에 정해진 국면이 곧바로 그 틱의
+    /// 마리 동작에 반영되어야 한다 (KTD8).
+    ///
+    /// 여기가 **전 마리를 가로지르는 유일한 자리**다. "공이 지나갔는가"는
+    /// 마리 하나의 `step`으로는 답할 수 없다.
+    fn step_bowling(&mut self, now_ms: u64) {
+        let Self { pets, bowling, .. } = self;
+        let Some(board) = bowling.as_mut() else {
+            return;
+        };
+
+        // 1) 판을 떠난 마리를 추린다. 드래그·빠따로 다른 동작에 넘어갔거나(A4)
+        //    사라진(AE4) 마리가 여기서 빠지고, 아무도 안 남으면 판을 접는다.
+        for id in board.participants() {
+            if !pets.get(&id).is_some_and(Pet::is_bowling) {
+                board.leave(id);
+            }
+        }
+        if board.is_empty() {
+            *bowling = None;
+            return;
+        }
+
+        let dt = board.tick(now_ms);
+        match board.phase() {
+            BoardPhase::Gathering => {
+                let 다_섰다 = board
+                    .participants()
+                    .iter()
+                    .all(|id| pets.get(id).is_some_and(Pet::bowling_stood));
+                if 다_섰다 {
+                    board.open_ball();
+                }
+            }
+            // 사용자가 굴리기 전까지는 아무 일도 없다.
+            BoardPhase::Ready => {}
+            BoardPhase::Rolling => {
+                board.roll(dt);
+                for id in board.participants() {
+                    let Some(center) = pets.get(&id).map(Pet::center_x) else {
+                        continue;
+                    };
+                    if board.hit(id, center) {
+                        if let Some(pet) = pets.get_mut(&id) {
+                            pet.bowling_struck(now_ms);
+                        }
+                    }
+                }
+                if board.ball_done() {
+                    board.settle(now_ms);
+                }
+            }
+            BoardPhase::Settling => {
+                if board.settled(now_ms) {
+                    for id in board.participants() {
+                        if let Some(pet) = pets.get_mut(&id) {
+                            pet.bowling_scatter(now_ms);
+                        }
+                    }
+                    *bowling = None;
+                }
+            }
+        }
+    }
+
     /// 한 틱 동안 전 마리를 진행시킨다.
     ///
     /// **마리별 `Pet::step`은 자기 자신만 본다.** 여러 마리가 하나의 사건을 공유하는
@@ -260,6 +345,7 @@ impl Pets {
         now_ms: u64,
         world_of: impl Fn(PetId) -> Option<&'w World>,
     ) -> Vec<(PetId, Snapshot)> {
+        self.step_bowling(now_ms);
         let mut stepped = Vec::with_capacity(self.pets.len());
         for id in self.ids() {
             let Some(world) = world_of(id) else {
@@ -356,6 +442,12 @@ impl Pet {
 
     pub fn behavior(&self) -> Behavior {
         self.behavior
+    }
+
+    /// 몸통 가운데의 x. `x`는 왼쪽 위 모서리라 마리끼리·공과의 거리를 잴 때는
+    /// 이쪽을 써야 폭(`PET_SIZE`)만큼 어긋나지 않는다.
+    pub(in crate::pet) fn center_x(&self) -> f64 {
+        self.x + PET_SIZE / 2.0
     }
 
     /// 판정의 기준점 — **발밑 중앙**이다 (PRD §5.2).

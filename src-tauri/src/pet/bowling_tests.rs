@@ -169,3 +169,283 @@ fn 펭귄을_전부_끄면_판도_사라진다() {
     pets.clear();
     assert!(pets.bowling().is_none());
 }
+
+// ── 공 물리와 히트 판정 ────────────────────────────────────────
+
+/// 판을 열고 **전부 설 때까지** 돌린다. 반환은 (마리들, 세계, 지금 시각).
+fn 다_선_판(n: usize) -> (Pets, World, u64) {
+    let w = world();
+    let mut pets = 펭귄들(n);
+    assert!(pets.start_bowling(0, 레인()));
+    let mut t = 0;
+    while t < 60_000 {
+        t += 50;
+        pets.step_all(t, |_| Some(&w));
+        if pets.bowling().is_some_and(|b| b.phase() == BoardPhase::Ready) {
+            return (pets, w, t);
+        }
+    }
+    panic!("전부 서는 데 실패했다");
+}
+
+/// 판이 끝날 때까지 돌리고, 지나온 공 중심 x들을 돌려준다.
+fn 굴린다(pets: &mut Pets, w: &World, from_ms: u64, vx: f64) -> Vec<f64> {
+    pets.ball_drag_start();
+    pets.ball_drag_end(from_ms, vx);
+    let mut 궤적 = Vec::new();
+    let mut t = from_ms;
+    while t < from_ms + 60_000 {
+        t += 50;
+        pets.step_all(t, |_| Some(w));
+        match pets.bowling().and_then(|b| b.ball()) {
+            Some(ball) => 궤적.push(ball.x),
+            None => break,
+        }
+        if pets.bowling().is_none() {
+            break;
+        }
+    }
+    궤적
+}
+
+fn 맞은_마리(pets: &Pets) -> Vec<PetId> {
+    pets.ids()
+        .into_iter()
+        .filter(|id| {
+            matches!(
+                pets.get(*id).map(Pet::behavior),
+                Some(Behavior::Bowling {
+                    bowling: BowlingPhase::Struck
+                })
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn 전부_서면_공이_나타난다() {
+    let (pets, _, _) = 다_선_판(3);
+    let ball = pets.bowling().and_then(|b| b.ball()).expect("공이 놓인다");
+    let (hx, hy) = ball_home(레인());
+    assert_eq!((ball.x, ball.y), (hx, hy));
+    assert!(!ball.rolling);
+}
+
+#[test]
+fn 공은_수평으로만_굴러간다() {
+    // 조준 각도가 없다 (R6) — 웹뷰가 세로 속도를 버리는지가 아니라, 코어가
+    // 애초에 세로를 움직일 방법을 갖고 있지 않은지를 본다.
+    let (mut pets, w, t) = 다_선_판(3);
+    let y0 = pets.bowling().and_then(|b| b.ball()).unwrap().y;
+    pets.ball_drag_start();
+    pets.ball_drag_end(t, 1_200.0);
+    let mut tt = t;
+    let mut 굴렀다 = false;
+    while tt < t + 30_000 {
+        tt += 50;
+        pets.step_all(tt, |_| Some(&w));
+        let Some(ball) = pets.bowling().and_then(|b| b.ball()) else {
+            break;
+        };
+        assert_eq!(ball.y, y0, "공이 위아래로 움직였다");
+        굴렀다 |= ball.x > 0.0;
+    }
+    assert!(굴렀다);
+}
+
+#[test]
+fn 드래그가_빠를수록_멀리_간다() {
+    let 거리 = |vx: f64| {
+        let (mut pets, w, t) = 다_선_판(1);
+        let 시작 = pets.bowling().and_then(|b| b.ball()).unwrap().x;
+        let 궤적 = 굴린다(&mut pets, &w, t, vx);
+        궤적.last().copied().unwrap_or(시작) - 시작
+    };
+    assert!(거리(1_000.0) > 거리(400.0), "세기가 거리를 정한다 (R5)");
+    assert!(거리(400.0) > 0.0);
+}
+
+#[test]
+fn 속도_상한은_세계_폭에_비례한다() {
+    let 넓게 = clamp_roll(1_000_000.0, 3_000.0);
+    let 좁게 = clamp_roll(1_000_000.0, 1_000.0);
+    assert!(넓게 > 좁게, "화면이 넓으면 같은 손짓이 더 멀리 간다");
+    assert_eq!(넓게, 3_000.0 * BOWLING_MAX_WORLDS_PER_SEC);
+    assert_eq!(
+        clamp_roll(-1_000_000.0, 3_000.0),
+        -넓게,
+        "방향은 유지한 채 자른다"
+    );
+    assert!(
+        clamp_roll(1_000_000.0, 0.0) > 0.0,
+        "세계 폭을 못 구해도 굴러는 간다"
+    );
+}
+
+#[test]
+fn 공은_반드시_멎는다() {
+    // 정지 문턱이 없으면 20Hz 틱이 영영 안 쉰다.
+    let (mut pets, w, t) = 다_선_판(1);
+    let 궤적 = 굴린다(&mut pets, &w, t, 300.0);
+    assert!(!궤적.is_empty());
+    assert!(
+        pets.bowling().is_none() || pets.bowling().unwrap().phase() != BoardPhase::Rolling,
+        "60초 안에 판이 끝나야 한다"
+    );
+}
+
+#[test]
+fn 공이_지나간_펭귄만_맞는다() {
+    let (mut pets, w, t) = 다_선_판(3);
+    pets.ball_drag_start();
+    pets.ball_drag_end(t, 1_200.0);
+    let mut tt = t;
+    let mut 본_적 = Vec::new();
+    while tt < t + 20_000 {
+        tt += 50;
+        pets.step_all(tt, |_| Some(&w));
+        for id in 맞은_마리(&pets) {
+            if !본_적.contains(&id) {
+                본_적.push(id);
+            }
+        }
+        if pets.bowling().is_none() {
+            break;
+        }
+    }
+    assert_eq!(본_적.len(), 3, "세게 굴리면 세 마리를 다 지나간다");
+}
+
+#[test]
+fn 살살_굴리면_아무도_못_맞히고_판이_끝난다() {
+    // AE3 — 재시도 버튼은 없다. 다시 하려면 "볼링 한 판"을 다시 누른다.
+    let (mut pets, w, t) = 다_선_판(3);
+    let mut tt = t;
+    pets.ball_drag_start();
+    pets.ball_drag_end(tt, BOWLING_MIN_ROLL_SPEED + 10.0);
+    while tt < t + 30_000 {
+        tt += 50;
+        pets.step_all(tt, |_| Some(&w));
+        assert!(맞은_마리(&pets).is_empty(), "공이 닿지도 않았는데 맞았다");
+        if pets.bowling().is_none() {
+            return;
+        }
+    }
+    panic!("판이 안 끝났다");
+}
+
+#[test]
+fn 펭귄을_맞혀도_공은_계속_간다() {
+    // 첫 펭귄에서 멈추면 마릿수가 무의미해진다 (A2).
+    let (mut pets, w, t) = 다_선_판(3);
+    let 궤적 = 굴린다(&mut pets, &w, t, 1_200.0);
+    let 마지막 = 궤적.last().copied().unwrap();
+    let 첫_핀 = pin_positions(3, 레인())[2] + PET_SIZE / 2.0;
+    assert!(마지막 > 첫_핀, "첫 핀({첫_핀})에서 멈췄다 — {마지막}");
+}
+
+#[test]
+fn 같은_펭귄을_두_번_맞히지_않는다() {
+    // 히트 반경 안에 여러 틱 머무는 것이 정상이므로, "이미 맞았다"를 판이
+    // 기억하지 않으면 한 마리가 매 틱 다시 넘어지고 공도 계속 느려진다.
+    let mut pins = std::collections::BTreeMap::new();
+    pins.insert(1, 500.0);
+    let mut board = Bowling::new(pins, 레인(), 0);
+    board.open_ball();
+    let 중심 = 500.0 + PET_SIZE / 2.0;
+    assert!(board.grab());
+    board.drag(중심 - ball_home(레인()).0);
+    board.release(0, 100_000.0);
+    assert!(board.hit(1, 중심), "반경 안에 들어오면 맞는다");
+    assert!(!board.hit(1, 중심), "두 번째부터는 그냥 지나간다");
+}
+
+#[test]
+fn 반경_밖의_펭귄은_맞지_않는다() {
+    let mut pins = std::collections::BTreeMap::new();
+    pins.insert(1, 500.0);
+    let mut board = Bowling::new(pins, 레인(), 0);
+    board.open_ball();
+    let 중심 = 500.0 + PET_SIZE / 2.0;
+    assert!(!board.hit(1, 중심 + BOWLING_HIT_RADIUS + 1.0));
+    assert!(!board.hit(1, 중심 - BOWLING_HIT_RADIUS - 1.0));
+}
+
+#[test]
+fn 공이_오른쪽_경계를_벗어나면_판이_끝난다() {
+    let (mut pets, w, t) = 다_선_판(1);
+    굴린다(&mut pets, &w, t, 100_000.0);
+    assert!(pets.bowling().is_none(), "레인을 벗어나면 판이 끝난다 (A1)");
+}
+
+#[test]
+fn 같은_초기_속도는_같은_결과를_낳는다() {
+    // 공 물리에는 난수가 없다 — R12가 자동으로 만족된다.
+    let 한_판 = || {
+        let (mut pets, w, t) = 다_선_판(3);
+        굴린다(&mut pets, &w, t, 1_100.0)
+    };
+    assert_eq!(한_판(), 한_판());
+}
+
+#[test]
+fn 살살_놓으면_공이_그_자리에_남는다() {
+    let (mut pets, w, t) = 다_선_판(2);
+    let 시작 = pets.bowling().and_then(|b| b.ball()).unwrap().x;
+    pets.ball_drag_start();
+    pets.ball_drag_end(t, BOWLING_MIN_ROLL_SPEED - 1.0);
+    pets.step_all(t + 50, |_| Some(&w));
+    let ball = pets.bowling().and_then(|b| b.ball()).expect("공이 남아 있다");
+    assert_eq!(ball.x, 시작);
+    assert!(!ball.rolling, "굴러가지 않는다 — 다시 집을 수 있다");
+    assert_eq!(pets.bowling().unwrap().phase(), BoardPhase::Ready);
+}
+
+#[test]
+fn 공은_레인_밖으로_끌려_나가지_않는다() {
+    let (mut pets, _, _) = 다_선_판(2);
+    pets.ball_drag_start();
+    pets.ball_drag_by(-100_000.0);
+    let ball = pets.bowling().and_then(|b| b.ball()).unwrap();
+    assert!(ball.x >= 레인().left, "끌고 나가면 다시 못 집는다");
+    pets.ball_drag_by(100_000.0);
+    let ball = pets.bowling().and_then(|b| b.ball()).unwrap();
+    assert!(ball.x <= 레인().right + PET_SIZE);
+}
+
+#[test]
+fn 굴러가는_공은_집을_수_없다() {
+    let (mut pets, _, t) = 다_선_판(2);
+    pets.ball_drag_start();
+    pets.ball_drag_end(t, 1_200.0);
+    assert!(!pets.ball_drag_start(), "굴러가는 중에는 손이 안 닿는다");
+}
+
+#[test]
+fn 판이_끝나면_전_마리가_흩어진다() {
+    let (mut pets, w, t) = 다_선_판(3);
+    굴린다(&mut pets, &w, t, 1_200.0);
+    assert!(pets.bowling().is_none());
+    for id in pets.ids() {
+        assert!(
+            matches!(
+                pets.get(id).map(Pet::behavior),
+                Some(Behavior::Bowling {
+                    bowling: BowlingPhase::Scatter
+                })
+            ),
+            "{id}번이 흩어지기를 건너뛰었다"
+        );
+    }
+}
+
+#[test]
+fn 판_도중_드래그로_빼낸_마리는_판에서_빠진다() {
+    // A4 — 억지로 자리로 되돌려 보내면 사용자와 앱이 싸운다.
+    let (mut pets, w, t) = 다_선_판(3);
+    let 뺄 = pets.ids()[0];
+    pets.get_mut(뺄).unwrap().drag_start(t);
+    pets.step_all(t + 50, |_| Some(&w));
+    let board = pets.bowling().expect("남은 둘로 판은 계속 돈다");
+    assert!(!board.participants().contains(&뺄));
+}

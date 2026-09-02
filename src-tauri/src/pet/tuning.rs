@@ -192,9 +192,9 @@ const _: () = assert!(BOWLING_GATHER_SPEED < FREAKOUT_SPEED);
 /// 공중에 있던 마리가 판에 합류하며 내려오는 속도. 순간이동하면 R2를 어긴다.
 pub(super) const BOWLING_DESCENT_SPEED: f64 = 300.0;
 
-/// 맞은 펭귄이 **한 바퀴 도는** 시간. 국면 길이가 아니라 반복 주기다 —
-/// 도는 것을 멈추는 것은 시간이 아니라 판이다.
-pub(super) const BOWLING_SPIN_MS: u64 = 600;
+// 맞은 펭귄이 도는 **주기**는 여기 없다. 도는 것을 멈추는 것은 시간이 아니라
+// 판이라 대응하는 국면 길이가 없고, 상수만 두면 Rust에서 아무도 안 쓴다.
+// 반복 애니메이션의 주기는 CSS가 혼자 정한다 (`pg-bowling-spin`).
 
 /// 흩어지며 일어나는 시간. 얼음낚시의 `Pack`, 발작의 `Pant`와 같은 귀결 국면이다.
 pub(super) const BOWLING_SCATTER_MS: u64 = 600;
@@ -212,9 +212,21 @@ const _: () = assert!(BOWLING_MAX_MS > BOWLING_SETTLE_MS);
 pub(super) const BOWLING_MAX_WORLDS_PER_SEC: f64 = 0.75;
 const _: () = assert!(BOWLING_MAX_WORLDS_PER_SEC < THROW_MAX_WORLDS_PER_SEC);
 
-/// 굴러가는 공의 감속도 (논리 px/초²). **비율이 아니라 감속도다** — 매 틱 비율로
-/// 줄이면 속도가 0에 닿지 않아 20Hz 틱이 영영 안 쉰다.
-pub(super) const BOWLING_DECEL: f64 = 520.0;
+/// 굴러가는 공의 감속도 — **초당 세계 폭의 몇 배씩 속도가 줄어드는가.**
+///
+/// 둘을 함께 지킨다. (1) **비율이 아니라 감속도다** — 매 틱 비율로 줄이면
+/// 속도가 0에 닿지 않아 20Hz 틱이 영영 안 쉰다. (2) **세계 폭에 비례한다** —
+/// 고정값으로 두면 화면이 넓어질수록 공이 상대적으로 덜 굴러, 아무리 세게
+/// 굴려도 끝 핀에 못 닿는다. 실제로 한 번 그렇게 짰고 테스트가 잡았다.
+pub(super) const BOWLING_DECEL_WORLDS_PER_SEC2: f64 = 0.15;
+const _: () = assert!(BOWLING_DECEL_WORLDS_PER_SEC2 > 0.0);
+
+/// 최대 세기로 굴린 공이 세계를 몇 번 가로지르고 멎는가 — `v² / 2a`를 세계 폭
+/// 단위로 쓴 값이다. 레인은 세계보다 펭귄 한 마리만큼 길므로 **1.2를 넘어야**
+/// 최대 세기가 끝 핀을 지나 빠져나간다.
+const BOWLING_ROLL_WORLDS: f64 =
+    BOWLING_MAX_WORLDS_PER_SEC * BOWLING_MAX_WORLDS_PER_SEC / (2.0 * BOWLING_DECEL_WORLDS_PER_SEC2);
+const _: () = assert!(BOWLING_ROLL_WORLDS > 1.2);
 
 /// 이보다 느려지면 공이 멎는다. 감속도와 짝인 정지 문턱이다.
 pub(super) const BOWLING_STOP_SPEED: f64 = 40.0;

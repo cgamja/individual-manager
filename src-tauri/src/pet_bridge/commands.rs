@@ -182,11 +182,13 @@ pub fn pet_summary(state: State<'_, PetState>) -> PetSummary {
     let count = state.pets.lock().unwrap().len();
     let focused = *state.focused.lock().unwrap();
     let bowling = state.pets.lock().unwrap().bowling().is_some();
+    let volleyball = state.pets.lock().unwrap().volleyball().is_some();
     PetSummary {
         count,
         max: MAX_PETS,
         focused,
         bowling,
+        volleyball,
     }
 }
 

@@ -29,6 +29,13 @@ pub const EVENT_PET_SETTINGS: &str = "pet://settings";
 /// 걸러 내야 한다.
 pub const EVENT_BALL_STATE: &str = "bowling://ball";
 
+/// 비치볼 창이 구독하는 상태 이벤트. 공 창이 따로라 이벤트도 따로다.
+pub const EVENT_VOLLEY_STATE: &str = "volley://ball";
+
+/// 비치발리볼 판이 **끝났음**을 설정 창에 알린다. 판을 끝내는 것은 예산이지
+/// 사용자가 아니라서, 이게 없으면 버튼이 비활성인 채로 남는다 (볼링과 같다).
+pub const EVENT_VOLLEY_OVER: &str = "volley://over";
+
 /// 볼링 판이 **끝났음**을 설정 창에 알린다. 판을 끝내는 것은 공이지 사용자가
 /// 아니라서, 이걸 안 보내면 "볼링 한 판" 버튼이 비활성인 채로 남는다
 /// (설정 창을 닫았다 다시 열기 전까지).
@@ -59,6 +66,9 @@ pub struct PetSummary {
     pub focused: Option<PetId>,
     /// 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로(A3) 버튼을 끈다.
     pub bowling: bool,
+    /// 비치발리볼 판이 도는 중인가. **두 판은 서로를 배제하므로** 어느 쪽이든
+    /// 도는 동안 버튼 둘이 함께 비활성된다.
+    pub volleyball: bool,
 }
 
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
@@ -104,6 +114,7 @@ mod ball_window;
 mod bounds;
 pub mod commands;
 mod pinball;
+mod volleyball;
 mod popover;
 mod settings;
 mod tick;
@@ -113,6 +124,7 @@ pub use ball_window::*;
 pub use bounds::*;
 pub use commands::*;
 pub use pinball::*;
+pub use volleyball::*;
 pub use popover::*;
 pub use settings::*;
 pub use tick::*;

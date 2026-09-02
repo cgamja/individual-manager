@@ -12,7 +12,9 @@
 //! → `docs/solutions/best-practices/tauri-ignore-cursor-events-is-async.md`
 //!
 //! 대신 창을 **안 보이게 만들고 → 플래그를 걸고 → 보인다.** 둘 다 같은 이벤트
-//! 루프를 순서대로 지나므로 이게 간극을 가장 좁힌다.
+//! 루프를 순서대로 지나므로 이게 간극을 가장 좁힌다. **그래도 한 프레임은 남을
+//! 수 있고, CSS로는 그 구간을 못 메운다** — `pointer-events: none`은 웹뷰가
+//! 반응하지 않게 할 뿐 네이티브 창이 클릭을 먹는 것은 그대로다.
 //!
 //! **레벨과 클릭 통과는 서로를 대신하지 못한다.** 코트는 펭귄보다 아래여야 하고
 //! (`ns_window()`로 레벨을 내린다), 그것과 별개로 클릭을 통과시켜야 한다 —
@@ -86,9 +88,21 @@ fn 그림_창(
         .visible(false)
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .build()?;
-    // **읽어서 확인하지 않는다** — 비동기라 지금 읽으면 아직 `false`다.
-    window.set_ignore_cursor_events(true)?;
-    window.show()?;
+    // **여기서 실패하면 반쯤 만든 창을 반드시 닫는다.**
+    //
+    // 창은 이미 라벨로 등록됐으므로, 그냥 `Err`를 돌려주면 다음 틱의
+    // "이미 있으면 그것을 돌려준다"가 그 **숨은 창을 채택한다** — 플래그도
+    // `show`도 다시 안 걸리고, `apply_volley`는 성공 갈래로 가서 `실패`를
+    // 다시는 안 부른다. 재시도 예산이 통째로 죽고 20초짜리 판이 보이지 않는
+    // 코트·공으로 조용히 돌아간다. (핀볼 판의 `build_all_or_none`이 반쯤 깔린
+    // 판을 남기지 않는 것과 같은 규칙이다.)
+    let 세우기 = window
+        .set_ignore_cursor_events(true)
+        .and_then(|()| window.show());
+    if let Err(err) = 세우기 {
+        let _ = window.close();
+        return Err(err);
+    }
     Ok(window)
 }
 
@@ -188,7 +202,13 @@ pub(super) fn apply_volley(
     view: &mut VolleyView,
 ) {
     let Some(snapshot) = board else {
-        if view.court_rect.take().is_some() || view.look.take().is_some() {
+        // **`||`를 쓰면 안 된다 — 단축평가가 `view.look.take()`를 건너뛴다.**
+        // 코트가 먼저 서므로 `court_rect`는 거의 항상 `Some`이고, 그러면 랠리
+        // 도중에 끝난 판의 `look`(= `Some(true)`)이 그대로 살아남는다. 다음 판의
+        // 첫 공도 `flying == true`라 "달라진 게 없다"로 걸러져 **새 창에 상태가
+        // 한 번도 안 가고 공이 판 내내 안 돈다.**
+        let 있었다 = view.court_rect.take().is_some() | view.look.take().is_some();
+        if 있었다 {
             close_volley_windows(app);
             view.ball_at = None;
         }

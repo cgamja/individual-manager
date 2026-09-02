@@ -190,6 +190,7 @@ pub fn run() {
             pet_bridge::commands::pet_freakout,
             pet_bridge::commands::bowling_start,
             pet_bridge::commands::volleyball_start,
+            pet_bridge::commands::volley_get_state,
             pet_bridge::commands::ball_drag_start,
             pet_bridge::commands::ball_drag_by,
             pet_bridge::commands::ball_drag_end,

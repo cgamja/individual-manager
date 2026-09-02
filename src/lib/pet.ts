@@ -351,6 +351,14 @@ export const onBallState = (cb: (ball: BallSnapshot) => void): Promise<UnlistenF
 export const onBowlingOver = (cb: () => void): Promise<UnlistenFn> =>
   listen(EVENT_BOWLING_OVER, () => cb());
 
+/** 비치볼 창이 **뜨자마자** 현재 상태를 한 번 받아 간다.
+ *
+ * **없으면 공이 판 내내 안 돈다** — 틱이 창을 만들고 같은 호출에서 첫 상태를
+ * 보내는데 그때 이 파일은 아직 실행되지도 않았다. 그 뒤로는 "달라진 게 없다"로
+ * 걸러져 다시 안 온다. */
+export const getVolleyState = (): Promise<VolleyBallSnapshot | null> =>
+  invoke("volley_get_state");
+
 /** 자기 창의 비치볼 상태만 구독한다. 펭귄·볼링 공과 같은 이유로 **창에 묶는다.** */
 export const onVolleyState = (
   cb: (ball: VolleyBallSnapshot) => void,

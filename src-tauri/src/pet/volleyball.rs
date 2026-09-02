@@ -139,6 +139,17 @@ impl Court {
         (cx - PET_SIZE / 2.0, self.floor_y)
     }
 
+    /// 타점을 지난 공이 **모래까지 더 떨어지는 데 걸리는 시간**(초).
+    ///
+    /// 공은 타점에서 `vy = -g·t/2`로 출발해 `t` 뒤 타점으로 돌아오므로, 그때의
+    /// 하강 속도는 `g·t/2`다. 거기서 `H`만큼 더 떨어지는 시간은
+    /// `s² + t·s − 2H/g = 0`의 양근이다.
+    pub(super) fn fall_after_contact(&self, t: f64) -> f64 {
+        let h = (self.sand_y() - VOLLEY_BALL_SIZE / 2.0 - self.contact_y()).max(0.0);
+        let c = 2.0 * h / VOLLEY_GRAVITY;
+        (-t + (t * t + 4.0 * c).sqrt()) / 2.0
+    }
+
     /// 코트 밖으로 나갔는가 — 목적지가 늘 코트 안이라 일어나지 않지만,
     /// 일어나면 공이 영영 안 떨어지므로 방어로 둔다.
     pub(super) fn out_of(&self, cx: f64) -> bool {
@@ -180,6 +191,13 @@ pub(super) fn assign_sides(count: usize) -> Vec<Side> {
         .collect()
 }
 
+/// 양 팀에 한 마리씩은 있는가. **없으면 판을 열지 않는다** — 한 팀이 통째로
+/// 비면 서브 한 번에 공이 빈 코트로 떨어져 "2초짜리 판"이 된다. 마릿수만
+/// 세면(`players.len() >= 2`) 들려 있는 마리가 빠져 한쪽으로 몰린 경우를 놓친다.
+pub(super) fn both_sides_present(players: &BTreeMap<PetId, Side>) -> bool {
+    players.values().any(|s| *s == Side::Left) && players.values().any(|s| *s == Side::Right)
+}
+
 /// 브릿지와 웹뷰가 보는 공.
 #[derive(Clone, Copy, PartialEq, Debug, Serialize)]
 pub struct VolleyBallSnapshot {
@@ -217,8 +235,10 @@ struct VolleyBall {
 pub struct Volleyball {
     phase: CourtPhase,
     court: Court,
-    /// 참여 마리 → (팀, 자기 자리). id 오름차순이다.
-    players: BTreeMap<PetId, (Side, (f64, f64))>,
+    /// 참여 마리 → 팀. id 오름차순이다. **자리는 안 들고 있는다** — 마리가
+    /// 뛰어다니므로 "지금 어디 있나"는 `Pet` 쪽이 원천이고, 판이 자리를 함께
+    /// 들고 있으면 두 값이 조용히 갈린다.
+    players: BTreeMap<PetId, Side>,
     ball: Option<VolleyBall>,
     /// 지금 공이 향하는 팀. `receiver`가 비어도(그 팀이 통째로 빠져도) 남는다.
     to_side: Side,
@@ -247,7 +267,7 @@ pub struct Volleyball {
 
 impl Volleyball {
     pub(super) fn new(
-        players: BTreeMap<PetId, (Side, (f64, f64))>,
+        players: BTreeMap<PetId, Side>,
         court: Court,
         now_ms: u64,
         seed: u64,
@@ -297,14 +317,14 @@ impl Volleyball {
 
     /// 이 마리의 팀. 참여하지 않으면 `None`.
     pub(super) fn side_of(&self, id: PetId) -> Option<Side> {
-        self.players.get(&id).map(|(side, _)| *side)
+        self.players.get(&id).copied()
     }
 
     /// 한 팀의 마리들. id 오름차순이다.
     pub(super) fn ids_on(&self, side: Side) -> Vec<PetId> {
         self.players
             .iter()
-            .filter(|(_, (s, _))| *s == side)
+            .filter(|(_, s)| **s == side)
             .map(|(id, _)| *id)
             .collect()
     }
@@ -455,30 +475,59 @@ impl Volleyball {
         let to = self.to_side.other();
         let (lo, hi) = self.court.span_of(to);
         let 마지막 = now_ms >= self.rally_until_ms;
+        // **체공을 먼저 정한다** — 킬샷의 목적지가 체공에 딸린 낙하 거리에
+        // 의존하므로 순서가 뒤바뀌면 안 된다.
+        let grade = if 마지막 {
+            VOLLEY_FLIGHT_MS[0]
+        } else {
+            VOLLEY_FLIGHT_MS[(self.next_u64() % VOLLEY_FLIGHT_MS.len() as u64) as usize]
+        };
+        let t0 = flight_ms_for(&self.court, 0.0, grade) as f64 / 1000.0;
+        let t = t0;
 
+        let 빈자리 = farthest_from(on_side, lo, hi);
         let target_cx = if 마지막 {
             // **아무 마리에게서도 가장 먼 자리에 꽂는다.** 받는 마리는 뛰지만
             // 못 미치고, 공이 모래에 박힌다.
-            farthest_from(on_side, lo, hi)
+            //
+            // 다만 **착지점이 코트를 안 넘게 목적지를 당긴다.** 킬샷은 아무도
+            // 안 치므로 공이 타점을 지나 모래까지 더 떨어지는데, 그동안 가로
+            // 속도를 그대로 갖는다 — 안 당기면 코트 밖에서 `out_of`로 끝나고
+            // `settle`이 공을 화면 밖 x에 수직으로 떨어뜨린다.
+            //
+            // **포물선 자체는 타점→타점 그대로 둔다.** 모래를 직접 겨누면
+            // 하강 구간이 앞당겨져 **네트 위에서 타점 아래로 내려가** KTD6의
+            // 보장이 깨진다 (테스트 `공은_반드시_네트를_넘는다`가 잡았다).
+            // 착지점 `target·(1+r) − x·r`(r = 낙하시간/체공)이 `[lo, hi]` 안에
+            // 들도록 목적지를 **양쪽으로** 제한한다. 한쪽만 막으면 반대 방향
+            // 킬샷이 그대로 넘친다 — 실제로 왼쪽으로 가는 공이 그랬다.
+            let r = self.court.fall_after_contact(t) / t;
+            let 하한 = ((lo + ball.x * r) / (1.0 + r)).max(lo);
+            let 상한 = ((hi + ball.x * r) / (1.0 + r)).min(hi);
+            빈자리.clamp(하한.min(상한), 상한.max(하한))
         } else {
-            lo + self.fraction() * (hi - lo)
+            // 균등하게 뽑되 **빈자리 쪽으로 끌어당긴다.** 순수 균등이면 마릿수가
+            // 늘수록 뽑힌 자리가 이미 누군가의 사정거리 안이라 아무도 안 뛴다
+            // (`VOLLEY_AWAY_BIAS` 참고). 끌어당김이 곧 "뛰는 그림"의 양이다.
+            let 균등 = lo + self.fraction() * (hi - lo);
+            균등 + (빈자리 - 균등) * VOLLEY_AWAY_BIAS
         };
         let receiver = nearest_to(on_side, target_cx);
         let 뛸_거리 = receiver
             .and_then(|id| on_side.iter().find(|(i, _)| *i == id))
             .map_or(0.0, |(_, cx)| (target_cx - cx).abs());
 
-        let grade = if 마지막 {
-            VOLLEY_FLIGHT_MS[0]
-        } else {
-            VOLLEY_FLIGHT_MS[(self.next_u64() % VOLLEY_FLIGHT_MS.len() as u64) as usize]
-        };
+
         // 마지막 왕복만 **도착 보장을 끈다** — 그래서 못 받는다.
         let ms = flight_ms_for(&self.court, if 마지막 { 0.0 } else { 뛸_거리 }, grade);
         let t = ms as f64 / 1000.0;
-        ball.vx = (target_cx - ball.x) / t;
-        // 타점에서 출발해 `t` 뒤 타점으로 돌아온다.
+        let _ = t0;
+        // 타점에서 출발해 `t` 뒤 타점으로 돌아오는 포물선. 이 모양이 네트를
+        // 넘는 보장(KTD6)을 만든다.
         ball.vy = -VOLLEY_GRAVITY * t / 2.0;
+        // 가로 속도는 목적지에 **타점 높이로** 닿는 시각으로 정한다. 킬샷이
+        // 그 뒤로 더 떨어지며 넘어가는 몫은 위에서 목적지를 당겨 처리했다.
+        ball.vx = (target_cx - ball.x) / t;
 
         self.ball = Some(ball);
         self.to_side = to;

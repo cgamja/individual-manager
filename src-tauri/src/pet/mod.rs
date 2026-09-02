@@ -23,8 +23,7 @@ pub use bowling::{BallSnapshot, BoardPhase, Bowling};
 use bowling::{dist2_to_segment, pin_positions};
 
 pub use volleyball::{Court, CourtPhase, Side, VolleyBallSnapshot, VolleySnapshot, Volleyball};
-#[allow(unused_imports)]
-use volleyball::assign_sides;
+use volleyball::{assign_sides, both_sides_present};
 
 pub use behavior::{
     Behavior, BowlingPhase, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech,
@@ -353,9 +352,18 @@ impl Pets {
             let Some(target) = self.pets.get_mut(&other) else {
                 continue;
             };
-            // 손이 잡고 있는 마리는 손이 이기고, 볼링 판에 선 마리는 판이 갖는다 —
+            // 손이 잡고 있는 마리는 손이 이기고, 판에 선 마리는 판이 갖는다 —
             // 방망이로 핀을 넘어뜨리면 공이 할 일이 없어진다.
-            if target.behavior == Behavior::Dragged || target.is_bowling() {
+            //
+            // **비치발리볼도 같다.** 여기 빠지면 스윙 사거리(200px)가 코트의
+            // 이웃 간격(~117px)보다 넓어서, **안 건드린 이웃까지 랠리에서 빠진다.**
+            // 두 마리 판(최소 마릿수이자 흔한 경우)에서는 그 한 번이 방금 시작한
+            // 20초짜리 판을 즉시 끝낸다. **맞은 당사자는 그대로 빠진다** — 그건
+            // 사용자가 겨눈 결과이고 PRD §5.10이 명시한 동작이라 안 건드린다.
+            if target.behavior == Behavior::Dragged
+                || target.is_bowling()
+                || target.is_volleying()
+            {
                 continue;
             }
             let 앞으로 = (target.center_x() - ox) * forward;
@@ -517,15 +525,20 @@ impl Pets {
         self.volleyball.as_ref()
     }
 
-    /// 한 마리를 비치발리볼 판에서 뺀다. 남은 마리가 둘 미만이면 판을 접는다 —
-    /// **혼자서는 랠리가 성립하지 않는다** (R3).
+    /// 한 마리를 비치발리볼 판의 참여 목록에서 뺀다.
+    ///
+    /// **여기서 판을 접지 않는다.** 혼자 남으면 랠리가 성립하지 않지만, 접는
+    /// 일에는 **남은 마리를 귀결 국면으로 풀어 주는 일이 딸려 있고** 그건 시각이
+    /// 필요하다. `Pets`는 시계를 갖지 않으므로(코어는 시간을 주입받는다) 그
+    /// 판단을 시각을 아는 한 곳 — [`step_volleyball`](Self::step_volleyball) —
+    /// 에 모은다. 노출은 다음 틱까지(최대 50ms)이고 그동안 판은 한 마리로 산다.
+    ///
+    /// **판만 버리고 마리를 안 풀면 그 마리가 국면에 갇힌다** — 국면의 시각은
+    /// 길이가 아니라 안전 상한(60초)이라, 코트도 공도 사라진 바탕화면에
+    /// 비키니만 입고 1분을 서 있게 된다.
     fn leave_volleyball(&mut self, id: PetId) {
-        let Some(board) = self.volleyball.as_mut() else {
-            return;
-        };
-        board.leave(id);
-        if board.phase() != CourtPhase::Point && board.player_count() < VOLLEY_MIN_PETS {
-            self.volleyball = None;
+        if let Some(board) = self.volleyball.as_mut() {
+            board.leave(id);
         }
     }
 
@@ -555,7 +568,8 @@ impl Pets {
         let 좌수 = sides.iter().filter(|s| **s == Side::Left).count();
         let 우수 = ids.len() - 좌수;
         let (mut 좌, mut 우) = (0usize, 0usize);
-        let mut players = std::collections::BTreeMap::new();
+        let mut players: std::collections::BTreeMap<PetId, Side> =
+            std::collections::BTreeMap::new();
         for (id, side) in ids.iter().zip(sides) {
             let (k, total) = if side == Side::Left {
                 좌 += 1;
@@ -579,11 +593,13 @@ impl Pets {
                 .get_mut(id)
                 .is_some_and(|pet| pet.start_volley(now_ms, spot, span, face));
             if joined {
-                players.insert(*id, (side, spot));
+                players.insert(*id, side);
             }
         }
-        // 들려 있는 마리가 빠져 둘이 안 되면 판을 안 연다.
-        if players.len() < VOLLEY_MIN_PETS {
+        // 들려 있는 마리가 빠져 둘이 안 되거나 **한 팀이 통째로 비면** 판을 안
+        // 연다. 마릿수만 세면 세 마리 중 오른쪽 하나를 들고 있는 경우를 놓치는데,
+        // 그러면 서브 한 번에 공이 빈 코트로 떨어져 "2초짜리 판"이 된다.
+        if players.len() < VOLLEY_MIN_PETS || !both_sides_present(&players) {
             for id in players.keys() {
                 if let Some(pet) = self.pets.get_mut(id) {
                     pet.volley_finish(now_ms, true);
@@ -636,6 +652,14 @@ impl Pets {
         //    `Cheer`/`Sulk`로 넘어가므로, 접었다가는 축하 그림이 나오기 전에
         //    코트가 사라진다 (볼링이 "굴러가는 중에는 안 접는다"고 한 자리다).
         if board.phase() != CourtPhase::Point && board.player_count() < VOLLEY_MIN_PETS {
+            // **남은 마리를 반드시 풀어 준다.** 판만 버리면 그 마리가 국면에
+            // 갇히는데, 국면의 시각은 길이가 아니라 안전 상한(60초)이라
+            // 코트가 사라진 바탕화면에 비키니만 입고 1분을 서 있게 된다.
+            for id in board.participants() {
+                if let Some(pet) = pets.get_mut(&id) {
+                    pet.volley_finish(now_ms, true);
+                }
+            }
             *volleyball = None;
             return;
         }

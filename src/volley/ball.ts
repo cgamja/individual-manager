@@ -1,4 +1,4 @@
-import { onVolleyState, type VolleyBallSnapshot } from "../lib/pet";
+import { getVolleyState, onVolleyState, type VolleyBallSnapshot } from "../lib/pet";
 import "./ball.css";
 
 /**
@@ -38,6 +38,14 @@ if (root) {
   // emit 대상과 무관하게 전부 호출된다 — 창이 여럿이면 그때 터진다
   // (`docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`).
   void onVolleyState(paint).catch(() => {});
+
+  // **첫 상태는 구독으로 안 온다.** 틱이 이 창을 만들고 같은 호출에서 보내므로
+  // 위 리스너가 붙기 전에 지나간다 — 받아 오지 않으면 공이 판 내내 안 돈다.
+  void getVolleyState()
+    .then((ball) => {
+      if (ball) paint(ball);
+    })
+    .catch(() => {});
 }
 
 export { BALL_SVG };

@@ -12,11 +12,12 @@ body {
   user-select: none;
 }
 
-/* **클릭을 통과시킨다 — 이중 방어다.**
-   진짜 방어선은 Rust의 `set_ignore_cursor_events(true)`이고, 그 세터는
-   비동기라 창이 뜬 직후 한 프레임쯤은 아직 안 걸려 있을 수 있다. CSS는
-   웹뷰가 그려지는 첫 프레임부터 듣는다. 둘 중 하나만 있어도 대체로 되지만
-   구간이 서로 달라서 겹쳐 둔다. */
+/* **클릭 통과는 CSS가 못 한다 — 이건 다른 일을 한다.**
+   진짜 클릭 통과는 Rust의 `set_ignore_cursor_events(true)`(= `NSWindow.
+   ignoresMouseEvents`)뿐이다. `pointer-events: none`은 **웹뷰가 클릭에
+   반응하지 않게** 할 뿐이고 네이티브 창은 여전히 클릭을 **먹는다**(아래 앱으로
+   안 내려간다). 그래도 두는 이유는 커서 모양·텍스트 선택·hover 같은 웹뷰
+   자체의 반응을 없애기 위해서다. */
 #court-root,
 #court-root * {
   pointer-events: none;

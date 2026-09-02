@@ -437,6 +437,19 @@ const _: () = assert!(
         >= VOLLEY_COURT_HALF - VOLLEY_NET_GAP
 );
 
+/// 목적지를 **받는 팀에서 먼 쪽으로** 얼마나 끌어당기는가 (0~1).
+///
+/// **마릿수가 늘수록 `Chase`가 사라지는 것을 막는다.** 목적지를 균등하게만
+/// 뽑으면 여덟 마리일 때 이웃 간격(~117px)이 사정거리(`VOLLEY_REACH_X` 70px)에
+/// 가까워, 뽑힌 자리가 이미 누군가의 사정거리 안이라 아무도 안 뛴다 — 실측으로
+/// 여덟 마리 한 판의 뛰는 시간이 2.5초까지 내려갔다. 랠리 화면의 절반을
+/// 채워야 할 갈래가 정확히 최대 마릿수에서 죽는다.
+///
+/// 1.0으로 두지 않는다 — 그러면 매번 같은 빈자리를 노려 목적지가 예측 가능해진다.
+pub(super) const VOLLEY_AWAY_BIAS: f64 = 0.75;
+const _: () = assert!(VOLLEY_AWAY_BIAS > 0.0);
+const _: () = assert!(VOLLEY_AWAY_BIAS < 1.0);
+
 /// 공 중심이 받을 마리의 몸통 가운데에서 이 거리 안이면 닿는다.
 pub(super) const VOLLEY_REACH_X: f64 = 70.0;
 const _: () = assert!(VOLLEY_REACH_X < PET_SIZE);
@@ -448,6 +461,14 @@ pub(super) const VOLLEY_BUMP_MS: u64 = 380;
 /// "자기에게 보내는 왕복 0번"이라** 이 값이 곧 그 왕복의 체공이다.
 pub(super) const VOLLEY_SERVE_MS: u64 = 800;
 const _: () = assert!(VOLLEY_SERVE_MS > VOLLEY_BUMP_MS);
+/// **서브만 천장 자르기를 안 거친다.** 랠리 왕복은 `flight_ms_for`가 정점을
+/// 화면 안에 가두지만 서브는 이 값을 그대로 쓰므로, 관계를 여기서 묶는다 —
+/// 안 묶으면 이 값을 1초로 올리는 순간 서브가 화면 위로 사라진다.
+const VOLLEY_SERVE_APEX: f64 = VOLLEY_GRAVITY
+    * (VOLLEY_SERVE_MS as f64 / 1_000.0)
+    * (VOLLEY_SERVE_MS as f64 / 1_000.0)
+    / 8.0;
+const _: () = assert!(VOLLEY_SERVE_APEX < VOLLEY_MIN_WORLD_HEIGHT - VOLLEY_REACH);
 
 /// 좋아하거나 약 오르는 시간. **`SASSY_MS`와 같아야 한다** — CSS가 싸가지 반응의
 /// keyframe(`pg-butt-wiggle`·`pg-turn-away`)을 그대로 참조하므로, 어긋나면

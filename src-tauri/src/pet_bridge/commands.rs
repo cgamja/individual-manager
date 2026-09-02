@@ -389,6 +389,25 @@ pub fn volleyball_start(state: State<'_, PetState>, app: AppHandle) -> Result<()
     Ok(())
 }
 
+/// 비치볼 웹뷰가 **처음 뜰 때** 현재 상태를 한 번 받아 간다 (`pet_get_state`와 같은 자리).
+///
+/// **없으면 공이 판 내내 안 돈다.** 틱이 공 창을 만들고 **같은 호출에서** 첫
+/// 상태를 emit하는데, 그때 웹뷰는 아직 `ball.ts`를 실행하지도 않아 리스너가
+/// 없다 — 이벤트는 버려지고 `view.look`은 `Some(true)`로 잠긴다. 다음 emit은
+/// 공이 멎을 때뿐이라 `vb-ball--flying`이 **한 번도 안 붙는다.** 볼링 공이
+/// 이걸 안 겪는 이유는 첫 상태(`rolling: false`)가 DOM 기본값과 같아서다.
+#[tauri::command]
+pub fn volley_get_state(
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+) -> Option<crate::pet::VolleyBallSnapshot> {
+    if window.label() != VBALL_LABEL {
+        return None;
+    }
+    let ball = state.pets.lock().unwrap().volleyball().and_then(|v| v.ball());
+    ball
+}
+
 /// 공을 집는다. 굴러가는 중이면 `false` — 한 판에 한 번 굴린다.
 #[tauri::command]
 pub fn ball_drag_start(window: WebviewWindow, state: State<'_, PetState>) -> bool {

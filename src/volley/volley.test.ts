@@ -8,13 +8,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * **클릭을 통과시키는가** 둘이다.
  */
 
-const 리스너: Array<(ball: { x: number; y: number; flying: boolean }) => void> = [];
+type Ball = { x: number; y: number; flying: boolean };
+
+const 리스너: Array<(ball: Ball) => void> = [];
+/** 창이 뜰 때 한 번 끌어오는 첫 상태. `null`이면 아직 판이 없다. */
+let 첫_상태: Ball | null = null;
 
 vi.mock("../lib/pet", () => ({
-  onVolleyState: (cb: (b: { x: number; y: number; flying: boolean }) => void) => {
+  onVolleyState: (cb: (b: Ball) => void) => {
     리스너.push(cb);
     return Promise.resolve(() => {});
   },
+  getVolleyState: () => Promise.resolve(첫_상태),
 }));
 
 const courtCss = readFileSync(resolve("src/volley/court.css"), "utf8");
@@ -47,6 +52,7 @@ describe("비치볼", () => {
   beforeEach(() => {
     vi.resetModules();
     리스너.length = 0;
+    첫_상태 = null;
     document.body.innerHTML = '<div id="vball-root"></div>';
   });
 
@@ -63,6 +69,19 @@ describe("비치볼", () => {
     expect(root.classList.contains("vb-ball--flying")).toBe(true);
     리스너[0]({ x: 0, y: 0, flying: false });
     expect(root.classList.contains("vb-ball--flying")).toBe(false);
+  });
+
+  it("창이_뜨자마자_첫_상태를_끌어온다", async () => {
+    // **구독만으로는 첫 상태가 안 온다.** 틱이 이 창을 만들고 **같은 호출에서**
+    // 첫 상태를 보내는데 그때 이 파일은 아직 실행되지도 않았다. 그 뒤로는
+    // "달라진 게 없다"로 걸러져 다시 안 오므로, 끌어오지 않으면 공이 판 내내
+    // 안 돈다.
+    첫_상태 = { x: 0, y: 0, flying: true };
+    await import("./ball");
+    const root = document.getElementById("vball-root")!;
+    await vi.waitFor(() =>
+      expect(root.classList.contains("vb-ball--flying")).toBe(true),
+    );
   });
 });
 

@@ -710,3 +710,56 @@ fn 판을_못_열면_마리의_동작이_한_틱도_안_바뀐다() {
         );
     }
 }
+
+#[test]
+fn 판이_접혀도_남은_마리는_평소로_돌아간다() {
+    // 두 마리 판에서 하나를 끌어내면 남은 하나가 `Ready`에 갇힌다 — 그 국면의
+    // 시각은 국면 길이가 아니라 **안전 상한**(60초)이라, 코트도 공도 사라진
+    // 바탕화면에 비키니만 입은 채 1분을 서 있게 된다.
+    let w = World::single(넓은_경계);
+    let mut pets = 여러_마리(2);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    pets.get_mut(1).unwrap().drag_start(100);
+    pets.step_all(150, |_| Some(&w));
+    assert!(pets.volleyball().is_none(), "혼자 남았으면 판이 접힌다");
+
+    let 남은 = pets.get(2).unwrap().snapshot().behavior;
+    assert!(
+        !matches!(
+            남은,
+            Behavior::Volleyball {
+                volley: VolleyPhase::Gather
+                    | VolleyPhase::Ready
+                    | VolleyPhase::Chase
+                    | VolleyPhase::Bump
+            }
+        ),
+        "판이 사라졌는데 남은 마리가 랠리 국면에 갇혔다: {남은:?}"
+    );
+}
+
+#[test]
+fn 펭귄을_지워서_판이_접혀도_남은_마리가_안_갇힌다() {
+    // `leave_volleyball` 경로도 같다 — 삭제·창 소실 둘 다 여기를 지난다.
+    // **접는 일은 다음 틱이 한다** (`leave_volleyball` 문서 참고): 남은 마리를
+    // 풀어 주려면 시각이 필요한데 `Pets`는 시계를 갖지 않는다. 노출은 한 틱이다.
+    let w = World::single(넓은_경계);
+    let mut pets = 여러_마리(2);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
+    assert!(pets.remove(1));
+    pets.step_all(50, |_| Some(&w));
+    assert!(pets.volleyball().is_none(), "다음 틱에 판이 접힌다");
+    let 남은 = pets.get(2).unwrap().snapshot().behavior;
+    assert!(
+        !matches!(
+            남은,
+            Behavior::Volleyball {
+                volley: VolleyPhase::Gather
+                    | VolleyPhase::Ready
+                    | VolleyPhase::Chase
+                    | VolleyPhase::Bump
+            }
+        ),
+        "판이 사라졌는데 남은 마리가 랠리 국면에 갇혔다: {남은:?}"
+    );
+}

@@ -422,6 +422,9 @@ impl Pets {
     ) -> Vec<(PetId, Snapshot)> {
         self.step_bowling(now_ms);
         let mut stepped = Vec::with_capacity(self.pets.len());
+        // 부딪힘 판정이 볼 **이번 틱 이전**의 중심과 세계 폭. `Pet`에 필드로 넣지 않고
+        // 여기서 들고 있는다 — 필드를 더하면 스냅샷 동치성이 보는 상태가 늘어난다.
+        let mut before = Vec::with_capacity(self.pets.len());
         for id in self.ids() {
             let Some(world) = world_of(id) else {
                 continue;
@@ -429,9 +432,62 @@ impl Pets {
             let Some(pet) = self.pets.get_mut(&id) else {
                 continue;
             };
+            before.push((id, (pet.center_x(), pet.center_y()), world.width()));
             stepped.push((id, pet.step(now_ms, world)));
         }
+        // **핀볼일 때만 돈다.** 꺼져 있으면 여기 오기 전과 한 줄도 다르지 않아야 한다
+        // (`여러_마리를_한_번에_돌려도_따로_돌린_것과_같다`가 그걸 본다).
+        if before.len() >= 2 && self.pets.values().any(Pet::pinball) {
+            let bumped = self.collide_pinball(now_ms, &before);
+            for (id, snapshot) in stepped.iter_mut() {
+                if !bumped.contains(id) {
+                    continue;
+                }
+                if let Some(pet) = self.pets.get(id) {
+                    *snapshot = pet.snapshot();
+                }
+            }
+        }
         stepped
+    }
+
+    /// 핀볼에서 마리끼리 부딪힌 것을 해소한다 — **`step` 뒤에** 돈다. 이번 틱에 지나온
+    /// 경로를 봐야 빠른 마리가 서로를 뛰어넘지 않는다 (`bump_of`).
+    ///
+    /// 판정은 **양방향**이다. 볼링 연쇄는 *튕겨 나간 마리 → 아직 선 마리* 한 방향이고
+    /// 맞은 쪽만 속도를 받지만, 여기서는 둘 다 움직이고 둘 다 속도가 바뀐다.
+    ///
+    /// 쌍은 최대 `MAX_PETS * (MAX_PETS - 1) / 2 = 28`개이고 쌍마다 드는 것은 부동소수
+    /// 산술 몇십 번뿐이다 — IPC도 할당도 시스템 호출도 없어서 O(n²)이 50ms 틱에서
+    /// 문제가 되지 않는다. 앞선 쌍의 결과가 뒤 쌍에 반영되는 순차 해소이고, `before`가
+    /// id 오름차순이라 순서는 매 틱 같다.
+    ///
+    /// **난수를 쓰지 않는다** — 골든 수열을 재기준화하지 않기 위한 제약이다.
+    fn collide_pinball(&mut self, now_ms: u64, before: &[(PetId, (f64, f64), f64)]) -> Vec<PetId> {
+        let mut bumped = Vec::new();
+        for i in 0..before.len() {
+            for j in (i + 1)..before.len() {
+                let (a_id, a_prev, a_world) = before[i];
+                let (b_id, b_prev, b_world) = before[j];
+                let Some((a, b)) = self.pets.get(&a_id).zip(self.pets.get(&b_id)) else {
+                    continue;
+                };
+                let Some(((nx, ny), impulse)) = a.bump_of(a_prev, b, b_prev) else {
+                    continue;
+                };
+                // 법선만 뒤집어 같은 함수를 쓴다 — 대칭을 코드 모양으로 못 박아
+                // 한쪽만 움직이는 실수를 막는다.
+                if let Some(pet) = self.pets.get_mut(&a_id) {
+                    pet.bumped(now_ms, nx, ny, impulse, a_world);
+                }
+                if let Some(pet) = self.pets.get_mut(&b_id) {
+                    pet.bumped(now_ms, -nx, -ny, impulse, b_world);
+                }
+                bumped.push(a_id);
+                bumped.push(b_id);
+            }
+        }
+        bumped
     }
 }
 

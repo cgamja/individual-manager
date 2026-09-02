@@ -174,7 +174,13 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             //    왕복하므로 락을 쥔 채 하면 커맨드가 그만큼 기다린다.
             //    대가: 반영이 밀리는 동안 커맨드의 `flush`가 쓴 새 스냅샷을 여기 낡은
             //    스냅샷이 덮을 수 있다. 노출은 앞선 마리들의 IPC 길이만큼이고 다음 틱에
-            //    자가 교정된다. 마리 간 판정이 들어와 `step_all`이 무거워지면 다시 본다.
+            //    자가 교정된다.
+            //
+            //    **회수 조건은 확인했고 발동하지 않았다** (2026-09-02). 마리 간 판정
+            //    (핀볼 부딪히기, `Pets::collide_pinball`)이 들어왔지만 상한 8마리에서
+            //    쌍이 28개이고 쌍마다 부동소수 산술 몇십 번뿐이라, 8마리 1,000틱을 재면
+            //    틱당 0.4µs → 0.9µs다 (release). 50ms 틱의 0.001%라 락 보유 시간도
+            //    `apply` 지연도 달라지지 않는다. 판정에 IPC나 할당이 붙으면 다시 본다.
             let mut any_moves = false;
             for (id, snapshot) in stepped {
                 let Some((window, rescued)) = ready.get(&id) else {

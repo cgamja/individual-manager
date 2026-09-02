@@ -28,11 +28,13 @@ body {
    창 높이는 화면마다 다르지만 이 둘은 고정이라, 창을 늘여도 네트와 모래의
    두께가 안 변한다. */
 #court-root {
-  --vb-net-h: 120px;
+  --vb-net-h: 85px;
   --vb-net-w: 96px;
   --vb-sand-depth: 80px;
-  /* 모래 물결이 모래 선 위로 솟는 높이. 그림뿐이라 Rust에 짝이 없다. */
-  --vb-sand-lip: 44px;
+  /* **해변 표면이 펭귄 발밑 선보다 위로 올라오는 높이 = 실제로 보이는 모래.**
+     발밑 선은 작업 영역 바닥과 같아서 그 아래로 그린 것은 Dock 뒤이거나 화면
+     밖이다 — 이 값이 0이면 모래가 한 픽셀도 안 보인다. */
+  --vb-sand-rise: 110px;
 
   position: relative;
   width: 100%;
@@ -49,7 +51,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(var(--vb-sand-depth) + var(--vb-sand-lip));
+  height: calc(var(--vb-sand-rise) + var(--vb-sand-depth));
   display: block;
   animation: vb-sand-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }

@@ -56,8 +56,16 @@ fn 모래는_화면_바닥이고_판은_그보다_한참_위다() {
     // **판이 화면 세로 중앙으로 올라갔다** — 모래사장은 배경으로 바닥에 남는다.
     let b = 넓은_코트();
     let c = Court::new(b).unwrap();
-    assert_eq!(c.sand_y(), b.floor_y + PET_SIZE, "모래는 화면 바닥의 발밑 선이다");
-    let (play_y, _) = (c.spot_of(Side::Left, 0, 1).1, 0);
+    // **발밑 선에 그리면 한 픽셀도 안 보인다** — 그 선이 작업 영역 바닥과 같아서
+    // 아래는 전부 Dock 뒤이거나 화면 밖이다. 표면을 그보다 올려야 해변이 보인다.
+    assert!(
+        c.sand_y() < b.floor_y + PET_SIZE,
+        "모래 표면({})이 발밑 선({}) 아래다 — 화면 밖이라 안 보인다",
+        c.sand_y(),
+        b.floor_y + PET_SIZE
+    );
+    assert_eq!(c.sand_y(), b.floor_y + PET_SIZE - VOLLEY_SAND_RISE);
+    let play_y = c.spot_of(Side::Left, 0, 1).1;
     assert!(
         play_y < c.sand_y() - PET_SIZE,
         "판({play_y})이 모래({})에 붙어 있다",
@@ -145,11 +153,34 @@ fn 코트_사각형은_네트_꼭대기부터_모래_아래까지다() {
     let c = 코트();
     let (x, y, w, h) = c.rect();
     assert_eq!(y, c.net_top_y(), "창 윗변은 네트 꼭대기다");
-    assert_eq!(h, c.sand_y() + VOLLEY_SAND_DEPTH - c.net_top_y(), "창은 모래 아래까지 덮는다");
+    assert_eq!(
+        h,
+        c.sand_y() + VOLLEY_SAND_RISE + VOLLEY_SAND_DEPTH - c.net_top_y(),
+        "창은 모래 아래(화면 밖)까지 덮는다"
+    );
     // **네트는 창의 가로 한가운데다** — 웹뷰가 `left: 50%`로 맞출 수 있는 근거다.
     assert!(((x + w / 2.0) - c.net_cx()).abs() < 1e-9, "네트가 창 한가운데가 아니다");
     let (모래_lo, 모래_hi) = c.sand_span();
     assert_eq!((x, x + w), (모래_lo, 모래_hi), "창은 모래사장을 통째로 덮는다");
+}
+
+#[test]
+fn 해변이_화면_안에_보인다() {
+    // **이 기능이 실제로 실패했던 자리다.** 모래를 발밑 선 아래에만 그렸더니
+    // 작업 영역 밖이라 12px만 보였다. 창 안에서 모래 표면이 차지하는 자리가
+    // 발밑 선(작업 영역 바닥)보다 확실히 위여야 한다.
+    let b = 넓은_코트();
+    let c = Court::new(b).unwrap();
+    let (_, y, _, h) = c.rect();
+    let 발밑 = b.floor_y + PET_SIZE;
+    let 보이는_모래 = 발밑 - c.sand_y();
+    assert!(
+        보이는_모래 >= 60.0,
+        "화면 안에 보이는 모래가 {보이는_모래}px뿐이다"
+    );
+    // 창은 모래 표면을 확실히 품는다.
+    assert!(y < c.sand_y(), "창 윗변이 모래 표면보다 아래다");
+    assert!(y + h > 발밑, "창이 발밑 선까지 안 내려온다");
 }
 
 #[test]
@@ -319,11 +350,15 @@ fn 공은_반드시_네트를_넘는다() {
             now += 50;
             board.step_ball(0.05);
             if let Some(ball) = board.ball() {
-                if (ball.x - court.net_cx()).abs() < 40.0 {
+                // **그물 전폭을 본다.** ±40은 그물에 폭이 생기기 전의 값이라
+                // 가장 낮게 지나는 **먼 쪽 모서리**(±48)를 놓쳤다.
+                // **공 아래쪽을 본다.** 중심만 보면 반지름 28px이 그물 안으로
+                // 들어가 있어도 통과한다 — 실제로 그렇게 통과하고 있었다.
+                if (ball.x - court.net_cx()).abs() <= VOLLEY_NET_HALF_W {
                     assert!(
-                        ball.y <= court.net_top_y(),
-                        "시드 {seed}: 공이 네트에 걸렸다 (y={}, 네트 꼭대기={})",
-                        ball.y,
+                        ball.y + VOLLEY_BALL_SIZE / 2.0 <= court.net_top_y(),
+                        "시드 {seed}: 공이 네트를 뚫었다 (아래끝={}, 그물 꼭대기={})",
+                        ball.y + VOLLEY_BALL_SIZE / 2.0,
                         court.net_top_y()
                     );
                 }
@@ -402,19 +437,32 @@ fn 체공이_세_갈래로_갈린다() {
     // 공이 뜰 수 있는 높이가 절반이 됐고, `flight_ms_for`의 천장 자르기가 가장
     // 긴 등급을 눌러 준다 — 값은 달라져도 **셋으로 갈린다**는 것이 이 테스트가
     // 지키려던 것이고 그건 그대로다 (`VOLLEY_MIN_HEADROOM` 단언이 하한을 잡는다).
+    // **등급 자체를 본다.** 관측값으로 세면 도착 보장(`필요`)이 만드는 잔값이
+    // 수십 가지라 `>= 3`이 그냥 통과한다 — 등급이 하나로 뭉개져도 못 잡는다.
+    let court = 코트();
+    let 등급: Vec<u64> = VOLLEY_FLIGHT_MS
+        .iter()
+        .map(|g| flight_ms_for(&court, 0.0, *g))
+        .collect();
+    let 서로_다른: std::collections::BTreeSet<u64> = 등급.iter().copied().collect();
+    assert_eq!(
+        서로_다른.len(),
+        3,
+        "천장 자르기가 등급 셋을 {}가지로 뭉갰다: {등급:?}",
+        서로_다른.len()
+    );
+    assert!(등급[2] >= 등급[0] * 2, "가장 긴 등급이 짧은 것의 두 배도 안 된다: {등급:?}");
+
+    // 실제 랠리에서도 셋이 다 나온다.
     let mut 본_것 = std::collections::BTreeSet::new();
     for seed in 1u64..=20 {
         for ms in 랠리를_굴린다(4, seed).체공들 {
-            본_것.insert(ms);
+            if 등급.contains(&ms) {
+                본_것.insert(ms);
+            }
         }
     }
-    assert!(
-        본_것.len() >= 3,
-        "체공이 {}가지뿐이다 — 리듬이 안 갈린다",
-        본_것.len()
-    );
-    let (짧은, 긴) = (*본_것.iter().next().unwrap(), *본_것.iter().last().unwrap());
-    assert!(긴 >= 짧은 * 2, "가장 긴 체공({긴})이 짧은 것({짧은})의 두 배도 안 된다");
+    assert_eq!(본_것.len(), 3, "랠리에 안 나온 등급이 있다: {본_것:?}");
 }
 
 #[test]

@@ -151,6 +151,27 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
   it("모래_깊이가_VOLLEY_SAND_DEPTH와_같다", () => {
     expect(cssVar("vb-sand-depth")).toBe(rustF64("VOLLEY_SAND_DEPTH"));
   });
+
+  it("보이는_모래_높이가_VOLLEY_SAND_RISE와_같다", () => {
+    // **이 값이 어긋나면 모래가 화면 밖에 그려진다.** 실제로 그렇게 짜서
+    // 보이는 모래가 12px뿐이었다.
+    expect(cssVar("vb-sand-rise")).toBe(rustF64("VOLLEY_SAND_RISE"));
+  });
+
+  it("네트_viewBox가_요소_크기와_같다", () => {
+    const m = courtTs.match(/class="vb-net" viewBox="0 0 (\d+) (\d+)"/);
+    expect(m, "네트 viewBox를 못 찾았다").not.toBeNull();
+    expect(Number(m![1])).toBe(cssVar("vb-net-w"));
+    expect(Number(m![2])).toBe(cssVar("vb-net-h"));
+  });
+
+  it("모래_viewBox가_요소_높이와_같다", () => {
+    // 세로로 안 늘이므로(`preserveAspectRatio="none"`이지만 높이가 고정이다)
+    // viewBox 세로와 CSS 높이가 같아야 물결선이 정확히 해변 표면에 온다.
+    const m = courtTs.match(/class="vb-sand" viewBox="0 0 \d+ (\d+)"/);
+    expect(m, "모래 viewBox를 못 찾았다").not.toBeNull();
+    expect(Number(m![1])).toBe(cssVar("vb-sand-rise")! + cssVar("vb-sand-depth")!);
+  });
 });
 
 describe("웹뷰 규약", () => {

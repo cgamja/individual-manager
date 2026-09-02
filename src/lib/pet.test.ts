@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { voiceOffsetFor } from "../pet/sound";
 import {
+  isFemalePet,
   DRAG_THRESHOLD_PX,
   DEFAULT_TAUNTS,
   tauntFor,
@@ -269,6 +271,37 @@ describe("킹받는 대사", () => {
   it("아주_큰_값이나_음수에도_대사를_돌려준다", () => {
     for (const roll of [Number.MAX_SAFE_INTEGER, -7, 0, 1e15]) {
       expect(DEFAULT_TAUNTS).toContain(tauntFor(roll, DEFAULT_TAUNTS));
+    }
+  });
+});
+
+describe("성별은 창 라벨에서 결정적으로 나온다", () => {
+  it("같은_라벨은_항상_같은_결과다", () => {
+    // 난수를 쓰면 앱을 껐다 켤 때마다 옷이 바뀐다 (PRINCIPLE 3).
+    for (const label of ["pet-1", "pet-2", "pet-7", "pet-8"]) {
+      const 처음 = isFemalePet(label);
+      for (let i = 0; i < 5; i += 1) expect(isFemalePet(label)).toBe(처음);
+    }
+  });
+
+  it("암수가_둘_다_나온다", () => {
+    const 결과 = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => isFemalePet(`pet-${n}`));
+    expect(결과.some(Boolean), "암컷이 하나도 없다").toBe(true);
+    expect(결과.some((f) => !f), "수컷이 하나도 없다").toBe(true);
+  });
+
+  it("목소리와_따로_논다", () => {
+    // 같은 곱수를 쓰면 "높은 목소리 = 암컷"이라는, 아무도 요구하지 않은
+    // 규칙이 생긴다.
+    const 쌍 = [1, 2, 3, 4, 5, 6, 7, 8].map(
+      (n) => `${isFemalePet(`pet-${n}`)}:${voiceOffsetFor(`pet-${n}`)}`,
+    );
+    expect(new Set(쌍).size).toBeGreaterThan(2);
+  });
+
+  it("펫_창이_아니면_수컷으로_떨어진다", () => {
+    for (const label of ["main", "volley-court", "", "pet-x"]) {
+      expect(isFemalePet(label)).toBe(false);
     }
   });
 });

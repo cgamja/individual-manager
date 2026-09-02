@@ -6,28 +6,67 @@
    `Gather`만 공중이라 `.pg-air`와 기울기가 함께 걸리고, 나머지는 모래 위라
    지상 자세를 쓴다 (볼링과 정반대다 — 그쪽은 판이 화면 세로 중앙이었다). */
 
-/* ── 지푸라기 걸침 — 판이 도는 동안에만 입는다 ───────────────── */
+/* ── 훌라 차림 — 판이 도는 동안에만 입는다 ─────────────────────── */
 
-/* **상의만 있고 하의는 없다.** 비키니를 접은 이유는 취향이 아니라 적나라해서다 —
-   수영복 하의는 펭귄 몸에 속옷처럼 얹혀 오히려 눈에 띄었고, 지우면 원래 펭귄
-   몸으로 돌아갈 뿐이라 그쪽이 덜 노출된다. 그림은 `Penguin.tsx`에 있다.
+/* **수컷은 치마 + 레이, 암컷은 거기에 상의까지.** 전통 훌라 복식이 그렇다 —
+   남자는 치마나 말로만 두르고 상체엔 레이를 얹었고, 여자는 치마에 상의를
+   갖췄다. 그림과 성별 파생의 근거는 `Penguin.tsx`와 `lib/pet.ts`에 있다.
+
+   처음엔 핑크 비키니였는데 **적나라해서** 접었다 — 그래서 암컷 상의는 끈이
+   아니라 몸통을 덮는 덮개다.
 
    **평소에는 `display: none`이다.** `opacity: 0`으로 감추면 후광(`pg-halo`)에
    잔상이 남는다 — 얼음낚시 도형들과 같은 규칙이고 `pet-css.test.ts`가 대조한다. */
-.pg-straw {
+.pg-luau {
   display: none;
 }
 
 /* 여섯 국면 전부에서 보인다. **`Cheer`/`Sulk`까지 포함하는 것이 이 국면들을
    `Behavior::Sassy`로 넘기지 않은 이유다** — 넘겼으면 축하하는 동안 옷이
    한 프레임에 사라진다. */
-.pg--volley-gather .pg-straw,
-.pg--volley-ready .pg-straw,
-.pg--volley-chase .pg-straw,
-.pg--volley-bump .pg-straw,
-.pg--volley-cheer .pg-straw,
-.pg--volley-sulk .pg-straw {
+.pg--volley-gather .pg-luau,
+.pg--volley-ready .pg-luau,
+.pg--volley-chase .pg-luau,
+.pg--volley-bump .pg-luau,
+.pg--volley-cheer .pg-luau,
+.pg--volley-sulk .pg-luau {
   display: block;
+}
+
+/* **상의는 암컷만.** 클래스가 없으면 상체는 그냥 펭귄이다 — 수컷의 상체를
+   채우는 것은 레이 하나뿐이다. */
+.pg-luau-top {
+  display: none;
+}
+
+.pg-female .pg-luau-top {
+  display: block;
+}
+
+/* 레이와 치마는 암수 공통이다. 따로 규칙이 필요한 것은 아니지만, `Penguin.tsx`가
+   쓰는 클래스에는 스타일이 있어야 한다(`pet-css.test.ts`가 대조한다) — 지푸라기
+   가닥이 자세를 따라 함께 흔들리도록 변형 기준점만 잡아 둔다. */
+.pg-lei {
+  transform-origin: 50% 100%;
+}
+
+.pg-luau-skirt {
+  transform-origin: 50% 0%;
+}
+
+/* 뛰는 동안 치마 단이 살짝 흔들린다 — 라피아가 뻣뻣한 판때기로 안 보이게. */
+@keyframes pg-luau-sway {
+  0%,
+  100% {
+    transform: rotate(-2.5deg);
+  }
+  50% {
+    transform: rotate(2.5deg);
+  }
+}
+
+.pg--volley-chase .pg-luau-skirt {
+  animation: pg-luau-sway 0.26s ease-in-out infinite;
 }
 
 /* ── 모이는 중 — 자기 자리로 날아간다 ─────────────────────────── */

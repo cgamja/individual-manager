@@ -18,17 +18,26 @@ const HOLE = "#2f4a63";
 const FLOAT = "#d94f3d";
 /** 잡은 물고기. */
 const FISH = "#8fb3c9";
-/** 비치발리볼 지푸라기 걸침 — 마른 풀색. 평소에는 `display: none`이다. */
+/** 훌라 치마·상의의 라피아(마른 풀) 색. 평소에는 `display: none`이다. */
 const STRAW = "#d8b25f";
-/** 지푸라기의 그늘진 결. 실루엣 안에서 결이 읽힐 만큼만 어둡다. */
+/** 라피아의 그늘진 결. 실루엣 안에서 결이 읽힐 만큼만 어둡다. */
 const STRAW_DARK = "#a8822f";
+/** 목에 거는 레이(꽃목걸이) — 여름 느낌을 내는 유일한 색 포인트다. */
+const LEI = "#e8543f";
+const LEI_ALT = "#f2c14e";
 
-type PenguinProps = React.ComponentPropsWithoutRef<"svg">;
+interface PenguinOwnProps {
+  /** 암컷인가 — 훌라 상의를 입힐지 정한다. 창 라벨에서 결정적으로 파생한다. */
+  female?: boolean;
+}
 
-export function Penguin({ className = "penguin", ...rest }: PenguinProps) {
+type PenguinProps = React.ComponentPropsWithoutRef<"svg"> & PenguinOwnProps;
+
+export function Penguin({ className = "penguin", female = false, ...rest }: PenguinProps) {
+  const cls = female ? `${className} pg-female` : className;
   return (
     <svg
-      className={className}
+      className={cls}
       viewBox="0 0 100 130"
       role="img"
       aria-label="펭귄"
@@ -96,48 +105,86 @@ function Shapes() {
         </g>
       </g>
 
-      {/* **지푸라기 걸침 — 상의만 있고 하의는 없다.**
+      {/* **훌라(luau) 차림 — 성별로 다르다.** `female`은 창 라벨에서 결정적으로
+          파생한다 (`isFemalePet`) — 난수가 아니라 id 기반이라 앱을 껐다 켜도
+          같은 펭귄은 같은 차림이고, 그래서 저장할 것도 없다.
 
-          비키니를 접은 이유는 취향이 아니라 **적나라해서**다. 수영복 하의는
-          펭귄 몸에 속옷처럼 얹혀 오히려 눈에 띄었고, 지우면 원래의 펭귄 몸으로
-          돌아갈 뿐이라 그쪽이 덜 노출된다.
+          **수컷은 아래만, 암컷은 위아래 둘 다.** 전통 훌라 복식이 그렇다 —
+          남자는 치마나 말로(malo)만 두르고 상체엔 레이·띠를 얹었고, 여자는
+          치마에 상의를 갖췄다(무무). 코코넛 브라는 전통이 아니라 파티 코스튬의
+          관용구라 안 쓴다.
 
-          그림의 기준은 **가릴 것을 제대로 가리는 쪽**이다 — 끈이나 조각이 아니라
-          몸통을 넉넉히 덮는 **덮개**로 잡았다. 가는 선을 여러 개 그리지 않은
-          것도 같은 이유다: 창이 140px이고 자세가 빠르게 바뀌어서 얇은 선은
-          움직이면 뭉개지고, 뭉개지면 "지푸라기"가 아니라 얼룩으로 읽힌다.
+          **처음엔 핑크 비키니였는데 적나라해서 접었다** (2026-09-02 사용자).
+          그래서 암컷 상의는 끈이나 조각이 아니라 **몸통을 넉넉히 덮는 덮개**다 —
+          얇게 그리면 접은 이유가 그대로 돌아온다.
+
+          가닥을 가는 선으로 여러 개 안 그린 것도 근거가 있다: 창이 140px이고
+          자세가 빠르게 바뀌어 얇은 선은 움직이면 뭉개지고, 뭉개지면 라피아가
+          아니라 얼룩으로 읽힌다. **실루엣이 한눈에 읽히는 덩어리**로 잡고
+          가닥은 몇 개만 암시한다.
 
           **`.pg-all` 안이고 몸통 위, 날개 아래다.** 밖에 두면 착지 포즈에서
           몸만 눌리고 옷이 허공에 남고, 날개 위에 두면 날개를 저을 때 어깨끈이
           날개를 덮는다. */}
-      <g className="pg-straw">
-        {/* 어깨에 걸치는 끈 — 덮개가 흘러내리지 않는다는 것만 읽히면 된다 */}
-        <path
-          d="M38 66 L43 55 M57 66 L52 55"
-          stroke={STRAW}
-          strokeWidth="4"
-          strokeLinecap="round"
-          fill="none"
-        />
-        {/* 덮개 본체. 배의 흰 부분을 가슴부터 배까지 넉넉히 덮는다 */}
-        <path
-          d="M33 64 C40 58 55 58 61 64 C62 78 58 92 47 94 C36 92 32 78 33 64 Z"
-          fill={STRAW}
-        />
-        {/* 아랫단을 지푸라기 끝으로 톱니지게 — 실루엣만으로 짚이 읽힌다 */}
-        <path
-          d="M33.4 84 L37 95 L40 85 L43.5 97 L47 86 L50.5 97 L54 85 L57 95 L60.6 84 Z"
-          fill={STRAW}
-        />
-        {/* 엮은 결 둘. 셋 이상 그리면 이 크기에서 뭉갠다 */}
-        <path
-          d="M35 72 C41 69 53 69 59 72 M34.5 80 C41 77 53 77 59.5 80"
-          stroke={STRAW_DARK}
-          strokeWidth="2"
-          strokeLinecap="round"
-          fill="none"
-          opacity="0.75"
-        />
+      <g className="pg-luau">
+        {/* ── 레이 — 암수 공통. 수컷의 상체를 채우는 것이 이것 하나다 ── */}
+        <g className="pg-lei">
+          <path
+            d="M34 52 C40 62 55 62 62 52"
+            stroke={LEI}
+            strokeWidth="5.5"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <circle cx="39" cy="57" r="2.6" fill={LEI_ALT} />
+          <circle cx="48" cy="60" r="2.8" fill={LEI_ALT} />
+          <circle cx="57" cy="57" r="2.6" fill={LEI_ALT} />
+        </g>
+
+        {/* ── 치마 — 암수 공통. 허리띠 + 톱니진 라피아 단 ── */}
+        <g className="pg-luau-skirt">
+          <path
+            d="M31 86 C38 81 56 81 63 86 C63 94 61 100 59 103 L35 103 C33 100 31 94 31 86 Z"
+            fill={STRAW}
+          />
+          {/* 단을 톱니지게 — 실루엣만으로 라피아 가닥이 읽힌다 */}
+          <path
+            d="M31.5 98 L34 112 L37.5 100 L41 114 L44.5 101 L47 115 L49.5 101 L53 114 L56.5 100 L60 112 L62.5 98 Z"
+            fill={STRAW}
+          />
+          <path
+            d="M31 88 C38 84 56 84 63 88"
+            stroke={STRAW_DARK}
+            strokeWidth="3"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.85"
+          />
+        </g>
+
+        {/* ── 상의 — 암컷만. 가슴부터 배까지 넉넉히 덮는 덮개다 ── */}
+        <g className="pg-luau-top">
+          <path
+            d="M34 62 C41 56 55 56 62 62 C63 74 59 84 47 86 C35 84 33 74 34 62 Z"
+            fill={STRAW}
+          />
+          <path
+            d="M37 61 L42 53 M59 61 L53 53"
+            stroke={STRAW}
+            strokeWidth="4"
+            strokeLinecap="round"
+            fill="none"
+          />
+          {/* 엮은 결 둘. 셋 이상은 이 크기에서 뭉갠다 */}
+          <path
+            d="M35.5 70 C41 67 54 67 61 70 M35 78 C41 75 54 75 61 78"
+            stroke={STRAW_DARK}
+            strokeWidth="2"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.75"
+          />
+        </g>
       </g>
 
       <path

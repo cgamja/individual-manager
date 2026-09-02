@@ -8,6 +8,7 @@ import { SoundPlayer, soundsFor } from "./sound";
 import {
   DRAG_THRESHOLD_PX,
   behaviorClass,
+  isFemalePet,
   shouldRestart,
   throwVelocity,
   verticalClass,
@@ -214,6 +215,9 @@ export function PetApp() {
     setGaze({ x: 0, y: 0 });
   }, []);
 
+  // 창 라벨에서 결정적으로 뽑는다 — 렌더마다 다시 계산해도 같은 값이다.
+  const female = isFemalePet(getCurrentWebviewWindow().label);
+
   const stageClass = `pg-stage${snapshot?.facing === "left" ? " pg-stage--flip" : ""}`;
   const petClass = [
     "penguin",
@@ -238,6 +242,7 @@ export function PetApp() {
         <Penguin
         key={restartKey}
         className={petClass}
+        female={female}
         style={
           { "--gaze-x": `${gaze.x}px`, "--gaze-y": `${gaze.y}px` } as React.CSSProperties
         }

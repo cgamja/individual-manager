@@ -1030,7 +1030,7 @@ impl Pet {
             Behavior::Freakout { freakout } => self.tick_freakout(now_ms, freakout, bounds, dt),
             Behavior::IceFishing { fishing } => self.tick_fishing(now_ms, fishing),
             Behavior::Bowling { bowling } => self.tick_bowling(now_ms, bowling, bounds, dt),
-            Behavior::Volleyball { volley } => self.tick_volley(now_ms, volley, dt),
+            Behavior::Volleyball { volley } => self.tick_volley(now_ms, volley, bounds, dt),
             Behavior::Idle { .. } | Behavior::Sleep => {
                 if now_ms >= self.behavior_until_ms {
                     self.pick_next(now_ms, bounds);

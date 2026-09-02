@@ -97,8 +97,10 @@ impl Court {
             gap,
             // **판은 화면 세로 중앙이다** — 볼링의 `lane_center_y`와 같다.
             play_y: (top + bounds.floor_y) / 2.0,
-            // 모래는 판이 아니라 **화면 바닥**에 있다. 발밑 선이므로 `+ PET_SIZE`.
-            sand_y: bounds.floor_y + PET_SIZE,
+            // 모래는 판이 아니라 **화면 바닥**에 있다. 발밑 선
+            // (`floor_y + PET_SIZE`)은 작업 영역 바닥과 같아서 거기 그리면
+            // 화면 밖이므로, 표면을 그보다 `VOLLEY_SAND_RISE`만큼 올린다.
+            sand_y: bounds.floor_y + PET_SIZE - VOLLEY_SAND_RISE,
             top,
             left: bounds.left,
             right: bounds.right,
@@ -110,8 +112,14 @@ impl Court {
     }
 
     /// 모래 표면 — **화면 바닥의 해변**이다. 공이 여기 닿으면 랠리가 끝난다.
+    /// 펭귄 발밑 선보다 `VOLLEY_SAND_RISE`만큼 **위**다 (아래는 화면 밖이다).
     pub(super) fn sand_y(&self) -> f64 {
         self.sand_y
+    }
+
+    /// 코트 창의 아래 끝 — 발밑 선보다 더 아래로, 화면 밖까지 내려간다.
+    fn window_bottom(&self) -> f64 {
+        self.sand_y + VOLLEY_SAND_RISE + VOLLEY_SAND_DEPTH
     }
 
     /// 네트 꼭대기. **판에 매달려 있다** — 펭귄 머리 바로 밑이다.
@@ -170,6 +178,15 @@ impl Court {
         )
     }
 
+    /// 공이 **보이는 채로** 떨어질 수 있는 x 범위 (공 중심 기준). `sand_span`은
+    /// 모래가 화면 밖까지 뻗는 범위라 착지에 쓰면 안 보이는 데서 끝난다.
+    pub(super) fn landing_span(&self) -> (f64, f64) {
+        (
+            self.left + VOLLEY_BALL_SIZE / 2.0,
+            self.right + PET_SIZE - VOLLEY_BALL_SIZE / 2.0,
+        )
+    }
+
     /// 모래사장 밖으로 나갔는가 — 여기까지 가면 화면 밖이라 더 볼 것이 없다.
     pub(super) fn out_of(&self, cx: f64) -> bool {
         let (lo, hi) = self.sand_span();
@@ -198,9 +215,8 @@ impl Court {
     pub fn rect(&self) -> (f64, f64, f64, f64) {
         let (lo, hi) = self.sand_span();
         let top = self.net_top_y();
-        (lo, top, hi - lo, self.sand_y + VOLLEY_SAND_DEPTH - top)
+        (lo, top, hi - lo, self.window_bottom() - top)
     }
-
 }
 
 /// 마릿수를 팀으로 나눈다 — **id 오름차순으로 번갈아.** 홀수면 왼쪽이 하나 많다.
@@ -574,12 +590,15 @@ impl Volleyball {
         let 방향 = if to == Side::Right { 1.0 } else { -1.0 };
         let 그물_끝 = self.court.net_cx() + 방향 * VOLLEY_NET_HALF_W;
         let 최소_거리 = (그물_끝 - x0).abs() / 비율;
-        let (모래_lo, 모래_hi) = self.court.sand_span();
-        // 해변 끝에 딱 붙으면 공이 화면 가장자리에서 끝난다 — 조금 안쪽에 둔다.
-        let 여백 = VOLLEY_COURT_BLEED / 2.0;
+        // **화면 안에 떨어져야 한다.** `sand_span`은 모래가 화면 밖까지 뻗는
+        // 범위라 그걸로 자르면 공이 안 보이는 데서 끝난다 — 세계의 좌우 끝을 쓴다.
+        let (화면_lo, 화면_hi) = self.court.landing_span();
+        // **자르는 순서가 곧 우선순위다.** 네트를 넘는 조건을 나중에 한 번 더
+        // 걸어, 두 조건이 부딪히면 **네트 쪽이 이긴다** — 화면 밖에 떨어지는 것은
+        // 그림이 아쉬운 것이고, 그물을 뚫는 것은 물리가 거짓말을 하는 것이다.
         match to {
-            Side::Right => 빈자리.max(x0 + 최소_거리).min(모래_hi - 여백),
-            Side::Left => 빈자리.min(x0 - 최소_거리).max(모래_lo + 여백),
+            Side::Right => 빈자리.max(x0 + 최소_거리).min(화면_hi).max(x0 + 최소_거리),
+            Side::Left => 빈자리.min(x0 - 최소_거리).max(화면_lo).min(x0 - 최소_거리),
         }
     }
 

@@ -212,10 +212,12 @@ fn 축하가_끝나면_선_자리에서_그대로_떨어진다() {
     pet.volley_finish(now, true);
     now += VOLLEY_CHEER_MS + 50;
     pet.step(now, &world);
+    // **자유낙하가 아니라 내려앉기다.** 판이 화면 세로 중앙이라 떨어뜨리면
+    // 착지 속도가 철푸덕 문턱을 넘어 매 판마다 전원이 철푸덕한다.
     assert_eq!(
         pet.snapshot().behavior,
-        Behavior::Falling,
-        "공중에서 축하가 끝났으면 떨어져야 한다"
+        Behavior::Swim,
+        "공중에서 축하가 끝났으면 날개를 저어 내려앉아야 한다"
     );
     assert!(
         (pet.snapshot().x - 선_자리).abs() < 1e-6,
@@ -233,6 +235,31 @@ fn 축하가_끝나면_선_자리에서_그대로_떨어진다() {
         "아직 코트에 있다: {:?}",
         pet.snapshot().behavior
     );
+}
+
+#[test]
+fn 판이_끝나도_철푸덕하지_않는다() {
+    // **20초짜리 판의 끝이 여덟 마리 동시 철푸덕이면 안 된다.** 이 레포는 헤엄이
+    // 끝날 때마다 저절로 나던 철푸덕을 이미 한 번 걷어냈고, 판을 화면 세로
+    // 중앙으로 올리면서 같은 것이 돌아올 뻔했다 (낙하 328px → 착지 767px/s).
+    let world = world();
+    let mut pet = Pet::new(1, 0, &world);
+    let mut now = 세운다(&mut pet, &world, 0);
+    pet.volley_finish(now, true);
+    now += VOLLEY_CHEER_MS + 50;
+    for _ in 0..400 {
+        now += 50;
+        pet.step(now, &world);
+        let b = pet.snapshot().behavior;
+        assert!(
+            !matches!(b, Behavior::Splat | Behavior::Sprawl),
+            "판이 끝나고 {b:?} 했다 — 내려앉기가 아니라 떨어졌다"
+        );
+        if !pet.snapshot().air {
+            break;
+        }
+    }
+    assert!(!pet.snapshot().air, "바닥까지 안 내려왔다");
 }
 
 #[test]

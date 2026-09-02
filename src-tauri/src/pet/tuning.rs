@@ -365,10 +365,23 @@ const _: () = assert!(VOLLEY_BALL_SIZE < PET_SIZE);
 
 /// 네트 그물의 높이. **모래 위에 서는 것이 아니라 판에 매달려 있다** — 판이
 /// 화면 세로 중앙이라 모래는 저 아래에 있다.
-pub(super) const VOLLEY_NET_HEIGHT: f64 = 120.0;
+pub(super) const VOLLEY_NET_HEIGHT: f64 = 85.0;
 
-/// 모래사장이 발밑 선에서 아래로 뻗는 깊이. 작업 영역 바닥보다 아래이므로
-/// 화면 밖으로 나가고, 그래서 모래의 아래 모서리가 안 보인다.
+/// 해변의 **표면(물결선)이 펭귄 발밑 선보다 위로 올라오는 높이.**
+///
+/// **0이면 모래가 한 픽셀도 안 보인다.** 발밑 선(`floor_y + PET_SIZE`)은
+/// `bounds_of_work_area`가 만든 값이라 **작업 영역의 바닥과 정확히 같고**, 거기서
+/// 아래로 그린 것은 전부 Dock 뒤나 화면 밖이다. 실제로 그렇게 짰다가 보이는
+/// 모래가 12px뿐이었다.
+///
+/// 코트 창은 펭귄보다 아래 레벨(`COURT_WINDOW_LEVEL`)이라 이만큼 올려도
+/// **모래가 펭귄을 덮지 않는다** — 뒤에 깔린다.
+pub(super) const VOLLEY_SAND_RISE: f64 = 110.0;
+const _: () = assert!(VOLLEY_SAND_RISE > 0.0);
+const _: () = assert!(VOLLEY_SAND_RISE < PET_SIZE);
+
+/// 모래사장이 발밑 선에서 **아래로** 더 뻗는 깊이. 화면 밖으로 나가므로
+/// 모래의 아래 모서리가 안 보인다.
 pub(super) const VOLLEY_SAND_DEPTH: f64 = 80.0;
 
 /// 모래사장이 좌우로 세계 밖까지 뻗는 길이. **해변의 좌우 끝이 보이면 안 된다** —
@@ -378,9 +391,14 @@ pub(super) const VOLLEY_COURT_BLEED: f64 = 200.0;
 /// 펭귄이 공을 치는 높이 — 펭귄 `y`(좌상단)보다 이만큼 **위**다.
 pub(super) const VOLLEY_REACH: f64 = 40.0;
 
-/// 네트 꼭대기가 펭귄 `y`(좌상단)보다 이만큼 **아래**다. 머리 바로 밑에 걸려야
-/// 배구 네트로 보인다.
-pub(super) const VOLLEY_NET_DROP: f64 = 10.0;
+/// 네트 꼭대기가 펭귄 `y`(좌상단)보다 이만큼 **아래**다.
+///
+/// **머리 아래여야 한다.** `Penguin.tsx`의 머리는 viewBox에서 y 14~46이고
+/// 140px 무대로 1.077배 늘어나므로 화면에서는 15~50이다. 10으로 뒀더니 네트
+/// 윗줄이 얼굴을 가로질렀다. 55면 목 아래에 걸린다.
+///
+/// 값이 커진 만큼 **킬샷의 네트 여유도 함께 늘었다** — 아래 `VOLLEY_NET_CLEAR` 참고.
+pub(super) const VOLLEY_NET_DROP: f64 = 55.0;
 
 /// **타점이 네트 꼭대기보다 높다 — 이 한 줄이 네트 판정을 통째로 없앤다** (KTD6).
 ///
@@ -389,17 +407,37 @@ pub(super) const VOLLEY_NET_DROP: f64 = 10.0;
 /// 이제 네트는 판에 매달려 있고 타점은 펭귄 위, 네트 꼭대기는 펭귄 아래라
 /// **부호만으로 성립한다.** 타점에서 출발해 타점으로 돌아오는 포물선은 전
 /// 구간이 타점 이상이라 네트에 걸릴 수가 없다.
-const _: () = assert!(VOLLEY_NET_DROP > -VOLLEY_REACH);
 /// 네트가 발밑보다 아래로 처지면 판에 매달린 게 아니라 끌리는 그림이 된다.
 const _: () = assert!(VOLLEY_NET_DROP + VOLLEY_NET_HEIGHT <= PET_SIZE);
 
-/// 타점과 네트 꼭대기 사이. 킬샷이 네트를 넘는지 계산하는 데 쓴다.
-pub(super) const VOLLEY_NET_CLEAR: f64 = VOLLEY_REACH + VOLLEY_NET_DROP;
+/// 한 틱이 정산하는 시간이 길수록 준음함수 오일러 적분이 공을 **아래로 치우치게**
+/// 한다(`g·s·dt/2`). 정상 틱(50ms)에서 20px쯤이라 그만큼 미리 빼 둔다.
+///
+/// **밀린 틱(`MAX_STEP_MS` 250ms)까지 덮지는 않는다** — 그러면 100px을 빼야 해서
+/// 킬샷이 코트 끝까지 밀린다. 그 경우 공이 그물 윗부분을 몇 px 스칠 수 있는데,
+/// 20Hz가 다섯 배로 밀리는 상황 자체가 드물고 그때는 판 전체가 끊겨 보인다.
+pub(super) const VOLLEY_EULER_SLACK: f64 = 24.0;
+
+/// 킬샷이 네트를 넘는지 계산할 때 쓰는 **실효 여유.**
+///
+/// 타점과 네트 꼭대기 사이(`REACH + NET_DROP`)에서 둘을 뺀다. 안 빼면 계산은
+/// 통과하는데 **화면에서는 공이 그물을 뚫고 지나간다** — 실제로 그랬다:
+/// 중심 여유 14px, 공 아래쪽은 네트 안으로 14px 들어갔다.
+///
+/// 1. **공은 점이 아니다** — 반지름 `VOLLEY_BALL_SIZE / 2`만큼 아래가 더 내려간다.
+/// 2. **적분이 아래로 치우친다** — `VOLLEY_EULER_SLACK`.
+pub(super) const VOLLEY_NET_CLEAR: f64 =
+    VOLLEY_REACH + VOLLEY_NET_DROP - VOLLEY_BALL_SIZE / 2.0 - VOLLEY_EULER_SLACK;
+const _: () = assert!(VOLLEY_NET_CLEAR > 0.0);
 
 /// 네트 그물의 **반폭.** 네트는 선이 아니라 폭을 가지므로, 넘는지 따질 때는
 /// 공이 가장 낮게 지나는 **먼 쪽 모서리**를 봐야 한다 — 가운데 선만 보면
 /// 그 몇십 px 뒤에서 그물에 걸린다.
 pub(super) const VOLLEY_NET_HALF_W: f64 = 48.0;
+/// **런타임의 여백과 비교해야 한다.** `Court::new`가 좁은 화면에서 `gap`을
+/// `half / 2`까지 줄이므로, 상수끼리만 견주면 그 축소를 놓친다. 아래 두 단언이
+/// "가장 좁은 세계에서도 `gap`은 안 줄어든다 → 그러니 그물보다 넓다"를 잇는다.
+const _: () = assert!(VOLLEY_NET_GAP * 4.0 <= VOLLEY_MIN_WORLD_WIDTH);
 const _: () = assert!(VOLLEY_NET_HALF_W < VOLLEY_NET_GAP);
 
 /// 네트에서 가장 가까운 자리까지 (몸통 가운데 기준). 네트에 딱 붙어 서면

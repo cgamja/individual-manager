@@ -154,6 +154,25 @@ export const EVENT_PET_SOUND = "pet://sound";
 /** 클릭과 드래그를 가르는 이동량(px). 이보다 덜 움직였으면 클릭으로 본다. */
 export const DRAG_THRESHOLD_PX = 4;
 
+/** 이 펭귄이 암컷인가 — **창 라벨(`pet-<id>`)에서 결정적으로 뽑는다.**
+ *
+ * 성별은 **웹뷰 소유**다 (PRINCIPLE 4): "어떻게 보이는지"라 Rust는 모른다.
+ * 효과음의 목소리 높이(`voiceOffsetFor`)가 이미 같은 방식이다.
+ *
+ * **난수를 안 쓴다** — 같은 시드가 같은 결과를 내야 하고(PRINCIPLE 3), id는
+ * 증가만 하므로 **앱을 껐다 켜도 같은 펭귄은 같은 성별**이다. 그래서
+ * 저장하지도 않는다 (PRD §7).
+ *
+ * 목소리 오프셋과 **다른 곱수(11)를 쓴다.** 같은 값을 쓰면 성별과 목소리가
+ * 붙어 다녀 "높은 목소리 = 암컷"이 되는데, 그건 아무도 요구하지 않은 규칙이다.
+ *
+ * 마릿수가 짝수여도 **성비는 짝수가 아닐 수 있다.** 팀 편성과 성별은 무관하다. */
+export const isFemalePet = (label: string): boolean => {
+  const m = /^pet-(\d+)$/.exec(label);
+  if (!m) return false;
+  return ((Number(m[1]) * 11) % 2) === 1;
+};
+
 /** 동작 → CSS 클래스. 유휴는 종류까지 내려가야 두리번과 기지개가 구분된다. */
 /** Rust의 snake_case를 CSS 선택자에 쓰는 kebab-case로. 한 곳에서만 바꾼다. */
 const kebab = (s: string): string => s.replace(/_/g, "-");

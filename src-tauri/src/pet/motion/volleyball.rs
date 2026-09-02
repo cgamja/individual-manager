@@ -17,15 +17,21 @@ use super::super::*;
 
 impl Pet {
     /// 비치발리볼 국면 진행 — 매 틱 `step`이 부른다.
-    pub(in crate::pet) fn tick_volley(&mut self, now_ms: u64, volley: VolleyPhase, dt: f64) {
+    pub(in crate::pet) fn tick_volley(
+        &mut self,
+        now_ms: u64,
+        volley: VolleyPhase,
+        bounds: Bounds,
+        dt: f64,
+    ) {
         match volley {
             VolleyPhase::Gather => self.tick_volley_gather(now_ms, dt),
-            VolleyPhase::Chase => self.tick_volley_chase(now_ms, dt),
+            VolleyPhase::Chase => self.tick_volley_chase(now_ms, bounds, dt),
             // 판이 몰아 주는 국면. 여기 시각은 국면 길이가 아니라 **안전 상한**이라,
             // 다다랐다는 것은 판이 사라졌다는 뜻이다.
             VolleyPhase::Ready => {
                 if now_ms >= self.behavior_until_ms {
-                    self.leave_court(now_ms);
+                    self.leave_court(now_ms, bounds);
                 }
             }
             VolleyPhase::Bump => {
@@ -39,11 +45,7 @@ impl Pet {
                     // 축하가 끝나면 공중에 떠 있는 상태다 — 볼링의 `Scatter`가
                     // 같은 자리에서 하는 것과 같다. 가로 자리는 안 건드리므로
                     // "선 그 자리에서 평소로"(R12)는 그대로다.
-                    if self.air {
-                        self.enter(Behavior::Falling, now_ms);
-                    } else {
-                        self.enter_idle(now_ms);
-                    }
+                    self.leave_court(now_ms, bounds);
                 }
             }
         }
@@ -78,9 +80,9 @@ impl Pet {
     ///
     /// **자기 팀 범위 밖으로는 안 나간다.** 판이 목적지를 자기 코트 안에만 주지만,
     /// 그 보장이 여기 있어야 판이 실수해도 네트를 넘어가는 그림이 안 나온다.
-    fn tick_volley_chase(&mut self, now_ms: u64, dt: f64) {
+    fn tick_volley_chase(&mut self, now_ms: u64, bounds: Bounds, dt: f64) {
         if now_ms >= self.behavior_until_ms {
-            self.leave_court(now_ms);
+            self.leave_court(now_ms, bounds);
             return;
         }
         let (tx, hi) = (self.target.0, self.volley_span.1);
@@ -195,14 +197,29 @@ impl Pet {
         )
     }
 
-    /// 판에서 빠져나가는 한 길 — **공중이면 떨어지고 아니면 유휴로.** 판이
-    /// 화면 세로 중앙이라 나가는 자리는 거의 항상 공중이다.
-    fn leave_court(&mut self, now_ms: u64) {
-        if self.air {
-            self.enter(Behavior::Falling, now_ms);
-        } else {
+    /// 판에서 빠져나가는 한 길 — **날개를 저어 해변으로 내려앉는다.**
+    ///
+    /// **자유낙하로 두면 안 된다.** 판이 화면 세로 중앙이라 떨어지는 높이가
+    /// 세계의 절반(1440×900에서 328px)이고, 그러면 착지 속도가 767px/s로
+    /// `SPLAT_MIN_IMPACT`(700)를 넘어 **매 판마다 전원이 철푸덕한다.** 이 레포는
+    /// 헤엄이 끝날 때마다 저절로 나던 철푸덕을 이미 한 번 걷어냈다 — 20초짜리
+    /// 판의 끝이 여덟 마리 동시 철푸덕이면 그때 없앤 것이 그대로 돌아온다.
+    ///
+    /// 그래서 **헤엄의 내려앉기를 그대로 쓴다**(`tick_swim`의 하강 갈래):
+    /// 목적지를 바로 아래 바닥으로 잡고 `swim_descending`을 켜면, 도착했을 때
+    /// `Land`(300ms)로 통, 하고 닿는다. 물리를 새로 쓰지 않는다.
+    fn leave_court(&mut self, now_ms: u64, bounds: Bounds) {
+        if !self.air {
             self.enter_idle(now_ms);
+            return;
         }
+        self.vx = 0.0;
+        self.vy = 0.0;
+        self.target = (self.x, bounds.floor_y);
+        self.swim_descending = true;
+        let 남은 = (bounds.floor_y - self.y).max(0.0);
+        let 예산 = ((남은 / SWIM_DESCENT_SPEED) * 2_000.0) as u64 + 1_000;
+        self.enter(Behavior::Swim, now_ms + 예산);
     }
 
     fn enter_volley(&mut self, phase: VolleyPhase, now_ms: u64) {

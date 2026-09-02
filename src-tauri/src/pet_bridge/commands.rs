@@ -376,6 +376,7 @@ pub fn volleyball_start(state: State<'_, PetState>, app: AppHandle) -> Result<()
             VolleyRefusal::BoardBusy => "이미 판이 돌고 있어요",
             VolleyRefusal::NoRoom => "코트를 깔 자리가 없어요 — 화면이 좁아요",
             VolleyRefusal::TooFew => "두 마리부터 할 수 있어요",
+            VolleyRefusal::Odd => "짝수 마릿수만 할 수 있어요 — 팀이 갈려야 해요",
         }
         .to_string()
     })?;

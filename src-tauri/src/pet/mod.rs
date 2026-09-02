@@ -175,6 +175,10 @@ pub enum VolleyRefusal {
     NoRoom,
     /// 참여할 마리가 둘이 안 된다.
     TooFew,
+    /// 마릿수가 홀수다. **팀이 갈리지 않으면 열지 않는다** (2026-09-02 사용자 지시) —
+    /// 한 팀이 한 마리 많으면 그쪽이 덜 뛰고, 그 차이가 "누가 받으러 뛰는가"라는
+    /// 이 판의 유일한 볼거리를 한쪽으로 기울인다. 거절하는 편이 정직하다.
+    Odd,
 }
 
 impl Pets {
@@ -562,6 +566,11 @@ impl Pets {
         let ids = self.ids();
         if ids.len() < VOLLEY_MIN_PETS {
             return Err(VolleyRefusal::TooFew);
+        }
+        // **홀수면 열지 않는다.** `TooFew`보다 뒤에 본다 — 한 마리일 때는 "홀수라서"가
+        // 아니라 "둘이 안 돼서"가 사용자에게 맞는 설명이다.
+        if ids.len() % 2 != 0 {
+            return Err(VolleyRefusal::Odd);
         }
 
         let sides = assign_sides(ids.len());

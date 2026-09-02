@@ -300,7 +300,7 @@ function App() {
       await startVolleyball();
       setBoardNotice(null);
     } catch (err) {
-      // 코어가 이유를 셋으로 갈라 준다 (두 마리부터 / 이미 판이 돈다 /
+      // 코어가 이유를 넷으로 갈라 준다 (두 마리부터 / 짝수만 / 이미 판이 돈다 /
       // 코트를 깔 자리가 없다). 콘솔에만 찍으면 사용자에게는 "안 눌린다"로 보인다.
       setBoardNotice(typeof err === "string" ? err : "비치발리볼을 못 열었어요");
     }

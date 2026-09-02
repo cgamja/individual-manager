@@ -143,22 +143,33 @@ pub fn create_vball_window(app: &AppHandle, at: (f64, f64)) -> tauri::Result<Web
 /// 코트를 펭귄보다 **한 레벨 아래**로 내린다. 핀볼 판과 같은 이유·같은 방법이다.
 #[cfg(target_os = "macos")]
 pub fn sink_court_below_pets(app: &AppHandle) {
-    use objc2_app_kit::NSWindow;
+    // **반드시 메인 스레드에서 부른다.** 코트 창은 핀볼 판과 달리 커맨드가 아니라
+    // **20Hz 틱 스레드**가 만든다(`apply_volley`). AppKit 객체를 그 스레드에서
+    // 직접 만지면 앱이 **통째로 죽는다** — 패닉도 Tauri 종료 이벤트도 없이
+    // 사라져서 로그에 아무 단서가 안 남는다.
+    //
+    // `set_position`을 아무 스레드에서나 불러도 되는 것과 헷갈리면 안 된다(KTD5):
+    // 그쪽은 tauri-runtime-wry가 이벤트 루프로 넘겨 주지만, `ns_window()`로 꺼낸
+    // 포인터를 직접 만지는 것은 그 디스패치를 **건너뛴다.**
+    let app = app.clone();
+    let _ = app.clone().run_on_main_thread(move || {
+        use objc2_app_kit::NSWindow;
 
-    let Some(window) = court_window(app) else {
-        return;
-    };
-    let ptr = match window.ns_window() {
-        Ok(ptr) if !ptr.is_null() => ptr,
-        _ => {
-            eprintln!("[penguin] 코트의 창 레벨을 못 내렸다 — 펭귄이 가려질 수 있다");
+        let Some(window) = court_window(&app) else {
             return;
+        };
+        let ptr = match window.ns_window() {
+            Ok(ptr) if !ptr.is_null() => ptr,
+            _ => {
+                eprintln!("[penguin] 코트의 창 레벨을 못 내렸다 — 펭귄이 가려질 수 있다");
+                return;
+            }
+        };
+        unsafe {
+            let ns = &*(ptr as *const NSWindow);
+            ns.setLevel(COURT_WINDOW_LEVEL);
         }
-    };
-    unsafe {
-        let ns = &*(ptr as *const NSWindow);
-        ns.setLevel(COURT_WINDOW_LEVEL);
-    }
+    });
 }
 
 #[cfg(not(target_os = "macos"))]

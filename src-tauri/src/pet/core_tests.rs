@@ -472,6 +472,56 @@ fn 한_마리면_판을_열지_않는다() {
 }
 
 #[test]
+fn 홀수면_판을_열지_않는다() {
+    // 팀이 갈리지 않으면 한쪽이 덜 뛰고, "누가 받으러 뛰는가"라는 이 판의 유일한
+    // 볼거리가 한쪽으로 기운다. 세 마리·다섯 마리·일곱 마리 전부 거절한다.
+    for n in [3usize, 5, 7] {
+        let mut pets = 여러_마리(n);
+        let 전: Vec<_> = pets
+            .ids()
+            .iter()
+            .map(|id| pets.get(*id).unwrap().snapshot().behavior)
+            .collect();
+        assert_eq!(
+            pets.start_volleyball(0, 넓은_경계, 7),
+            Err(VolleyRefusal::Odd),
+            "{n}마리인데 판이 열렸다"
+        );
+        assert!(pets.volleyball().is_none());
+        let 후: Vec<_> = pets
+            .ids()
+            .iter()
+            .map(|id| pets.get(*id).unwrap().snapshot().behavior)
+            .collect();
+        assert_eq!(전, 후, "{n}마리: 거절했는데 동작이 바뀌었다");
+    }
+}
+
+#[test]
+fn 짝수면_판이_열린다() {
+    // 홀수 거절이 짝수까지 막지 않는지 — 상한(8)까지 본다.
+    for n in [2usize, 4, 6, 8] {
+        let mut pets = 여러_마리(n);
+        assert_eq!(
+            pets.start_volleyball(0, 넓은_경계, 7),
+            Ok(()),
+            "{n}마리인데 판이 안 열렸다"
+        );
+        assert!(pets.volleyball().is_some());
+    }
+}
+
+#[test]
+fn 한_마리는_홀수가_아니라_모자란_것이다() {
+    // 사용자에게 "짝수로 맞춰라"가 아니라 "둘부터"가 맞는 설명이다.
+    let mut pets = 여러_마리(1);
+    assert_eq!(
+        pets.start_volleyball(0, 넓은_경계, 7),
+        Err(VolleyRefusal::TooFew)
+    );
+}
+
+#[test]
 fn 두_마리면_판이_열린다() {
     let mut pets = 여러_마리(2);
     assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
@@ -529,10 +579,12 @@ fn 비치발리볼이_도는_중에는_볼링을_못_연다() {
 #[test]
 fn 참여_마리가_둘_미만이_되면_판이_접힌다() {
     let w = World::single(넓은_경계);
-    let mut pets = 여러_마리(3);
+    // **짝수로 연다** — 홀수는 판이 아예 안 열린다(`홀수면_판을_열지_않는다`).
+    // 접히는 것은 **연 뒤에** 마리가 빠지는 이야기라 여는 조건과 별개다.
+    let mut pets = 여러_마리(4);
     assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
-    // 셋 중 둘을 집어 들면 하나만 남는다.
-    for id in [1u32, 2] {
+    // 넷 중 셋을 집어 들면 하나만 남는다.
+    for id in [1u32, 2, 3] {
         pets.get_mut(id).unwrap().drag_start(100);
     }
     pets.step_all(150, |_| Some(&w));

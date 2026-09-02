@@ -138,6 +138,16 @@ Rust는 아무 말도 하지 않는다.
   **락에서 꺼낸 것을 순회할 때는 반드시 `let`으로 먼저 받는다.** 증상은 "버튼을
   누르면 앱이 통째로 멈춘다" 하나뿐이고 두 러너·타입 검사·번들 빌드가 전부 통과한다.
   → `docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md`
+- **`ns_window()` 아래로 내려간 순간부터는 반드시 메인 스레드다.** AppKit 객체를
+  20Hz 틱 스레드에서 만지면 **앱이 흔적 없이 죽는다** — 패닉도, `RunEvent::Exit`도,
+  로그 한 줄도 안 남고 프로세스가 증발한다("판을 잘 열었다"는 로그 **직후에** 사라진다).
+  KTD5의 *"`set_position`은 어느 스레드에서 불러도 안전하다"*는 **Tauri API에 한한**
+  이야기이고, `ns_window()`로 꺼낸 포인터를 직접 만지는 것은 그 디스패치를 건너뛴다.
+  같은 함수라도 **호출 자리가 커맨드냐 틱이냐로 갈린다** — 핀볼 판(`sink_pinball_below_pets`)은
+  커맨드에서 불려 멀쩡했고, 그걸 베껴 온 코트(`sink_court_below_pets`)는 틱에서 불려
+  죽었다. 진단의 첫 수는 `.run(|_, event|)`로 `RunEvent`를 전부 찍어 보는 것이다 —
+  종료 이벤트가 **안 뜨는 것**이 "정상 종료가 아니다"의 증거다. →
+  `docs/solutions/best-practices/appkit-from-tick-thread-kills-the-app.md`
 - **`set_ignore_cursor_events`는 비동기다 — 호출 직후에 읽으면 `false`다.** `Ok(())`를
   즉시 주지만 적용은 이벤트 루프를 왕복한 뒤다(`set_position`과 같은 성질). 직후에
   읽어 확인하면 "이 API는 `always_on_top` 창에서 안 먹는다"는 **오답**이 나온다 —

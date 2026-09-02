@@ -119,6 +119,43 @@ const _: () = assert!(PINBALL_HIT_WORLDS_PER_SEC < THROW_MAX_WORLDS_PER_SEC);
 const _: () = assert!(PINBALL_DAMPING < 1.0);
 const _: () = assert!(PINBALL_DAMPING > BOUNCE_DAMPING);
 
+/// 마리끼리 부딪히는 거리 — **몸통 중심 사이**다. 창은 한 변 `PET_SIZE`인 정사각형이지만
+/// 펭귄 그림은 그보다 좁아, `PET_SIZE`를 그대로 쓰면 눈에 안 닿았는데 튕긴다. 반대로
+/// 절반보다 작으면 거의 겹쳐야 튕겨 통과한 것처럼 보인다. 두 `assert!`가 그 사이에 묶는다.
+pub(super) const PINBALL_COLLIDE_RADIUS: f64 = 104.0;
+const _: () = assert!(PINBALL_COLLIDE_RADIUS < PET_SIZE);
+const _: () = assert!(PINBALL_COLLIDE_RADIUS > PET_SIZE / 2.0);
+
+/// 마리끼리 부딪힐 때 남는 속도 비율(반발 계수). **1보다 작아야 한다** — 1이면 여덟 마리가
+/// 뒤엉킬 때 에너지가 줄지 않아 영영 안 멎고, 20Hz 틱도 영영 안 쉰다. 벽(`PINBALL_DAMPING`)
+/// 보다 살짝 무른 이유는 벽이 판의 테두리라 랠리를 살려야 하고, 마리끼리는 매 번 두
+/// 마리의 속도를 함께 흔들어 같은 계수로도 훨씬 시끄럽기 때문이다.
+pub(super) const PINBALL_BUMP_DAMPING: f64 = 0.9;
+const _: () = assert!(PINBALL_BUMP_DAMPING < 1.0);
+/// 주석이 근거로 드는 관계를 그대로 묶는다. `> BOUNCE_DAMPING`(0.5)만으로는 0.99를
+/// 넣어도 통과해 아무것도 못 막는다.
+const _: () = assert!(PINBALL_BUMP_DAMPING < PINBALL_DAMPING);
+
+/// 부딪힌 것으로 칠 **최소 상대 속도**.
+///
+/// 판정은 `vx`/`vy`가 아니라 **이번 틱에 지나온 거리**로 속도를 잰다 — 그 둘은 던져졌을
+/// 때만 0이 아니라서, 틱 안에서 날아와 착지까지 끝낸 마리는 틱 끝에 속도가 0이고
+/// 미끄러지는 마리는 처음부터 0이다. 대신 위치로 움직이는 평소 동작까지 전부 보이게
+/// 되므로 문턱이 필요하다: **마주 걸어오는 두 마리(42×2)는 이 아래**라 스쳐도 안
+/// 튕기고, 굴러떨어지기(200)·미끄러지기(220)·발작(480)은 위다.
+pub(super) const PINBALL_BUMP_MIN_SPEED: f64 = 120.0;
+const _: () = assert!(PINBALL_BUMP_MIN_SPEED > WALK_SPEED * 2.0);
+const _: () = assert!(PINBALL_BUMP_MIN_SPEED < TUMBLE_SPEED);
+
+/// 바닥에 선 마리가 맞았을 때 속도가 **위로 도는 비율**. 0이면 맞은 것이 안 보인다 —
+/// 수평 속도만 받으면 다음 틱에 곧바로 다시 착지해 한 틱 미끄러지고 끝난다.
+///
+/// **속력을 더하는 값이 아니라 방향을 트는 값이다** (`Pet::bumped`). 세로만 얹으면
+/// 속력이 √(1+비율²)배로 늘어 바닥 높이 충돌의 실효 반발 계수가 위 상수를 넘어선다.
+pub(super) const PINBALL_BUMP_LIFT: f64 = 0.35;
+const _: () = assert!(PINBALL_BUMP_LIFT > 0.0);
+const _: () = assert!(PINBALL_BUMP_LIFT < 1.0);
+
 // ── 동작 길이 (ms) ─────────────────────────────────────────────
 //
 // CSS 애니메이션 길이와 맞아야 한다 (`pet-css.test.ts`가 대조한다).

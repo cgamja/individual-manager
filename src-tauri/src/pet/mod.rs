@@ -109,6 +109,31 @@ pub struct Pet {
 /// 펭귄 식별자. 창 라벨(`pet-<id>`)과 짝을 이룬다.
 pub type PetId = u32;
 
+/// 한 마리가 **이번 틱에 지나온 자취** — 틱 시작의 몸통 중심과 걸린 시간(초).
+///
+/// 부딪힘 판정(`Pet::bump_of`)이 `vx`/`vy` 대신 이걸 쓴다. 그 둘은 던져졌을 때만
+/// 0이 아니라서, 한 틱 안에서 날아와 착지까지 끝낸 마리는 틱 끝에 속도가 0이고
+/// 미끄러지거나 헤엄치는 마리는 처음부터 0이다 — 실제로 화면을 가로질렀는데 판정에는
+/// 서 있는 것으로 보인다.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(in crate::pet) struct Sweep {
+    from: (f64, f64),
+    seconds: f64,
+}
+
+impl Sweep {
+    /// 자취가 말해 주는 평균 속도 (논리 px/초). 시간이 0이면 잰 것이 없다.
+    fn velocity(self, to: (f64, f64)) -> (f64, f64) {
+        if self.seconds <= f64::EPSILON {
+            return (0.0, 0.0);
+        }
+        (
+            (to.0 - self.from.0) / self.seconds,
+            (to.1 - self.from.1) / self.seconds,
+        )
+    }
+}
+
 /// 동시에 띄울 수 있는 최대 마릿수. 창 하나가 웹뷰 하나이고 각각 수십 MB를 쓴다.
 /// 사용자가 **고른** 마릿수를 막지 않되, 실수로 눌러 100마리가 되는 길은 닫는다.
 pub const MAX_PETS: usize = 8;
@@ -479,6 +504,9 @@ impl Pets {
     ) -> Vec<(PetId, Snapshot)> {
         self.step_bowling(now_ms);
         let mut stepped = Vec::with_capacity(self.pets.len());
+        // 부딪힘 판정이 볼 **이번 틱의 자취**와 세계 폭. `Pet`에 필드로 넣지 않고 여기서
+        // 들고 있는다 — 필드를 더하면 스냅샷 동치성이 보는 상태가 늘어난다.
+        let mut before: Vec<(PetId, Sweep, f64)> = Vec::with_capacity(self.pets.len());
         for id in self.ids() {
             let Some(world) = world_of(id) else {
                 continue;
@@ -486,9 +514,72 @@ impl Pets {
             let Some(pet) = self.pets.get_mut(&id) else {
                 continue;
             };
+            before.push((id, pet.sweep_from(now_ms), world.width()));
             stepped.push((id, pet.step(now_ms, world)));
         }
+        // **핀볼일 때만 돈다.** 꺼져 있으면 여기 오기 전과 한 줄도 다르지 않아야 한다
+        // (`여러_마리를_한_번에_돌려도_따로_돌린_것과_같다`가 그걸 본다).
+        //
+        // **볼링 판이 도는 동안에는 쉰다.** 두 기능은 서로를 끄지 않으므로 동시에
+        // 켜질 수 있는데, 그러면 같은 마리를 두 물리가 두고 다툰다: 부딪혀 `Thrown`이
+        // 된 핀은 `board.knock`을 거치지 않고 판에서 빠져 **볼링 연쇄가 조용히
+        // 끊기고**, 판이 튕긴 핀은 여기서 던지기 상한으로 도로 깎인다. 판이 도는 동안
+        // 핀은 판이 몬다 (`step_bowling`의 KTD8과 같은 규칙).
+        if before.len() >= 2 && self.bowling.is_none() && self.pets.values().any(Pet::pinball) {
+            let bumped = self.collide_pinball(now_ms, &before);
+            for (id, snapshot) in stepped.iter_mut() {
+                if !bumped.contains(id) {
+                    continue;
+                }
+                if let Some(pet) = self.pets.get(id) {
+                    *snapshot = pet.snapshot();
+                }
+            }
+        }
         stepped
+    }
+
+    /// 핀볼에서 마리끼리 부딪힌 것을 해소한다 — **`step` 뒤에** 돈다. 이번 틱에 지나온
+    /// 경로를 봐야 빠른 마리가 서로를 뛰어넘지 않는다 (`bump_of`).
+    ///
+    /// 판정은 **양방향**이다. 볼링 연쇄는 *튕겨 나간 마리 → 아직 선 마리* 한 방향이고
+    /// 맞은 쪽만 속도를 받지만, 여기서는 둘 다 움직이고 둘 다 속도가 바뀐다.
+    ///
+    /// 쌍은 최대 `MAX_PETS * (MAX_PETS - 1) / 2 = 28`개이고 쌍마다 드는 것은 부동소수
+    /// 산술 몇십 번뿐이다 — IPC도 할당도 시스템 호출도 없어서 O(n²)이 50ms 틱에서
+    /// 문제가 되지 않는다.
+    ///
+    /// **임펄스는 쌓이지만 판정은 안 쌓인다.** `bumped`가 속도를 더해 나가는 반면
+    /// `bump_of`는 `step` **이전**의 자취(`Sweep`)로 재므로, 앞선 쌍이 준 임펄스가
+    /// 뒤 쌍의 접근 판정을 바꾸지 않는다. 이 비대칭이 한 틱 안에서 같은 접근을 두 번
+    /// 세지 않게 한다. `before`가 id 오름차순이라 순서는 매 틱 같다.
+    ///
+    /// **난수를 쓰지 않는다** — 골든 수열을 재기준화하지 않기 위한 제약이다.
+    fn collide_pinball(&mut self, now_ms: u64, before: &[(PetId, Sweep, f64)]) -> Vec<PetId> {
+        let mut bumped = Vec::new();
+        for i in 0..before.len() {
+            for j in (i + 1)..before.len() {
+                let (a_id, a_sweep, a_world) = before[i];
+                let (b_id, b_sweep, b_world) = before[j];
+                let Some((a, b)) = self.pets.get(&a_id).zip(self.pets.get(&b_id)) else {
+                    continue;
+                };
+                let Some(((nx, ny), impulse)) = a.bump_of(a_sweep, b, b_sweep) else {
+                    continue;
+                };
+                // 법선만 뒤집어 같은 함수를 쓴다 — 대칭을 코드 모양으로 못 박아
+                // 한쪽만 움직이는 실수를 막는다.
+                if let Some(pet) = self.pets.get_mut(&a_id) {
+                    pet.bumped(now_ms, nx, ny, impulse, a_world);
+                }
+                if let Some(pet) = self.pets.get_mut(&b_id) {
+                    pet.bumped(now_ms, -nx, -ny, impulse, b_world);
+                }
+                bumped.push(a_id);
+                bumped.push(b_id);
+            }
+        }
+        bumped
     }
 }
 
@@ -584,6 +675,16 @@ impl Pet {
 
     pub(in crate::pet) fn center_y(&self) -> f64 {
         self.y + PET_SIZE / 2.0
+    }
+
+    /// 이번 틱의 자취를 연다 — **`step`을 부르기 직전에** 잡아야 한다.
+    /// 걸린 시간은 `step`이 쓰는 것과 같은 규칙으로 자른다 (`MAX_STEP_MS`).
+    pub(in crate::pet) fn sweep_from(&self, now_ms: u64) -> Sweep {
+        let elapsed = now_ms.saturating_sub(self.last_step_ms).min(MAX_STEP_MS);
+        Sweep {
+            from: (self.center_x(), self.center_y()),
+            seconds: elapsed as f64 / 1000.0,
+        }
     }
 
     /// 판정의 기준점 — **발밑 중앙**이다 (PRD §5.2).

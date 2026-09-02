@@ -53,3 +53,11 @@ pub fn 클릭(p: &mut Pet, now_ms: u64) {
     p.drag_start(now_ms);
     p.whack(now_ms, &world(), 0.0, 0.0);
 }
+
+/// 30분치를 돌려 스냅샷을 모은다. 얼음낚시는 십 분에 한 번쯤이라
+/// 짧게 돌리면 한 번도 안 나온다.
+pub fn 삼십분(seed: u64) -> Vec<Snapshot> {
+    let w = world();
+    let mut p = Pet::new(seed, 0, &w);
+    drive(&mut p, 100, 30 * 60_000, 100, &w)
+}

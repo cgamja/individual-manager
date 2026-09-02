@@ -377,3 +377,38 @@ use crate::pet::*;
         p.drag_start(t + 100);
         assert_eq!(p.behavior(), Behavior::Dragged);
     }
+
+#[test]
+fn 시키면_바로_미끄러진다() {
+    let mut p = pet();
+    p.x = 400.0;
+    assert!(p.start_slide(1_000));
+    assert_eq!(p.behavior(), Behavior::Slide);
+    let 뒤 = p.step(1_200, &world());
+    assert_ne!(뒤.x, 400.0, "시켰는데 제자리다");
+}
+
+#[test]
+fn 공중이거나_들려_있으면_시켜도_미끄러지지_않는다() {
+    let mut 헤엄 = pet();
+    헤엄.air = true;
+    assert!(!헤엄.start_slide(1_000));
+    assert_ne!(헤엄.behavior(), Behavior::Slide);
+
+    let mut 들림 = pet();
+    들림.drag_start(1_000);
+    assert!(!들림.start_slide(1_100));
+    assert_eq!(들림.behavior(), Behavior::Dragged);
+}
+
+#[test]
+    fn 걸어다닐_폭이_없는_화면에서도_영원히_돌지_않는다() {
+        let narrow = World::single(Bounds { left: 10.0, right: 10.0, top: 0.0, floor_y: 50.0 });
+        let mut p = Pet::new(5, 0, &narrow);
+        let seen = drive(&mut p, 100, 40_000, 250, &narrow);
+        assert!(
+            seen.iter().any(|s| !matches!(s.behavior, Behavior::Turn)),
+            "회전 말고 다른 동작으로 넘어가야 한다"
+        );
+        assert!(seen.iter().all(|s| s.x == narrow.first().bounds.left));
+    }

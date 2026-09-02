@@ -3,6 +3,10 @@
 //! `pick_next`(다음 동작 추첨)·`enter`·`clamp`·난수는 `pet`에, 상수는
 //! `pet/tuning.rs`에 있다.
 
+mod air;
 mod fishing;
 mod ground;
+mod drag;
+mod pinball;
+mod react;
 mod freakout;

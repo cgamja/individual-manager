@@ -11,14 +11,19 @@ use serde::Serialize;
 mod test_support;
 mod tuning;
 
-/// 브릿지가 창 크기를 계산하는 데 쓴다 — 코어 밖으로 나가는 유일한 튜닝 값이다.
-pub use tuning::PET_SIZE;
+/// 브릿지가 창 크기를 계산하는 데 쓴다 — 코어 밖으로 나가는 튜닝 값은 이 둘뿐이다.
+pub use tuning::{BOWLING_BALL_SIZE, PET_SIZE};
 use tuning::*;
 
 mod behavior;
+mod bowling;
+
+pub use bowling::{BallSnapshot, BoardPhase, Bowling};
+use bowling::{ball_home, pin_positions};
 
 pub use behavior::{
-    Behavior, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech, Vertical,
+    Behavior, BowlingPhase, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech,
+    Vertical,
 };
 use behavior::{IDLE_KINDS, SASSY_KINDS};
 
@@ -116,6 +121,9 @@ pub struct Pets {
     /// **증가만 한다.** 지운 자리의 id를 다시 쓰면, 닫히는 중인 창과 새 창이
     /// 같은 라벨을 다퉈 창 이동이 엉뚱한 쪽으로 간다.
     next_id: PetId,
+    /// 지금 도는 볼링 판. 없으면 볼링 중이 아니다. **`Pet`이 아니라 여기가
+    /// 소유한다** — 지우기와 판 정합성을 한 자리에서 원자적으로 처리해야 한다 (KTD2).
+    bowling: Option<Bowling>,
 }
 
 impl Pets {
@@ -148,13 +156,18 @@ impl Pets {
         if self.pets.len() <= 1 {
             return false;
         }
-        self.pets.remove(&id).is_some()
+        let removed = self.pets.remove(&id).is_some();
+        if removed {
+            self.leave_bowling(id);
+        }
+        removed
     }
 
     /// 창이 사라진 펭귄을 정리한다. 마지막 한 마리 보호를 받지 않는다 —
     /// 창이 없는 펭귄은 사용자의 선택이 아니라 이미 없어진 것이다.
     pub fn forget(&mut self, id: PetId) {
         self.pets.remove(&id);
+        self.leave_bowling(id);
     }
 
     pub fn get_mut(&mut self, id: PetId) -> Option<&mut Pet> {
@@ -181,6 +194,48 @@ impl Pets {
     /// 닫히는 중인 창과 라벨이 겹치지 않는다.
     pub fn clear(&mut self) {
         self.pets.clear();
+        self.bowling = None;
+    }
+
+    /// 한 마리를 볼링 판에서 뺀다. 마지막 참여 마리가 빠지면 판을 접는다 (R11).
+    fn leave_bowling(&mut self, id: PetId) {
+        let Some(board) = self.bowling.as_mut() else {
+            return;
+        };
+        board.leave(id);
+        if board.is_empty() {
+            self.bowling = None;
+        }
+    }
+
+    /// 지금 도는 판. 브릿지가 공 창을 만들지 정하는 데 쓴다.
+    pub fn bowling(&self) -> Option<&Bowling> {
+        self.bowling.as_ref()
+    }
+
+    /// 볼링 한 판을 연다 — **화면의 펭귄 전부**가 참여한다 (R1). 이미 판이
+    /// 도는 중이면 무시한다 (A3). 들려 있는 마리는 빠지고, 아무도 못 서면
+    /// 판을 열지 않는다.
+    pub fn start_bowling(&mut self, now_ms: u64, lane: Bounds) -> bool {
+        if self.bowling.is_some() {
+            return false;
+        }
+        let ids = self.ids();
+        let mut pins = std::collections::BTreeMap::new();
+        for (id, pin_x) in ids.iter().zip(pin_positions(ids.len(), lane)) {
+            let joined = self
+                .pets
+                .get_mut(id)
+                .is_some_and(|pet| pet.start_bowling(now_ms, pin_x, lane.floor_y));
+            if joined {
+                pins.insert(*id, pin_x);
+            }
+        }
+        if pins.is_empty() {
+            return false;
+        }
+        self.bowling = Some(Bowling::new(pins, lane, now_ms));
+        true
     }
 
     /// 한 틱 동안 전 마리를 진행시킨다.
@@ -349,6 +404,7 @@ impl Pet {
             Behavior::Tumble => self.tick_tumble(now_ms, dt),
             Behavior::Freakout { freakout } => self.tick_freakout(now_ms, freakout, bounds, dt),
             Behavior::IceFishing { fishing } => self.tick_fishing(now_ms, fishing),
+            Behavior::Bowling { bowling } => self.tick_bowling(now_ms, bowling, bounds, dt),
             Behavior::Idle { .. } | Behavior::Sleep => {
                 if now_ms >= self.behavior_until_ms {
                     self.pick_next(now_ms, bounds);
@@ -380,7 +436,8 @@ impl Pet {
             | Behavior::Dragged
             | Behavior::Swing
             | Behavior::Squawk
-            | Behavior::IceFishing { .. } => {}
+            | Behavior::IceFishing { .. }
+            | Behavior::Bowling { .. } => {}
             Behavior::Land | Behavior::Splat | Behavior::Sprawl | Behavior::Tumble => {
                 self.air = false
             }

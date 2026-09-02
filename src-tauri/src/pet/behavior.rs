@@ -97,6 +97,22 @@ pub enum FishingPhase {
     Pack,
 }
 
+/// 볼링 한 판에서 **마리 하나가** 거쳐 가는 국면. 판 전체의 국면은 따로 있다
+/// (`bowling::BoardPhase`) — 나눈 이유는 "전부 섰는가"를 물어볼 자리가
+/// 필요해서다 (KTD8).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BowlingPhase {
+    /// 자기 핀 자리로 걸어간다
+    Gather,
+    /// 자리에 서서 공을 기다린다
+    Ready,
+    /// 공이 지나갔다. 빙글빙글 돈다
+    Struck,
+    /// 흩어져 일어난다 — **모든 판이 이 국면으로 끝난다**
+    Scatter,
+}
+
 /// 발작 한 판이 거쳐 가는 국면.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -172,6 +188,12 @@ pub enum Behavior {
     /// 가장 긴 동작이고, **안에서 갈래가 갈리는 첫 동작**이다 (잡음/꽝).
     IceFishing {
         fishing: FishingPhase,
+    },
+    /// 볼링 — 핀이 되어 한 줄로 서고, 공이 지나가면 돈다. **여러 마리가 하나의
+    /// 사건에 함께 참여하는 첫 동작**이라 국면을 혼자 진행하지 않는다:
+    /// `Gather`만 스스로 끝나고 나머지는 판(`Pets::bowling`)이 몰아 준다.
+    Bowling {
+        bowling: BowlingPhase,
     },
 }
 

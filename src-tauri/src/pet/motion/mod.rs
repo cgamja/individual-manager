@@ -4,6 +4,7 @@
 //! `pet/tuning.rs`에 있다.
 
 mod air;
+mod bowling;
 mod drag;
 mod fishing;
 mod freakout;

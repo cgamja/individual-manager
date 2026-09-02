@@ -1,7 +1,7 @@
 //! 속도·길이·확률·문턱 상수. 값을 바꾸려면 여기만 본다.
 //!
 //! `assert!`는 값 사이의 관계를 컴파일 시각에 묶는다.
-//! `PET_SIZE`만 `pub` — 브릿지가 창 크기 계산에 쓴다.
+//! `PET_SIZE`와 `BOWLING_BALL_SIZE`만 `pub` — 브릿지가 창 크기 계산에 쓴다.
 
 /// 펭귄 한 변 (논리 px).
 pub const PET_SIZE: f64 = 140.0;
@@ -161,3 +161,73 @@ const _: () = assert!(FISHING_SESSION_MS.0 > FISHING_DIG_MS + FISHING_WAIT_MS.1)
 const _: () = assert!(FISHING_SESSION_MS.1 >= FISHING_SESSION_MS.0);
 /// 채서 물고기가 딸려 나올 확률(%).
 pub(super) const FISHING_CATCH_PERCENT: u64 = 40;
+
+// ── 볼링 ───────────────────────────────────────────────────────
+//
+// 판 전체가 몇 초짜리 한 번이라 확률이 하나도 없다 — 시작은 버튼뿐이고
+// 공 물리는 완전 결정적이다 (R12). 여기 값들은 전부 "보기에 볼링 같은가"로 정했다.
+
+/// 공 지름 (논리 px). 펭귄만큼 공들이지 않는다 — 원 하나에 손가락 구멍 셋이다 (A6).
+pub const BOWLING_BALL_SIZE: f64 = 64.0;
+const _: () = assert!(BOWLING_BALL_SIZE < PET_SIZE);
+
+/// 핀 사이 간격. **펭귄 폭보다 좁아 살짝 겹친다** — 벌려 놓으면 한 줄이 아니라
+/// 그냥 흩어져 선 펭귄들로 보인다.
+pub(super) const BOWLING_PIN_GAP: f64 = 96.0;
+const _: () = assert!(BOWLING_PIN_GAP < PET_SIZE);
+
+/// 오른쪽 끝에서 첫 핀까지 띄우는 거리. 공이 마지막 핀을 지나 빠져나갈 자리다.
+pub(super) const BOWLING_PIN_MARGIN: f64 = 24.0;
+
+/// 공 자리에서 가장 왼쪽 핀까지 **반드시** 남기는 길이. 여덟 마리가 좁은 화면에
+/// 서면 핀 줄이 공까지 뻗는데, 그러면 굴리기 전에 이미 닿아 있다 (A5).
+pub(super) const BOWLING_LANE_MIN: f64 = 240.0;
+
+/// 핀 자리로 걸어가는 속도. **걷기보다 빠르다** — 평소 걷기(42px/s)로 가면
+/// 화면을 가로지르는 데 30초가 걸려 판이 시작되기 전에 지친다.
+pub(super) const BOWLING_GATHER_SPEED: f64 = 380.0;
+const _: () = assert!(BOWLING_GATHER_SPEED > WALK_SPEED);
+const _: () = assert!(BOWLING_GATHER_SPEED < FREAKOUT_SPEED);
+
+/// 공중에 있던 마리가 판에 합류하며 내려오는 속도. 순간이동하면 R2를 어긴다.
+pub(super) const BOWLING_DESCENT_SPEED: f64 = 300.0;
+
+/// 맞은 펭귄이 **한 바퀴 도는** 시간. 국면 길이가 아니라 반복 주기다 —
+/// 도는 것을 멈추는 것은 시간이 아니라 판이다.
+pub(super) const BOWLING_SPIN_MS: u64 = 600;
+
+/// 흩어지며 일어나는 시간. 얼음낚시의 `Pack`, 발작의 `Pant`와 같은 귀결 국면이다.
+pub(super) const BOWLING_SCATTER_MS: u64 = 600;
+
+/// 공이 멎고 펭귄들이 흩어지기까지의 뜸.
+pub(super) const BOWLING_SETTLE_MS: u64 = 900;
+
+/// 판이 어떤 이유로도 마리를 이보다 오래 붙들지 못한다. 판이 사라져도 펭귄이
+/// 영원히 서 있지 않게 하는 안전장치다 (R11).
+pub(super) const BOWLING_MAX_MS: u64 = 120_000;
+const _: () = assert!(BOWLING_MAX_MS > BOWLING_SETTLE_MS);
+
+/// 굴리기 속도 상한 — 초당 세계를 몇 번 가로지르는가. 던지기보다 느리다:
+/// 공은 바닥을 구르지 날아가지 않는다.
+pub(super) const BOWLING_MAX_WORLDS_PER_SEC: f64 = 0.75;
+const _: () = assert!(BOWLING_MAX_WORLDS_PER_SEC < THROW_MAX_WORLDS_PER_SEC);
+
+/// 굴러가는 공의 감속도 (논리 px/초²). **비율이 아니라 감속도다** — 매 틱 비율로
+/// 줄이면 속도가 0에 닿지 않아 20Hz 틱이 영영 안 쉰다.
+pub(super) const BOWLING_DECEL: f64 = 520.0;
+
+/// 이보다 느려지면 공이 멎는다. 감속도와 짝인 정지 문턱이다.
+pub(super) const BOWLING_STOP_SPEED: f64 = 40.0;
+
+/// 굴린 것으로 볼 최소 속도. 이보다 살살 놓으면 공은 그 자리에 남고 다시 집을 수 있다.
+pub(super) const BOWLING_MIN_ROLL_SPEED: f64 = 120.0;
+const _: () = assert!(BOWLING_MIN_ROLL_SPEED > BOWLING_STOP_SPEED);
+
+/// 공 중심이 펭귄 중심에서 이 거리 안에 들어오면 맞는다.
+pub(super) const BOWLING_HIT_RADIUS: f64 = 52.0;
+
+/// 펭귄 하나를 지나갈 때마다 잃는 속도 비율. **멈추지는 않는다** — 첫 펭귄에서
+/// 멈추면 마릿수가 무의미해진다 (A2).
+pub(super) const BOWLING_SPEED_LOSS_PER_PIN: f64 = 0.12;
+const _: () = assert!(BOWLING_SPEED_LOSS_PER_PIN > 0.0);
+const _: () = assert!(BOWLING_SPEED_LOSS_PER_PIN < 1.0);

@@ -26,6 +26,10 @@ pub(super) fn is_ball_window(window: &WebviewWindow) -> bool {
 
 /// 빠따 — 왼쪽 클릭 한 번에 펭귄이 한 번 날아간다 (R14).
 /// 왼쪽 클릭. `nx`/`ny`는 **맞은 지점**을 펭귄 기준으로 정규화한 값(-0.5~0.5)이다.
+///
+/// **맞은 마리 하나만 움직이는 게 아니다** — 휘두른 방망이 앞에 있던 마리도 함께
+/// 날아간다. 그래서 `Pets`가 돌려주는 **id 목록 전부**를 flush한다. 다음 틱을
+/// 기다리면 맞은 순간과 날아가는 순간이 벌어져 보인다.
 #[tauri::command]
 pub fn pet_whack(
     nx: f64,
@@ -38,10 +42,17 @@ pub fn pet_whack(
         return;
     };
     let world = world_or_flat(&app, id);
-    if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
-        pet.whack(now_ms(), &world, nx, ny);
+    // **`let`으로 먼저 받는다.** `for x in <락>.whack(..)`은 가드를 루프 내내
+    // 붙들고, 본문의 `flush`가 같은 락을 다시 잡아 즉시 자기 데드락이다
+    // (docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md).
+    let hit = state
+        .pets
+        .lock()
+        .unwrap()
+        .whack(id, now_ms(), &world, nx, ny);
+    for pet in hit {
+        flush(&app, pet);
     }
-    flush(&app, id);
 }
 
 /// 오른쪽 클릭 — **펭귄 옆에서** 창을 연다(타이머·설정). 왼쪽 클릭은 빠따가 가져갔다.

@@ -1,0 +1,166 @@
+/* ── 볼링 — 핀이 되어 한 줄로 서고, 공이 지나가면 빙글빙글 돈다 ──── */
+
+/* 국면 넷은 코어가 정한다 (`BowlingPhase`). 여기서는 **어떻게 보이는지**만
+   그린다. 축은 `.pg-all`의 발밑(50px 120px)이고, 창 좌우 여백이 52px뿐이라
+   **약 59도가 눕힐 수 있는 한계다** — 그 이상은 창에 잘린다. */
+
+/* ── 모으는 중 — 뒤뚱뒤뚱 서둘러 자기 자리로 간다 ──────────────── */
+
+/* 다리는 걷기(`pg-step`·`pg-waddle`)를 **그대로 쓴다.** 새 다리 동작을 그리면
+   같은 걸음을 두 벌 유지하게 된다. 대신 주기를 반으로 줄여 서두르게 만든다 —
+   코어가 걷기의 아홉 배 속도로 창을 옮기므로, 평소 주기로 두면 발이 안 따라가
+   미끄러지는 것처럼 보인다. */
+.pg--bowling-gather .pg-foot--near {
+  animation: pg-step 0.24s ease-in-out infinite;
+}
+.pg--bowling-gather .pg-foot--far {
+  animation: pg-step 0.24s ease-in-out infinite -0.12s;
+}
+.pg--bowling-gather .pg-body,
+.pg--bowling-gather .pg-head {
+  animation: pg-waddle 0.24s ease-in-out infinite;
+}
+
+/* 날개를 뒤로 젖혀 균형을 잡는다 — 서두르는 몸짓이다 */
+@keyframes pg-bowling-hustle-wing {
+  0%,
+  100% {
+    transform: rotate(-24deg);
+  }
+  50% {
+    transform: rotate(-42deg);
+  }
+}
+
+.pg--bowling-gather .pg-wing-near,
+.pg--bowling-gather .pg-wing-far {
+  animation: pg-bowling-hustle-wing 0.24s ease-in-out infinite;
+}
+
+/* ── 서서 기다리는 중 — 핀은 뻣뻣하다 ─────────────────────────── */
+
+/* 날개를 몸에 붙이고 굳는다. **가만히 서 있는 것이 이 국면의 그림이다** —
+   여기서 움직이면 핀이 아니라 그냥 서 있는 펭귄으로 보인다. 대신 아주 느리고
+   작은 떨림 하나만 남겨, 맞기를 기다리는 긴장을 준다. */
+@keyframes pg-bowling-brace {
+  0%,
+  100% {
+    transform: rotate(-0.8deg);
+  }
+  50% {
+    transform: rotate(0.8deg);
+  }
+}
+
+.pg--bowling-ready .pg-all {
+  animation: pg-bowling-brace 1.6s ease-in-out infinite;
+}
+.pg--bowling-ready .pg-wing-near,
+.pg--bowling-ready .pg-wing-far {
+  animation: none;
+  transform: rotate(-6deg);
+}
+
+/* ── 맞음 — 빙글빙글 ──────────────────────────────────────────── */
+
+/* **가로로 뒤집으며 돈다.** 발밑을 축으로 진짜 360도를 돌리면 반경이 창을
+   넘어 펭귄이 잘린다. `scaleX`를 1 → 0 → -1로 지나가면 도는 것으로 읽히면서
+   상자 밖으로 한 픽셀도 안 나간다 (`pg-turn`이 같은 수법이다).
+   **주기는 CSS가 혼자 정한다** — 도는 것을 멈추는 것은 시간이 아니라 판이라
+   대응하는 코어 상수가 없다. */
+@keyframes pg-bowling-spin {
+  0% {
+    transform: rotate(-15deg) scaleX(1);
+  }
+  25% {
+    transform: rotate(0deg) scaleX(0.08);
+  }
+  50% {
+    transform: rotate(15deg) scaleX(-1);
+  }
+  75% {
+    transform: rotate(0deg) scaleX(-0.08);
+  }
+  100% {
+    transform: rotate(-15deg) scaleX(1);
+  }
+}
+
+/* 날개는 원심력에 뻗는다 — 몸만 돌면 팔이 몸에 박힌 채로 돈다 */
+@keyframes pg-bowling-flail {
+  0%,
+  100% {
+    transform: rotate(62deg);
+  }
+  50% {
+    transform: rotate(96deg);
+  }
+}
+
+/* 고개가 따라 돌지 못하고 늘어진다 — 어질어질한 얼굴 */
+@keyframes pg-bowling-loll {
+  0%,
+  100% {
+    transform: rotate(-13deg);
+  }
+  50% {
+    transform: rotate(13deg);
+  }
+}
+
+.pg--bowling-struck .pg-all {
+  animation: pg-bowling-spin 0.6s linear infinite;
+}
+.pg--bowling-struck .pg-wing-near {
+  animation: pg-bowling-flail 0.3s ease-in-out infinite;
+}
+.pg--bowling-struck .pg-wing-far {
+  animation: pg-bowling-flail 0.3s ease-in-out infinite reverse;
+}
+.pg--bowling-struck .pg-head {
+  animation: pg-bowling-loll 0.3s ease-in-out infinite;
+}
+
+/* ── 흩어지기 — 털고 일어난다 ─────────────────────────────────── */
+
+/* **모든 판이 이 국면으로 끝난다.** 곧장 유휴로 가면 `.pg-all`에 걸린 회전이
+   한 프레임에 사라져 펭귄이 튄다 (얼음낚시의 `Pack`, 발작의 `Pant`와 같은
+   자리다). 길이는 코어의 `BOWLING_SCATTER_MS`와 같아야 한다 —
+   `pet-css.test.ts`가 대조한다. */
+@keyframes pg-bowling-scatter {
+  /* 아직 돌던 여운 */
+  0% {
+    transform: rotate(11deg) scale(0.96, 1.03);
+  }
+  /* 반대로 한 번 휘청 */
+  35% {
+    transform: rotate(-7deg) scale(1.04, 0.97);
+  }
+  65% {
+    transform: rotate(3deg) scale(0.99, 1.01);
+  }
+  100% {
+    transform: rotate(0deg) scale(1, 1);
+  }
+}
+
+/* 날개로 몸을 턴다 */
+@keyframes pg-bowling-dust-off {
+  0% {
+    transform: rotate(54deg);
+  }
+  50% {
+    transform: rotate(-18deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.pg--bowling-scatter .pg-all {
+  animation: pg-bowling-scatter 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pg--bowling-scatter .pg-wing-near,
+.pg--bowling-scatter .pg-wing-far {
+  animation: pg-bowling-dust-off 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}

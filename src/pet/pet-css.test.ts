@@ -5,7 +5,7 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 
 /** 동작이 CSS에 실제로 그려져 있는지 확인한다. */
 /** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
-const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout"]
+const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout","bowling"]
   .map((n) => readFileSync(resolve(`src/pet/css/${n}.css`), "utf8"))
   .join("\n");
 const petRs =
@@ -44,6 +44,10 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "squawk" },
   { kind: "freakout", freakout: "dash" },
   { kind: "freakout", freakout: "pant" },
+  { kind: "bowling", bowling: "gather" },
+  { kind: "bowling", bowling: "ready" },
+  { kind: "bowling", bowling: "struck" },
+  { kind: "bowling", bowling: "scatter" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },
   { kind: "ice_fishing", fishing: "bite" },
@@ -154,6 +158,7 @@ describe("동작 길이 동기화", () => {
     ["pg--slide", "SLIDE_MS"],
     ["pg--squawk", "SQUAWK_MS"],
     ["pg--freakout-pant", "FREAKOUT_PANT_MS"],
+    ["pg--bowling-scatter", "BOWLING_SCATTER_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
     const b = rustMs(konst);

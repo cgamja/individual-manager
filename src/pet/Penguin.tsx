@@ -18,11 +18,20 @@ const HOLE = "#2f4a63";
 const FLOAT = "#d94f3d";
 /** 잡은 물고기. */
 const FISH = "#8fb3c9";
-/** 훌라 치마·상의의 라피아(마른 풀) 색. 평소에는 `display: none`이다. */
-const STRAW = "#d8b25f";
+/** 훌라 치마의 라피아 색. 평소에는 `display: none`이다.
+ *
+ * **몸보다 확실히 진하다.** 배가 흰색(`SNOW`)이라 옅은 살구·크림 계열을 쓰면
+ * 옷이 아니라 살로 읽힌다 — 덮개형 상의가 "갑바"로 읽혔던 것이 정확히 그
+ * 실패였다. */
+const STRAW = "#c8912e";
 /** 라피아의 그늘진 결. 실루엣 안에서 결이 읽힐 만큼만 어둡다. */
-const STRAW_DARK = "#a8822f";
-/** 목에 거는 레이(꽃목걸이) — 여름 느낌을 내는 유일한 색 포인트다. */
+const STRAW_DARK = "#8f6414";
+/** 비키니 — **옷으로 읽히게 하는 것이 유일한 기준이다.** 흰 배와도 검은 몸과도
+ * 뚜렷이 대비되는 채도 높은 색. */
+const BIKINI = "#e8446f";
+/** 비키니의 테두리·끈. 경계가 보여야 천으로 읽힌다. */
+const BIKINI_DARK = "#a82449";
+/** 목에 거는 레이(꽃목걸이) — 여름 느낌을 내는 포인트. */
 const LEI = "#e8543f";
 const LEI_ALT = "#f2c14e";
 
@@ -152,37 +161,68 @@ function Shapes() {
             d="M31.5 98 L34 112 L37.5 100 L41 114 L44.5 101 L47 115 L49.5 101 L53 114 L56.5 100 L60 112 L62.5 98 Z"
             fill={STRAW}
           />
+          {/* **허리선.** 치마도 상의와 같은 기준이다 — 경계가 보여야 옷으로
+              읽힌다. 비키니와 같은 색으로 묶어 한 벌로 보이게 한다. */}
           <path
-            d="M31 88 C38 84 56 84 63 88"
-            stroke={STRAW_DARK}
-            strokeWidth="3"
-            strokeLinecap="round"
-            fill="none"
-            opacity="0.85"
-          />
-        </g>
-
-        {/* ── 상의 — 암컷만. 가슴부터 배까지 넉넉히 덮는 덮개다 ── */}
-        <g className="pg-luau-top">
-          <path
-            d="M34 62 C41 56 55 56 62 62 C63 74 59 84 47 86 C35 84 33 74 34 62 Z"
-            fill={STRAW}
-          />
-          <path
-            d="M37 61 L42 53 M59 61 L53 53"
-            stroke={STRAW}
+            d="M30.5 86.5 C38 82 56 82 63.5 86.5"
+            stroke={BIKINI}
             strokeWidth="4"
             strokeLinecap="round"
             fill="none"
           />
-          {/* 엮은 결 둘. 셋 이상은 이 크기에서 뭉갠다 */}
           <path
-            d="M35.5 70 C41 67 54 67 61 70 M35 78 C41 75 54 75 61 78"
+            d="M31.5 93 C38 89.5 56 89.5 62.5 93"
             stroke={STRAW_DARK}
-            strokeWidth="2"
+            strokeWidth="2.4"
             strokeLinecap="round"
             fill="none"
-            opacity="0.75"
+            opacity="0.8"
+          />
+        </g>
+
+        {/* ── 상의 — 암컷만. **삼각형 두 개짜리 비키니** ──
+
+            **덮개형으로 갔다가 되돌아왔다.** 몸통을 넉넉히 덮는 상의를 그렸더니
+            옷이 아니라 **맨가슴 근육("갑바")으로 읽혔다** (2026-09-02 사용자).
+            문제는 노출량이 아니라 **옷으로 읽히느냐**였다 — 색이 몸에 가깝고
+            경계가 없으면 아무리 덮어도 살로 보인다.
+
+            그래서 면적을 키우는 대신 **옷임을 분명히** 한다. 셋이 함께 있어야 한다:
+            (1) 흰 배와 뚜렷이 대비되는 채도 높은 색, (2) **끈이 보이는 실루엣**
+            (목뒤로 올라가는 V와 가슴 아래 가로줄), (3) 도형마다 테두리.
+            이 셋이 있으면 작아도 옷으로 읽힌다. */}
+        <g className="pg-luau-top">
+          {/* 가슴 아래를 지나 등으로 도는 끈 */}
+          <path
+            d="M33 62 C40 66 55 66 62 62"
+            stroke={BIKINI_DARK}
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            fill="none"
+          />
+          {/* 목뒤로 올라가는 V자 끈 */}
+          <path
+            d="M40 61 L47 49 L55 61"
+            stroke={BIKINI_DARK}
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+          {/* 삼각형 두 개 */}
+          <path
+            d="M33.5 60.5 L47 60.5 L40.5 77 Z"
+            fill={BIKINI}
+            stroke={BIKINI_DARK}
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M47 60.5 L60.5 60.5 L54 77 Z"
+            fill={BIKINI}
+            stroke={BIKINI_DARK}
+            strokeWidth="1.6"
+            strokeLinejoin="round"
           />
         </g>
       </g>

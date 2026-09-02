@@ -63,26 +63,25 @@ fn 타점은_네트_꼭대기보다_높다() {
 }
 
 #[test]
-fn 모래는_화면_바닥이고_판은_그보다_한참_위다() {
-    // **판이 화면 세로 중앙으로 올라갔다** — 모래사장은 배경으로 바닥에 남는다.
+fn 모래는_판과_함께_화면_세로_중앙에_뜬다() {
+    // **모래는 화면 바닥이 아니라 판에 있다.** 펭귄이 딛고 서는 면이라 판을
+    // 따라 뜬다 — 한 번 화면 바닥의 배경 해변으로 그렸다가 되돌렸다. 모래만
+    // 바닥에 남기면 펭귄이 딛고 선 면이 사라져 코트가 허공에 뜬다.
     let b = 넓은_코트();
     let c = Court::new(b).unwrap();
-    // **발밑 선에 그리면 한 픽셀도 안 보인다** — 그 선이 작업 영역 바닥과 같아서
-    // 아래는 전부 Dock 뒤이거나 화면 밖이다. 표면을 그보다 올려야 해변이 보인다.
-    assert!(
-        c.sand_y() < b.floor_y + PET_SIZE,
-        "모래 표면({})이 발밑 선({}) 아래다 — 화면 밖이라 안 보인다",
-        c.sand_y(),
-        b.floor_y + PET_SIZE
-    );
-    assert_eq!(c.sand_y(), b.floor_y + PET_SIZE - VOLLEY_SAND_RISE);
     let play_y = c.spot_of(Side::Left, 0, 1).1;
     assert!(
-        play_y < c.sand_y() - PET_SIZE,
-        "판({play_y})이 모래({})에 붙어 있다",
-        c.sand_y()
+        (play_y - (b.top + b.floor_y) / 2.0).abs() < 1e-9,
+        "판이 화면 세로 중앙이 아니다"
     );
-    assert!((play_y - (b.top + b.floor_y) / 2.0).abs() < 1e-9, "판은 화면 세로 중앙이다");
+    assert_eq!(c.sand_y(), play_y + PET_SIZE, "모래는 펭귄 발밑이다");
+    // 화면 바닥과는 한참 떨어져 있다.
+    assert!(
+        c.sand_y() < b.floor_y,
+        "모래({})가 화면 바닥({})까지 내려갔다",
+        c.sand_y(),
+        b.floor_y
+    );
 }
 
 #[test]
@@ -166,8 +165,8 @@ fn 코트_사각형은_네트_꼭대기부터_모래_아래까지다() {
     assert_eq!(y, c.net_top_y(), "창 윗변은 네트 꼭대기다");
     assert_eq!(
         h,
-        c.sand_y() + VOLLEY_SAND_RISE + VOLLEY_SAND_DEPTH - c.net_top_y(),
-        "창은 모래 아래(화면 밖)까지 덮는다"
+        c.sand_y() + VOLLEY_SAND_DEPTH - c.net_top_y(),
+        "창은 모래톱 아래까지 덮는다"
     );
     // **네트는 창의 가로 한가운데다** — 웹뷰가 `left: 50%`로 맞출 수 있는 근거다.
     assert!(((x + w / 2.0) - c.net_cx()).abs() < 1e-9, "네트가 창 한가운데가 아니다");
@@ -176,32 +175,42 @@ fn 코트_사각형은_네트_꼭대기부터_모래_아래까지다() {
 }
 
 #[test]
-fn 해변이_화면_안에_보인다() {
-    // **이 기능이 실제로 실패했던 자리다.** 모래를 발밑 선 아래에만 그렸더니
-    // 작업 영역 밖이라 12px만 보였다. 창 안에서 모래 표면이 차지하는 자리가
-    // 발밑 선(작업 영역 바닥)보다 확실히 위여야 한다.
-    let b = 넓은_코트();
-    let c = Court::new(b).unwrap();
+fn 창이_네트와_모래를_함께_품는다() {
+    // 창 하나가 코트 전체다 — 네트 꼭대기부터 모래톱 아래까지.
+    let c = 코트();
     let (_, y, _, h) = c.rect();
-    let 발밑 = b.floor_y + PET_SIZE;
-    let 보이는_모래 = 발밑 - c.sand_y();
+    assert!(y <= c.net_top_y(), "창 윗변이 네트보다 아래다");
     assert!(
-        보이는_모래 >= 60.0,
-        "화면 안에 보이는 모래가 {보이는_모래}px뿐이다"
+        y + h > c.sand_y(),
+        "창이 모래 표면({})까지 안 내려온다",
+        c.sand_y()
     );
-    // 창은 모래 표면을 확실히 품는다.
-    assert!(y < c.sand_y(), "창 윗변이 모래 표면보다 아래다");
-    assert!(y + h > 발밑, "창이 발밑 선까지 안 내려온다");
+    // 판 전체가 화면 안이다 — 세계 위아래를 안 넘는다.
+    let b = 넓은_코트();
+    assert!(y > b.top, "코트가 세계 위로 넘쳤다");
+    assert!(y + h < b.floor_y + PET_SIZE, "코트가 세계 아래로 넘쳤다");
 }
 
 #[test]
-fn 모래사장은_세계보다_넓다() {
-    // 해변의 좌우 끝이 화면 안에서 끊기면 백사장이 아니라 깔개로 보인다.
+fn 모래톱은_코트보다_조금_넓다() {
+    // 끝에 선 펭귄의 발밑도 모래여야 한다. 다만 화면 전체를 덮지는 않는다 —
+    // 판이 떠 있는 띠 하나다.
     let b = 넓은_코트();
     let c = Court::new(b).unwrap();
     let (lo, hi) = c.sand_span();
-    assert!(lo < b.left, "왼쪽 끝이 세계 안에서 끊긴다");
-    assert!(hi > b.right + PET_SIZE, "오른쪽 끝이 세계 안에서 끊긴다");
+    for side in [Side::Left, Side::Right] {
+        let (s_lo, s_hi) = c.span_of(side);
+        assert!(lo <= s_lo && s_hi <= hi, "{side:?} 팀의 자리가 모래 밖이다");
+    }
+    assert!(lo > b.left - PET_SIZE, "모래가 세계 밖까지 뻗었다");
+    assert!(hi < b.right + 2.0 * PET_SIZE, "모래가 세계 밖까지 뻗었다");
+}
+
+#[test]
+fn 네트는_모래_위에_선다() {
+    // 그물 아래끝이 모래에 닿는다 — 매달린 것이 아니라 서 있는 그림이다.
+    let c = 코트();
+    assert!((c.net_top_y() + VOLLEY_NET_HEIGHT - c.sand_y()).abs() < 1e-9);
 }
 
 // ── 팀 배정 ────────────────────────────────────────────────────

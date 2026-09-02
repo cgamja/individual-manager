@@ -65,7 +65,7 @@ pub struct Court {
     /// **판**의 y (펭귄 좌상단 기준) — 화면 세로 중앙이다. 볼링이 핀을 공중에
     /// 세운 것과 같은 자리이고, **모래는 여기가 아니라 저 아래 화면 바닥에 있다.**
     play_y: f64,
-    /// 모래 표면 (해변의 윗선). 화면 바닥이다.
+    /// 모래 표면 — **판의 바닥**이다. 펭귄이 여기를 딛고 선다.
     sand_y: f64,
     /// 올라갈 수 있는 최고점 — 공의 정점을 여기서 자른다.
     top: f64,
@@ -97,10 +97,9 @@ impl Court {
             gap,
             // **판은 화면 세로 중앙이다** — 볼링의 `lane_center_y`와 같다.
             play_y: (top + bounds.floor_y) / 2.0,
-            // 모래는 판이 아니라 **화면 바닥**에 있다. 발밑 선
-            // (`floor_y + PET_SIZE`)은 작업 영역 바닥과 같아서 거기 그리면
-            // 화면 밖이므로, 표면을 그보다 `VOLLEY_SAND_RISE`만큼 올린다.
-            sand_y: bounds.floor_y + PET_SIZE - VOLLEY_SAND_RISE,
+            // **모래는 판과 함께 뜬다.** 펭귄이 딛고 서는 면이므로 발밑,
+            // 즉 판의 좌상단에서 `PET_SIZE`만큼 아래다.
+            sand_y: (top + bounds.floor_y) / 2.0 + PET_SIZE,
             top,
             left: bounds.left,
             right: bounds.right,
@@ -111,15 +110,15 @@ impl Court {
         self.net_cx
     }
 
-    /// 모래 표면 — **화면 바닥의 해변**이다. 공이 여기 닿으면 랠리가 끝난다.
-    /// 펭귄 발밑 선보다 `VOLLEY_SAND_RISE`만큼 **위**다 (아래는 화면 밖이다).
+    /// 모래 표면 — **판의 바닥**이고 펭귄의 발밑이다. 공이 여기 닿으면
+    /// 랠리가 끝난다.
     pub(super) fn sand_y(&self) -> f64 {
         self.sand_y
     }
 
-    /// 코트 창의 아래 끝 — 발밑 선보다 더 아래로, 화면 밖까지 내려간다.
+    /// 코트 창의 아래 끝 — 모래톱의 단면이 끝나는 자리다.
     fn window_bottom(&self) -> f64 {
-        self.sand_y + VOLLEY_SAND_RISE + VOLLEY_SAND_DEPTH
+        self.sand_y + VOLLEY_SAND_DEPTH
     }
 
     /// 네트 꼭대기. **판에 매달려 있다** — 펭귄 머리 바로 밑이다.
@@ -169,25 +168,21 @@ impl Court {
         (-t + (t * t + 4.0 * c).sqrt()) / 2.0
     }
 
-    /// 모래사장의 좌우 끝 (공 중심 기준). 킬샷은 코트 밖 해변에도 떨어진다 —
-    /// 백사장이 화면을 가로지르므로 거기까지가 "모래에 닿았다"이다.
+    /// 모래톱의 좌우 끝 (공 중심 기준). 코트보다 조금 넓어서 끝에 선 펭귄의
+    /// 발밑도 모래다.
     pub(super) fn sand_span(&self) -> (f64, f64) {
-        (
-            self.left - VOLLEY_COURT_BLEED,
-            self.right + PET_SIZE + VOLLEY_COURT_BLEED,
-        )
+        let 반폭 = self.half + VOLLEY_SAND_MARGIN;
+        (self.net_cx - 반폭, self.net_cx + 반폭)
     }
 
-    /// 공이 **보이는 채로** 떨어질 수 있는 x 범위 (공 중심 기준). `sand_span`은
-    /// 모래가 화면 밖까지 뻗는 범위라 착지에 쓰면 안 보이는 데서 끝난다.
+    /// 공이 **모래 위에** 떨어질 수 있는 x 범위 (공 중심 기준). 모래톱에서
+    /// 공 반지름만큼 안쪽이라, 여기 떨어지면 공이 통째로 모래 위다.
     pub(super) fn landing_span(&self) -> (f64, f64) {
-        (
-            self.left + VOLLEY_BALL_SIZE / 2.0,
-            self.right + PET_SIZE - VOLLEY_BALL_SIZE / 2.0,
-        )
+        let (lo, hi) = self.sand_span();
+        (lo + VOLLEY_BALL_SIZE / 2.0, hi - VOLLEY_BALL_SIZE / 2.0)
     }
 
-    /// 모래사장 밖으로 나갔는가 — 여기까지 가면 화면 밖이라 더 볼 것이 없다.
+    /// 모래톱 밖으로 나갔는가 — 여기까지 가면 딛을 것이 없으니 랠리가 끝난다.
     pub(super) fn out_of(&self, cx: f64) -> bool {
         let (lo, hi) = self.sand_span();
         cx < lo || cx > hi
@@ -206,10 +201,9 @@ impl Court {
 
     /// 코트 창이 덮을 사각형 — `(x, y, 폭, 높이)` 논리 좌표.
     ///
-    /// **네트 꼭대기(화면 중앙)부터 모래 아래(화면 밖)까지**를 한 창이 덮는다.
-    /// 창을 둘로 나누지 않은 이유: 창이 늘면 capabilities 라벨·창 레벨·클릭
-    /// 통과·반쯤 만들어진 창의 되돌리기가 **그만큼 두 벌**이 된다. 투명하고
-    /// 클릭을 통과시키므로 커도 비용이 없다.
+    /// **네트 꼭대기부터 모래톱 아래까지**를 한 창이 덮는다 — 화면 세로 중앙에
+    /// 뜬 띠 하나다. 창을 둘로 나누지 않은 이유: 창이 늘면 capabilities 라벨·창
+    /// 레벨·클릭 통과·반쯤 만들어진 창의 되돌리기가 **그만큼 두 벌**이 된다.
     /// **네트는 이 창의 가로 한가운데다** — `sand_span`이 `net_cx`를 중심으로
     /// 대칭이라, 웹뷰가 좌표를 하나도 안 받고 `left: 50%`로 정확히 맞춘다.
     pub fn rect(&self) -> (f64, f64, f64, f64) {
@@ -516,9 +510,8 @@ impl Volleyball {
         let 빈자리 = farthest_from(on_side, lo, hi);
 
         // **킬샷은 목적지가 아니라 착지점을 고른다.** 아무도 안 치므로 공은
-        // 타점을 지나 **화면 바닥의 모래까지** 떨어지고, 그동안 가로 속도를
-        // 그대로 갖는다. 판이 화면 세로 중앙으로 올라가면서 그 낙하가 화면
-        // 절반만큼 길어져, 타점 높이로 조준하면 해변을 한참 지나쳐 날아간다.
+        // 타점을 지나 **판의 모래까지** 떨어지고, 그동안 가로 속도를 그대로
+        // 갖는다 — 타점 높이로 조준하면 그만큼 모래톱을 지나쳐 날아간다.
         //
         // **체공을 착지점과 함께 정한다** — 둘이 서로에게 의존해서, 등급을 먼저
         // 박아 두면 좁고 긴 화면에서 답이 없어진다 (`kill_shot` 참고).

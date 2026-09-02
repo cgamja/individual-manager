@@ -152,12 +152,6 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
     expect(cssVar("vb-sand-depth")).toBe(rustF64("VOLLEY_SAND_DEPTH"));
   });
 
-  it("보이는_모래_높이가_VOLLEY_SAND_RISE와_같다", () => {
-    // **이 값이 어긋나면 모래가 화면 밖에 그려진다.** 실제로 그렇게 짜서
-    // 보이는 모래가 12px뿐이었다.
-    expect(cssVar("vb-sand-rise")).toBe(rustF64("VOLLEY_SAND_RISE"));
-  });
-
   it("네트_viewBox가_요소_크기와_같다", () => {
     const m = courtTs.match(/class="vb-net" viewBox="0 0 (\d+) (\d+)"/);
     expect(m, "네트 viewBox를 못 찾았다").not.toBeNull();
@@ -170,9 +164,7 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
     // 물결선이 정확히 해변 표면에 온다.
     const m = courtTs.match(/class="vb-sand" viewBox="0 0 \d+ (\d+)"/);
     expect(m, "모래 viewBox를 못 찾았다").not.toBeNull();
-    expect(Number(m![1])).toBe(
-      cssVar("vb-sand-wave")! + cssVar("vb-sand-rise")! + cssVar("vb-sand-depth")!,
-    );
+    expect(Number(m![1])).toBe(cssVar("vb-sand-wave")! + cssVar("vb-sand-depth")!);
   });
 
   it("물결이_착지면을_감싼다", () => {

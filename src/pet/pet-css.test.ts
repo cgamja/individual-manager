@@ -285,16 +285,63 @@ describe("비치발리볼", () => {
     expect(css).toMatch(/\.pg-female\s+\.pg-luau-top\s*\{[^}]*display:\s*block/);
   });
 
-  it("수영복의_잔재가_남아있지_않다", () => {
-    // 이름에서 의도를 읽는 레포다 — `bikini`가 남으면 다음 사람이 옷을
-    // 되돌려도 된다고 읽는다.
+  it("상의가_옷으로_읽히게_그려졌다", () => {
+    // **덮개형으로 갔다가 "갑바"로 읽혀 비키니로 돌아왔다** (2026-09-02 사용자).
+    // 문제는 노출량이 아니라 **옷으로 읽히느냐**였다 — 색이 몸에 가깝고 경계가
+    // 없으면 아무리 덮어도 살로 보인다. 그래서 셋을 못 박는다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const 상의 = svg.slice(
+      svg.indexOf('<g className="pg-luau-top">'),
+      svg.indexOf("</g>", svg.indexOf('<g className="pg-luau-top">')),
+    );
+    expect(상의.length, "상의 그림을 못 찾았다").toBeGreaterThan(0);
+
+    // (1) 삼각형 두 개 — 닫힌 경로 둘.
+    const 삼각형 = [...상의.matchAll(/d="M[^"]*Z"/g)];
+    expect(삼각형.length, "삼각형 두 개가 아니다").toBe(2);
+
+    // (2) 끈이 보인다 — 목뒤 V와 가슴 아래 가로줄.
+    expect(상의, "끈이 없다").toMatch(/stroke=\{BIKINI_DARK\}/);
+
+    // (3) 도형마다 테두리가 있다 — 경계가 없으면 살로 읽힌다.
+    for (const m of 삼각형) {
+      const 뒤 = 상의.slice(상의.indexOf(m[0]), 상의.indexOf(m[0]) + 260);
+      expect(뒤, `테두리 없는 삼각형이 있다: ${m[0].slice(0, 30)}`).toMatch(/strokeWidth=/);
+    }
+  });
+
+  it("옷_색이_몸_색과_대비된다", () => {
+    // 배가 흰색이라 옅은 살구·크림 계열을 쓰면 옷이 아니라 살로 읽힌다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const 색 = (name: string) => {
+      const m = svg.match(new RegExp(`const ${name} = "(#[0-9a-fA-F]{6})"`));
+      return m ? m[1] : null;
+    };
+    const 밝기 = (hex: string) =>
+      (parseInt(hex.slice(1, 3), 16) +
+        parseInt(hex.slice(3, 5), 16) +
+        parseInt(hex.slice(5, 7), 16)) /
+      3;
+    const snow = 색("SNOW");
+    expect(snow, "SNOW를 못 찾았다").not.toBeNull();
+    for (const name of ["BIKINI", "STRAW"]) {
+      const c = 색(name);
+      expect(c, `${name}을 못 찾았다`).not.toBeNull();
+      expect(
+        밝기(snow!) - 밝기(c!),
+        `${name}(${c})이 흰 배와 너무 가깝다 — 옷이 아니라 살로 읽힌다`,
+      ).toBeGreaterThan(60);
+    }
+  });
+
+  it("중간에_썼던_이름이_안_남아있다", () => {
+    // `pg-straw`는 덮개형으로 가던 시절의 이름이다.
     const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
     const volley = readFileSync(resolve("src/pet/css/volleyball.css"), "utf8");
     for (const [이름, 본문] of [
       ["Penguin.tsx", svg],
       ["volleyball.css", volley],
     ] as const) {
-      expect(본문.toLowerCase(), `${이름}에 bikini가 남아 있다`).not.toContain("bikini");
       expect(본문, `${이름}에 pg-straw가 남아 있다`).not.toContain("pg-straw");
     }
   });

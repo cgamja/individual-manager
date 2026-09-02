@@ -14,9 +14,13 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 // vitest는 프로젝트 루트에서 돈다. `?raw`는 vitest의 CSS 처리에 걸려 원본을
 // 주지 않으므로 파일을 직접 읽는다 (그래서 @types/node가 dev 의존성에 있다)
 const css = readFileSync(resolve("src/pet/pet.css"), "utf8");
-// 상수가 어느 모듈에 있든 값만 맞으면 된다 — PET_SIZE는 기준점 계산 때문에
-// 코어로 옮겼고 여백은 창을 만드는 브릿지에 남았다. 둘 다 읽는다.
+// 상수가 어느 모듈에 있든 값만 맞으면 된다 — 튜닝 값은 코어의 tuning.rs로 모았고
+// 창 여백은 창을 만드는 브릿지에 남았다. 셋을 이어 붙여 읽는다.
+//
+// **상수가 이사하면 이 목록도 같이 이사해야 한다.** 소스를 문자열로 읽는 방식의
+// 대가인데, 아래 단언이 전부 not.toBeNull()이라 빠뜨리면 조용히 통과하지 않고 터진다.
 const petRs =
+  readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
   readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
   readFileSync(resolve("src-tauri/src/pet_bridge.rs"), "utf8");
 // 화면에 그리는 곳이 둘이다 — 한쪽만 보면 옮겨간 클래스를 놓친다

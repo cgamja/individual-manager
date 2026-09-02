@@ -26,12 +26,18 @@ const MESH = "#f4f1e8";
  * 모래사장. **가로로만 늘어난다**(`preserveAspectRatio="none"`) — 세로는 CSS가
  * 고정하므로 화면이 넓어져도 모래가 두꺼워지지 않는다.
  *
- * `viewBox` 세로 190 = 발밑 선 위로 보이는 110(`VOLLEY_SAND_RISE`) + 발밑 선
- * 아래로 더 내려가는 80(`VOLLEY_SAND_DEPTH`). **물결선은 맨 위에 온다** — 그
- * 선이 곧 공이 떨어지는 해변 표면이고, 아래로 갈수록 화면 밖이다.
+ * `viewBox` 세로 198 = 물결 여유 8(`--vb-sand-wave`) + 발밑 선 위로 보이는
+ * 110(`VOLLEY_SAND_RISE`) + 발밑 선 아래로 더 내려가는 80(`VOLLEY_SAND_DEPTH`).
+ *
+ * **물결의 한가운데(y=8)가 공이 떨어지는 해변 표면이다.** 물결을 전부 그 아래에
+ * 두면 공이 모래 위에 떠 보인다 — 실제로 1~18px 떠 있었다.
+ *
+ * **`T`(이어지는 매끄러운 곡선)를 안 쓴다.** 제어점이 반사돼 누적되면서 실제
+ * 곡선이 앵커가 말하는 범위를 훌쩍 넘는다 — 3~12로 적어 두고 1~18로 그려졌다.
+ * 구간마다 `Q`로 제어점을 직접 준다.
  */
 const SAND_SVG = `
-<svg class="vb-sand" viewBox="0 0 1000 190" preserveAspectRatio="none"
+<svg class="vb-sand" viewBox="0 0 1000 198" preserveAspectRatio="none"
      xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <defs>
     <linearGradient id="vb-sand-fill" x1="0" y1="0" x2="0" y2="1">
@@ -39,9 +45,10 @@ const SAND_SVG = `
       <stop offset="100%" stop-color="${SAND_BOTTOM}" />
     </linearGradient>
   </defs>
-  <path d="M0 12 Q 125 2 250 10 T 500 6 T 750 11 T 1000 3 L1000 190 L0 190 Z"
+  <path d="M0 9 Q 125 2 250 8 Q 375 14 500 7 Q 625 1 750 9 Q 875 15 1000 8
+           L1000 198 L0 198 Z"
         fill="url(#vb-sand-fill)" />
-  <path d="M0 12 Q 125 2 250 10 T 500 6 T 750 11 T 1000 3"
+  <path d="M0 9 Q 125 2 250 8 Q 375 14 500 7 Q 625 1 750 9 Q 875 15 1000 8"
         stroke="#fff3d4" stroke-width="3" fill="none" opacity="0.8" />
 </svg>`;
 

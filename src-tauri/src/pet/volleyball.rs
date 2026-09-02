@@ -513,32 +513,25 @@ impl Volleyball {
         let to = self.to_side.other();
         let (lo, hi) = self.court.span_of(to);
         let 마지막 = now_ms >= self.rally_until_ms;
-        // **체공을 먼저 정한다** — 킬샷의 목적지가 체공에 딸린 낙하 거리에
-        // 의존하므로 순서가 뒤바뀌면 안 된다.
-        let grade = if 마지막 {
-            VOLLEY_FLIGHT_MS[0]
-        } else {
-            VOLLEY_FLIGHT_MS[(self.next_u64() % VOLLEY_FLIGHT_MS.len() as u64) as usize]
-        };
-        // **킬샷의 착지점은 체공에 딸린 낙하 거리에 의존한다** — 등급만으로 정해지는
-        // 이 값(도착 보장을 끄므로 뛸 거리가 0이다)을 먼저 구해야 순서가 안 뒤집힌다.
-        let t0 = flight_ms_for(&self.court, 0.0, grade) as f64 / 1000.0;
-
         let 빈자리 = farthest_from(on_side, lo, hi);
+
         // **킬샷은 목적지가 아니라 착지점을 고른다.** 아무도 안 치므로 공은
         // 타점을 지나 **화면 바닥의 모래까지** 떨어지고, 그동안 가로 속도를
         // 그대로 갖는다. 판이 화면 세로 중앙으로 올라가면서 그 낙하가 화면
         // 절반만큼 길어져, 타점 높이로 조준하면 해변을 한참 지나쳐 날아간다.
-        let target_cx = if 마지막 {
-            // **아무 마리에게서도 가장 먼 자리에 꽂는다.** 받는 마리는 뛰지만
-            // 못 미치고, 공이 모래에 박힌다.
-            self.kill_landing(ball.x, 빈자리, to, t0)
+        //
+        // **체공을 착지점과 함께 정한다** — 둘이 서로에게 의존해서, 등급을 먼저
+        // 박아 두면 좁고 긴 화면에서 답이 없어진다 (`kill_shot` 참고).
+        let (target_cx, grade) = if 마지막 {
+            let (착지, ms) = self.kill_shot(ball.x, 빈자리, to);
+            (착지, ms)
         } else {
+            let grade = VOLLEY_FLIGHT_MS[(self.next_u64() % VOLLEY_FLIGHT_MS.len() as u64) as usize];
             // 균등하게 뽑되 **빈자리 쪽으로 끌어당긴다.** 순수 균등이면 마릿수가
             // 늘수록 뽑힌 자리가 이미 누군가의 사정거리 안이라 아무도 안 뛴다
             // (`VOLLEY_AWAY_BIAS` 참고). 끌어당김이 곧 "뛰는 그림"의 양이다.
             let 균등 = lo + self.fraction() * (hi - lo);
-            균등 + (빈자리 - 균등) * VOLLEY_AWAY_BIAS
+            (균등 + (빈자리 - 균등) * VOLLEY_AWAY_BIAS, grade)
         };
         let receiver = nearest_to(on_side, target_cx);
         let 뛸_거리 = receiver
@@ -571,35 +564,60 @@ impl Volleyball {
         }
     }
 
-    /// 킬샷이 떨어질 자리를 고른다 — **네트를 넘으면서 해변 안에 떨어지는 x.**
+    /// 킬샷의 **착지점과 체공을 함께** 고른다 — 네트를 넘으면서 화면 안에
+    /// 떨어지는 조합이다.
     ///
     /// 두 조건이 서로 당긴다. 가까이 떨어뜨리면 공이 네트에 닿기까지 걸리는
     /// 시간이 전체 비행에서 차지하는 비율이 커져 **타점 아래로 내려간 채 네트를
-    /// 지난다.** 멀리 떨어뜨리면 해변을 지나 화면 밖으로 나간다.
+    /// 지난다.** 멀리 떨어뜨리면 화면 밖으로 나간다.
     ///
     /// 네트를 넘는 조건은 시간으로 쓰면 한 줄이다. 공이 타점보다
     /// `VOLLEY_NET_CLEAR`만큼 내려가는 데 걸리는 시간을 `s₅₀`라 하면
     /// (`s² − t·s − 2·clear/g = 0`의 양근), **네트에 닿는 시각이 그보다 일러야**
     /// 한다. 가로는 등속이라 시간 비율이 곧 거리 비율이므로 최소 비행 거리가 나온다.
-    fn kill_landing(&self, x0: f64, 빈자리: f64, to: Side, t: f64) -> f64 {
-        let 전체 = t + self.court.fall_after_contact(t);
-        let s50 = (t + (t * t + 8.0 * VOLLEY_NET_CLEAR / VOLLEY_GRAVITY).sqrt()) / 2.0;
-        // 1.0에 붙으면 그물을 스치듯 지나가므로 10%를 남긴다.
-        let 비율 = (s50 * 0.9 / 전체).min(0.9).max(f64::EPSILON);
-        // **네트의 먼 쪽 모서리**를 기준으로 잰다 — 공은 거기서 가장 낮다.
-        let 방향 = if to == Side::Right { 1.0 } else { -1.0 };
-        let 그물_끝 = self.court.net_cx() + 방향 * VOLLEY_NET_HALF_W;
-        let 최소_거리 = (그물_끝 - x0).abs() / 비율;
-        // **화면 안에 떨어져야 한다.** `sand_span`은 모래가 화면 밖까지 뻗는
-        // 범위라 그걸로 자르면 공이 안 보이는 데서 끝난다 — 세계의 좌우 끝을 쓴다.
+    ///
+    /// **체공을 늘리면 그 최소 거리가 줄어든다** (`s₅₀`는 체공에 비례해 늘지만
+    /// 낙하 시간은 오히려 줄어 비율이 커진다). 그래서 등급을 짧은 것부터 훑어
+    /// **화면 안에 들어가는 첫 등급**을 쓴다. 짧은 등급으로 박으면 세로로 긴
+    /// 화면(세워 놓은 모니터)에서 공이 화면 밖에 떨어져 **판이 안 보이는 데서
+    /// 끝난다** — 1080×1920에서 실제로 320px을 넘어갔다.
+    ///
+    /// 대가는 그런 화면에서 마지막 공이 스파이크가 아니라 토스가 되는 것이다.
+    /// 안 보이는 것보다 낫다.
+    fn kill_shot(&self, x0: f64, 빈자리: f64, to: Side) -> (f64, u64) {
         let (화면_lo, 화면_hi) = self.court.landing_span();
-        // **자르는 순서가 곧 우선순위다.** 네트를 넘는 조건을 나중에 한 번 더
-        // 걸어, 두 조건이 부딪히면 **네트 쪽이 이긴다** — 화면 밖에 떨어지는 것은
-        // 그림이 아쉬운 것이고, 그물을 뚫는 것은 물리가 거짓말을 하는 것이다.
-        match to {
-            Side::Right => 빈자리.max(x0 + 최소_거리).min(화면_hi).max(x0 + 최소_거리),
-            Side::Left => 빈자리.min(x0 - 최소_거리).max(화면_lo).min(x0 - 최소_거리),
+        let 방향 = if to == Side::Right { 1.0 } else { -1.0 };
+        // **그물의 먼 쪽 모서리**를 기준으로 잰다 — 공은 거기서 가장 낮다.
+        let 그물_끝 = self.court.net_cx() + 방향 * VOLLEY_NET_HALF_W;
+
+        let mut 마지막 = (빈자리, VOLLEY_FLIGHT_MS[0]);
+        for grade in VOLLEY_FLIGHT_MS {
+            // 도착 보장을 끄므로 뛸 거리는 0이다.
+            let ms = flight_ms_for(&self.court, 0.0, grade);
+            let t = ms as f64 / 1000.0;
+            let 전체 = t + self.court.fall_after_contact(t);
+            let s50 = (t + (t * t + 8.0 * VOLLEY_NET_CLEAR / VOLLEY_GRAVITY).sqrt()) / 2.0;
+            // 1.0에 붙으면 그물을 스치듯 지나가므로 10%를 남긴다.
+            let 비율 = (s50 * 0.9 / 전체).min(0.9).max(f64::EPSILON);
+            let 최소 = x0 + 방향 * (그물_끝 - x0).abs() / 비율;
+            마지막 = (최소, ms);
+            let 들어가나 = if 방향 > 0.0 {
+                최소 <= 화면_hi
+            } else {
+                최소 >= 화면_lo
+            };
+            if 들어가나 {
+                let 착지 = match to {
+                    Side::Right => 빈자리.max(최소).min(화면_hi),
+                    Side::Left => 빈자리.min(최소).max(화면_lo),
+                };
+                return (착지, ms);
+            }
         }
+        // 어느 등급으로도 화면 안에 못 넣는 세계다. **네트를 지키는 쪽을 고른다** —
+        // 화면 밖에 떨어지는 것은 그림이 아쉬운 것이고, 그물을 뚫는 것은 물리가
+        // 거짓말을 하는 것이다.
+        마지막
     }
 
     /// 공이 모래에 닿았거나 코트를 벗어났는가 — 랠리가 끝나는 조건이다.

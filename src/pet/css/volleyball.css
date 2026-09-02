@@ -1,4 +1,4 @@
-/* ── 비치발리볼 — 화면 중앙에 모여 지푸라기를 걸치고 한 판 친다 ── */
+/* ── 비치발리볼 — 화면 중앙에 모여 훌라 차림으로 한 판 친다 ────── */
 
 /* 국면 여섯 (`VolleyPhase`). **판이 마리를 몬다** — `Ready`와 `Chase`의 목적지를
    정하는 것은 코어의 판이고, 여기서 그리는 것은 자세뿐이다.
@@ -43,18 +43,9 @@
   display: block;
 }
 
-/* 레이와 치마는 암수 공통이다. 따로 규칙이 필요한 것은 아니지만, `Penguin.tsx`가
-   쓰는 클래스에는 스타일이 있어야 한다(`pet-css.test.ts`가 대조한다) — 지푸라기
-   가닥이 자세를 따라 함께 흔들리도록 변형 기준점만 잡아 둔다. */
-.pg-lei {
-  transform-origin: 50% 100%;
-}
-
-.pg-luau-skirt {
-  transform-origin: 50% 0%;
-}
-
-/* 뛰는 동안 치마 단이 살짝 흔들린다 — 라피아가 뻣뻣한 판때기로 안 보이게. */
+/* 뛰는 동안 치마 단과 레이가 살짝 흔들린다 — 라피아와 꽃목걸이가 뻣뻣한
+   판때기로 안 보이게. **변형 기준점이 다르다**: 치마는 허리에 매달려 있고
+   레이는 목에 걸려 있다. */
 @keyframes pg-luau-sway {
   0%,
   100% {
@@ -65,8 +56,30 @@
   }
 }
 
+@keyframes pg-lei-swing {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(1.5px) rotate(1.5deg);
+  }
+}
+
+.pg-luau-skirt {
+  transform-origin: 50% 0%;
+}
+
+.pg-lei {
+  transform-origin: 50% 0%;
+}
+
 .pg--volley-chase .pg-luau-skirt {
   animation: pg-luau-sway 0.26s ease-in-out infinite;
+}
+
+.pg--volley-chase .pg-lei {
+  animation: pg-lei-swing 0.26s ease-in-out infinite;
 }
 
 /* ── 모이는 중 — 자기 자리로 날아간다 ─────────────────────────── */

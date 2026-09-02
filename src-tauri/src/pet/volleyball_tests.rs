@@ -14,6 +14,17 @@ fn 코트() -> Court {
     Court::new(넓은_코트()).expect("넓은 화면에서는 코트가 선다")
 }
 
+/// **세워 놓은 모니터.** 1080×1920쯤 — 세로가 길수록 판에서 모래까지의 낙하가
+/// 길어져 킬샷이 화면 밖으로 나가려 한다. 가로 화면만 보면 안 걸린다.
+fn 좁고_긴_코트() -> Bounds {
+    Bounds {
+        left: 52.0,
+        right: 888.0,
+        top: 105.0,
+        floor_y: 1_805.0,
+    }
+}
+
 // ── 코트 기하 ──────────────────────────────────────────────────
 
 #[test]
@@ -227,7 +238,12 @@ fn 반대편은_서로다() {
 
 /// 코트에 마리 `n`을 세우고 판을 연다. 반환은 (판, (id, 팀, 몸통 가운데 x) 목록).
 fn 판(n: usize, seed: u64) -> (Volleyball, Vec<(PetId, Side, f64)>) {
-    let court = 코트();
+    판_에서(넓은_코트(), n, seed)
+}
+
+/// 아무 경계에서나 판을 연다 — 세워 놓은 화면처럼 다른 기하를 볼 때 쓴다.
+fn 판_에서(bounds: Bounds, n: usize, seed: u64) -> (Volleyball, Vec<(PetId, Side, f64)>) {
+    let court = Court::new(bounds).expect("코트가 선다");
     let sides = assign_sides(n);
     let 좌수 = sides.iter().filter(|s| **s == Side::Left).count();
     let 우수 = n - 좌수;
@@ -341,9 +357,15 @@ fn 다른_시드는_다른_랠리를_낳는다() {
 #[test]
 fn 공은_반드시_네트를_넘는다() {
     // KTD6 — 네트 근처를 지날 때 공은 언제나 네트 꼭대기보다 위다.
-    let court = 코트();
+    네트를_넘는지_본다(넓은_코트());
+    // **세워 놓은 화면도 본다** — 낙하가 길어져 킬샷의 조건이 달라지는 자리다.
+    네트를_넘는지_본다(좁고_긴_코트());
+}
+
+fn 네트를_넘는지_본다(bounds: Bounds) {
+    let court = Court::new(bounds).expect("코트가 선다");
     for seed in 1u64..=8 {
-        let (mut board, mut 위치) = 판(4, seed);
+        let (mut board, mut 위치) = 판_에서(bounds, 4, seed);
         board.serve(0, &위치);
         let mut now = 0u64;
         while now < 40_000 && !board.landed() {
@@ -638,12 +660,83 @@ fn 판은_공이_모래에_닿아_끝난다() {
     }
 }
 
+/// 판이 끝날 때까지 굴리고 공을 돌려준다. 받을 마리는 목적지로 곧장 이동한다.
+fn 끝까지(bounds: Bounds, n: usize, seed: u64) -> (Court, VolleyBallSnapshot) {
+    let court = Court::new(bounds).expect("코트가 선다");
+    let sides = assign_sides(n);
+    let 좌수 = sides.iter().filter(|s| **s == Side::Left).count();
+    let (mut 좌, mut 우) = (0usize, 0usize);
+    let mut players = BTreeMap::new();
+    let mut 위치 = Vec::new();
+    for (i, side) in sides.iter().enumerate() {
+        let id = i as PetId + 1;
+        let (k, total) = if *side == Side::Left {
+            좌 += 1;
+            (좌 - 1, 좌수)
+        } else {
+            우 += 1;
+            (우 - 1, n - 좌수)
+        };
+        let spot = court.spot_of(*side, k, total);
+        players.insert(id, *side);
+        위치.push((id, *side, spot.0 + PET_SIZE / 2.0));
+    }
+    let mut board = Volleyball::new(players, court, 0, seed);
+    board.serve(0, &위치);
+    let mut now = 0u64;
+    while now < 60_000 && !board.landed() {
+        now += 50;
+        board.step_ball(0.05);
+        if let Some((rid, tcx)) = board.receiver() {
+            if let Some(p) = 위치.iter_mut().find(|(id, _, _)| *id == rid) {
+                let 남은 = tcx - p.2;
+                p.2 += 남은.clamp(-VOLLEY_CHASE_SPEED * 0.05, VOLLEY_CHASE_SPEED * 0.05);
+            }
+            let cx = 위치.iter().find(|(id, _, _)| *id == rid).unwrap().2;
+            if board.contact_at(cx) {
+                let to = board.next_side();
+                let 상대: Vec<(PetId, f64)> = 위치
+                    .iter()
+                    .filter(|(_, s, _)| *s == to)
+                    .map(|(id, _, cx)| (*id, *cx))
+                    .collect();
+                board.hit(now, &상대);
+            }
+        }
+    }
+    (court, board.ball().expect("판이 끝날 때 공은 있다"))
+}
+
+#[test]
+fn 세워_놓은_화면에서도_공이_화면_안에_떨어진다() {
+    // **킬샷의 착지점과 체공은 서로에게 의존한다.** 등급을 짧은 것으로 박아 두면
+    // 세로가 긴 화면에서 낙하가 길어져 공이 화면 밖에 떨어지고, **판이 안 보이는
+    // 데서 끝난다.** 가로 화면 픽스처만 있으면 이 자리를 영영 못 본다.
+    let b = 좁고_긴_코트();
+    for n in [2usize, 4, 8] {
+        for seed in 1u64..=6 {
+            let (court, ball) = 끝까지(b, n, seed);
+            let (lo, hi) = court.landing_span();
+            assert!(
+                ball.x >= lo && ball.x <= hi,
+                "{n}마리 시드 {seed}: 공이 화면 밖 {}에 떨어졌다 (화면 {lo}~{hi})",
+                ball.x
+            );
+        }
+    }
+}
+
 #[test]
 fn 킬샷은_코트_안에_떨어진다() {
     // 그림으로 그려진 코트 사각형 안이어야 한다 — 밖이면 공이 모래 없는
     // 바탕화면에 꽂힌다.
+    // **`rect()`(= `sand_span`)로 재면 안 된다** — 거기엔 화면 밖 200px 여백이
+    // 들어 있어서, 착지를 화면 안으로 제한한다는 주장을 하나도 안 지킨다.
     let court = 코트();
-    let (x0, _, w, _) = court.rect();
+    let (x0, w) = {
+        let (lo, hi) = court.landing_span();
+        (lo, hi - lo)
+    };
     for seed in 1u64..=20 {
         let (mut board, mut 위치) = 판(4, seed);
         board.serve(0, &위치);
@@ -671,7 +764,7 @@ fn 킬샷은_코트_안에_떨어진다() {
         let ball = board.ball().unwrap();
         assert!(
             ball.x >= x0 && ball.x <= x0 + w,
-            "시드 {seed}: 공이 코트 그림({x0}~{}) 밖 {}에 떨어졌다",
+            "시드 {seed}: 공이 화면({x0}~{}) 밖 {}에 떨어졌다",
             x0 + w,
             ball.x
         );

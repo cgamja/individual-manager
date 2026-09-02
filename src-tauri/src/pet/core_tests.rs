@@ -767,7 +767,7 @@ fn 판을_못_열면_마리의_동작이_한_틱도_안_바뀐다() {
 fn 판이_접혀도_남은_마리는_평소로_돌아간다() {
     // 두 마리 판에서 하나를 끌어내면 남은 하나가 `Ready`에 갇힌다 — 그 국면의
     // 시각은 국면 길이가 아니라 **안전 상한**(60초)이라, 코트도 공도 사라진
-    // 바탕화면에 지푸라기만 걸친 채 1분을 서 있게 된다.
+    // 바탕화면에 훌라 차림 그대로 1분을 서 있게 된다.
     let w = World::single(넓은_경계);
     let mut pets = 여러_마리(2);
     assert_eq!(pets.start_volleyball(0, 넓은_경계, 7), Ok(()));
@@ -852,4 +852,50 @@ fn 핀볼_충돌은_비치발리볼_판이_도는_동안_쉰다() {
         }
     }
     assert!(now < 25_000, "판이 안 끝났다");
+}
+
+#[test]
+fn 판이_열린_뒤_화면이_좁아져도_얼어붙지_않는다() {
+    // **코트는 열릴 때 한 번 재고 `clamp`는 매 틱 지금 경계를 쓴다.** 그 사이에
+    // 화면이 좁아지면(해상도 변경·모니터 교체) 자기 자리가 **닿을 수 없는 곳**이
+    // 되어 영영 도착 못 하고, `Gathering`이 안전 상한 60초를 다 쓴다 — 그동안
+    // 화면에는 공도 없이 훌라 차림 펭귄들만 떠 있다.
+    let 넓은 = World::single(넓은_경계);
+    let 좁은_경계 = Bounds {
+        left: 52.0,
+        right: 828.0,
+        top: 80.0,
+        floor_y: 580.0,
+    };
+    let 좁은 = World::single(좁은_경계);
+
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 3), Ok(()));
+
+    let mut now = 0u64;
+    // 1초 동안은 넓은 화면, 그 뒤로는 좁아진 화면.
+    while now < 40_000 && pets.volleyball().is_some() {
+        now += 50;
+        let w = if now < 1_000 { &넓은 } else { &좁은 };
+        pets.step_all(now, |_| Some(w));
+    }
+    assert!(
+        now < 40_000,
+        "화면이 좁아지자 판이 {now}ms 동안 얼어붙었다 (안전 상한까지 갔다)"
+    );
+
+    // 서브까지 실제로 들어갔는지 — 안 들어가면 "끝나긴 했다"만으로는 부족하다.
+    let mut pets = 여러_마리(4);
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 3), Ok(()));
+    let mut 공을_봤다 = false;
+    let mut now = 0u64;
+    while now < 40_000 && pets.volleyball().is_some() {
+        now += 50;
+        let w = if now < 1_000 { &넓은 } else { &좁은 };
+        pets.step_all(now, |_| Some(w));
+        if pets.volleyball().and_then(|b| b.ball()).is_some() {
+            공을_봤다 = true;
+        }
+    }
+    assert!(공을_봤다, "공이 한 번도 안 나왔다 — 모이기에서 멈춰 있었다");
 }

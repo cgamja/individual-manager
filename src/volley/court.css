@@ -35,6 +35,9 @@ body {
      발밑 선은 작업 영역 바닥과 같아서 그 아래로 그린 것은 Dock 뒤이거나 화면
      밖이다 — 이 값이 0이면 모래가 한 픽셀도 안 보인다. */
   --vb-sand-rise: 110px;
+  /* 물결이 착지면 위로 솟는 폭. 아래로도 같은 만큼 내려간다 — 즉 착지면은
+     물결의 **한가운데**다. 그림뿐이라 Rust에 짝이 없다. */
+  --vb-sand-wave: 8px;
 
   position: relative;
   width: 100%;
@@ -51,7 +54,10 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(var(--vb-sand-rise) + var(--vb-sand-depth));
+  /* **물결이 착지면 위아래로 오가도록 여유를 준다.** 요소 높이를 정확히
+     `rise + depth`로 두면 물결선이 통째로 착지면 **아래**에 그려져 공이 모래
+     위에 떠 보인다 — 실제로 1~18px 떠 있었다. */
+  height: calc(var(--vb-sand-rise) + var(--vb-sand-depth) + var(--vb-sand-wave));
   display: block;
   animation: vb-sand-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }

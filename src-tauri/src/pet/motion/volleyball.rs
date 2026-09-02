@@ -25,7 +25,7 @@ impl Pet {
         dt: f64,
     ) {
         match volley {
-            VolleyPhase::Gather => self.tick_volley_gather(now_ms, dt),
+            VolleyPhase::Gather => self.tick_volley_gather(now_ms, bounds, dt),
             VolleyPhase::Chase => self.tick_volley_chase(now_ms, bounds, dt),
             // 판이 몰아 주는 국면. 여기 시각은 국면 길이가 아니라 **안전 상한**이라,
             // 다다랐다는 것은 판이 사라졌다는 뜻이다.
@@ -53,8 +53,16 @@ impl Pet {
 
     /// 자기 자리로 **날아간다.** 목적지가 화면 세로 중앙의 한 점이라 헤엄·볼링
     /// 모으기와 같은 꼴로 `target`을 향해 곧장 간다 — 순간이동하지 않는다.
-    fn tick_volley_gather(&mut self, now_ms: u64, dt: f64) {
+    fn tick_volley_gather(&mut self, now_ms: u64, bounds: Bounds, dt: f64) {
+        // **살아 있는 경계로 목적지를 당긴다.** 코트는 판이 열릴 때 한 번 재는데
+        // `clamp`는 매 틱 지금 경계를 쓴다 — 그 사이에 화면이 좁아지면(해상도
+        // 변경·모니터 교체) 자리가 **닿을 수 없는 곳**이 되어 영영 도착 못 하고,
+        // `Gathering`이 안전 상한 60초를 다 쓴다. 그동안 화면에는 공도 없이
+        // 훌라 차림 펭귄들만 떠 있다.
         let (tx, ty) = self.target;
+        let tx = tx.clamp(bounds.left, bounds.right.max(bounds.left));
+        let ty = ty.clamp(bounds.top.min(bounds.floor_y), bounds.floor_y);
+        self.target = (tx, ty);
         let (dx, dy) = (tx - self.x, ty - self.y);
         let dist = (dx * dx + dy * dy).sqrt();
         if dist <= ARRIVE_EPSILON || now_ms >= self.behavior_until_ms {

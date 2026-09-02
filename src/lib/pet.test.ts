@@ -316,13 +316,23 @@ describe("성별은 창 라벨에서 결정적으로 나온다", () => {
     expect(암컷).toBeLessThanOrEqual(5);
   });
 
-  it("목소리와_따로_논다", () => {
-    // 같은 곱수를 쓰면 "높은 목소리 = 암컷"이라는, 아무도 요구하지 않은
-    // 규칙이 생긴다.
-    const 쌍 = [1, 2, 3, 4, 5, 6, 7, 8].map(
-      (n) => `${isFemalePet(`pet-${n}`)}:${voiceOffsetFor(`pet-${n}`)}`,
-    );
-    expect(new Set(쌍).size).toBeGreaterThan(2);
+  it("목소리_높낮이와_성별이_안_붙는다", () => {
+    // **"높은 목소리 = 암컷"이 되면 안 된다.** 둘 다 id의 함수라 완전한
+    // 독립은 불가능하니, 실제로 지켜야 하는 것만 본다: 높은 쪽에도 낮은 쪽에도
+    // 암수가 모두 있어야 한다.
+    //
+    // (앞서 여기에 "쌍의 가짓수가 2보다 많다"를 썼는데, `voiceOffsetFor`만으로도
+    // id마다 값이 달라 **항상 통과하는 테스트**였다 — `isFemalePet`이 상수를
+    // 돌려줘도 초록이었다.)
+    const 높은: boolean[] = [];
+    const 낮은: boolean[] = [];
+    for (let n = 1; n <= 12; n += 1) {
+      (voiceOffsetFor(`pet-${n}`) > 0 ? 높은 : 낮은).push(isFemalePet(`pet-${n}`));
+    }
+    for (const [이름, 무리] of [["높은 목소리", 높은], ["낮은 목소리", 낮은]] as const) {
+      expect(무리.some(Boolean), `${이름}가 전원 수컷이다`).toBe(true);
+      expect(무리.some((f) => !f), `${이름}가 전원 암컷이다`).toBe(true);
+    }
   });
 
   it("펫_창이_아니면_수컷으로_떨어진다", () => {

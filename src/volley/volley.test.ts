@@ -166,11 +166,48 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
   });
 
   it("모래_viewBox가_요소_높이와_같다", () => {
-    // 세로로 안 늘이므로(`preserveAspectRatio="none"`이지만 높이가 고정이다)
-    // viewBox 세로와 CSS 높이가 같아야 물결선이 정확히 해변 표면에 온다.
+    // 세로로 안 늘이므로(높이가 CSS로 고정이다) viewBox 세로와 CSS 높이가 같아야
+    // 물결선이 정확히 해변 표면에 온다.
     const m = courtTs.match(/class="vb-sand" viewBox="0 0 \d+ (\d+)"/);
     expect(m, "모래 viewBox를 못 찾았다").not.toBeNull();
-    expect(Number(m![1])).toBe(cssVar("vb-sand-rise")! + cssVar("vb-sand-depth")!);
+    expect(Number(m![1])).toBe(
+      cssVar("vb-sand-wave")! + cssVar("vb-sand-rise")! + cssVar("vb-sand-depth")!,
+    );
+  });
+
+  it("물결이_착지면을_감싼다", () => {
+    // **공이 모래 위에 떠 보이면 안 된다.** 물결을 착지면 아래에만 그리면
+    // 그렇게 된다 — 실제로 1~18px 떠 있었다. 착지면(viewBox y = wave)이
+    // 물결의 위아래 사이에 있어야 한다.
+    const 착지면 = cssVar("vb-sand-wave")!;
+    const d = courtTs.match(/d="(M0 [^"]*?)"/);
+    expect(d, "모래 경로를 못 찾았다").not.toBeNull();
+
+    // `Q` 구간마다 **실제 곡선**의 y 범위를 구한다 — 앵커만 보면 제어점이 만드는
+    // 오버슈트를 놓친다.
+    const 앞 = d![1].split("L")[0];
+    const nums = [...앞.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+    const ys: number[] = [];
+    let y0 = nums[1];
+    for (let i = 2; i + 3 < nums.length; i += 4) {
+      const cy = nums[i + 1];
+      const y2 = nums[i + 3];
+      for (let k = 0; k <= 20; k += 1) {
+        const t = k / 20;
+        ys.push((1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t ** 2 * y2);
+      }
+      y0 = y2;
+    }
+    expect(ys.length, "곡선 구간을 못 읽었다").toBeGreaterThan(20);
+    expect(Math.min(...ys), "물결이 착지면 위로 안 올라온다").toBeLessThan(착지면);
+    expect(Math.max(...ys), "물결이 착지면 아래로 안 내려간다").toBeGreaterThan(착지면);
+  });
+
+  it("모래_경로에_T_명령이_없다", () => {
+    // `T`는 제어점이 반사돼 누적되면서 실제 곡선이 앵커가 말하는 범위를 넘는다 —
+    // 3~12로 적어 두고 1~18로 그려졌다. 구간마다 `Q`로 제어점을 직접 준다.
+    const d = courtTs.match(/d="(M0 [^"]*?)"/);
+    expect(d![1]).not.toMatch(/\bT\b/);
   });
 });
 

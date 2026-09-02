@@ -47,7 +47,7 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
         }
     }
     if pet_pinball(app) {
-        if let Err(err) = create_field_window(app) {
+        if let Err(err) = create_pinball_window(app) {
             eprintln!("[penguin] 시작 시 핀볼 판을 못 깔았다: {err}");
         }
     }

@@ -44,13 +44,13 @@ fn 크기가_0인_작업_영역은_모니터로_치지_않는다() {
 
 #[test]
 fn 덮개는_화면_전체를_배율로_나눈다() {
-    let rects = field_rects_of(&[((0, 0), (2_880, 1_800), 2.0)]);
+    let rects = pinball_rects_of(&[((0, 0), (2_880, 1_800), 2.0)]);
     assert_eq!(rects, vec![(0.0, 0.0, 1_440.0, 900.0)]);
 }
 
 #[test]
 fn 화면마다_판을_하나씩_깐다() {
-    let rects = field_rects_of(&[
+    let rects = pinball_rects_of(&[
         ((0, 0), (2_880, 1_800), 2.0),
         ((1_800, -333), (3_008, 1_692), 1.0),
     ]);
@@ -65,11 +65,11 @@ fn 화면마다_판을_하나씩_깐다() {
 
 #[test]
 fn 크기가_0인_화면은_건너뛴다() {
-    assert!(field_rects_of(&[]).is_empty());
-    assert!(field_rects_of(&[((0, 0), (0, 900), 2.0)]).is_empty());
-    assert!(field_rects_of(&[((0, 0), (1_440, 900), 0.0)]).is_empty());
+    assert!(pinball_rects_of(&[]).is_empty());
+    assert!(pinball_rects_of(&[((0, 0), (0, 900), 2.0)]).is_empty());
+    assert!(pinball_rects_of(&[((0, 0), (1_440, 900), 0.0)]).is_empty());
     assert_eq!(
-        field_rects_of(&[((0, 0), (0, 0), 1.0), ((100, 0), (200, 200), 1.0)]),
+        pinball_rects_of(&[((0, 0), (0, 0), 1.0), ((100, 0), (200, 200), 1.0)]),
         vec![(100.0, 0.0, 200.0, 200.0)],
         "멀쩡한 화면 하나는 남는다"
     );
@@ -82,10 +82,10 @@ fn 크기가_0인_화면은_건너뛴다() {
 fn 덮개_라벨이_capabilities에_등록되어_있다() {
     let capabilities = include_str!("../../capabilities/default.json");
     assert!(
-        capabilities.contains(&format!("{FIELD_LABEL_PREFIX}*")),
-        "`{FIELD_LABEL_PREFIX}*` 글롭이 capabilities의 windows 목록에 없다"
+        capabilities.contains(&format!("{PINBALL_LABEL_PREFIX}*")),
+        "`{PINBALL_LABEL_PREFIX}*` 글롭이 capabilities의 windows 목록에 없다"
     );
-    assert_eq!(field_label(0), "pinball-field-0");
+    assert_eq!(pinball_label(0), "pinball-board-0");
 }
 
 /// 등록을 빠뜨리면 컴파일도 되고 테스트도 통과하는데 런타임에서 모든 IPC가
@@ -93,7 +93,7 @@ fn 덮개_라벨이_capabilities에_등록되어_있다() {
 /// 놓쳤던 사각지대라 소스를 직접 대조한다.
 #[test]
 fn 모든_펫_커맨드가_invoke_handler에_등록되어_있다() {
-    let bridge = concat!(include_str!("mod.rs"), include_str!("commands.rs"), include_str!("window.rs"), include_str!("field.rs"), include_str!("settings.rs"), include_str!("tick.rs"), include_str!("bounds.rs"), include_str!("popover.rs"));
+    let bridge = concat!(include_str!("mod.rs"), include_str!("commands.rs"), include_str!("window.rs"), include_str!("pinball.rs"), include_str!("settings.rs"), include_str!("tick.rs"), include_str!("bounds.rs"), include_str!("popover.rs"));
     let lib = include_str!("../lib.rs");
 
     let mut commands = Vec::new();

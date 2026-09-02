@@ -121,14 +121,14 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
     let ids = apply(on);
 
     if on {
-        if let Err(err) = create_field_window(&app) {
+        if let Err(err) = create_pinball_window(&app) {
             for id in apply(false) {
                 flush(&app, id);
             }
             return Err(format!("핀볼 판을 못 깔았어요: {err}"));
         }
     } else {
-        close_field_window(&app);
+        close_pinball_window(&app);
     }
 
     for id in ids {

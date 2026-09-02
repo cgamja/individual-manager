@@ -1,6 +1,6 @@
 import { setPetPinball } from "../lib/pet";
 import { savePetSettings } from "../lib/settings";
-import "./field.css";
+import "./pinball.css";
 
 /** 핀볼 판 — 화면 전체를 덮는 투명 창의 웹뷰. */
 

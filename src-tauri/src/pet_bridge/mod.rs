@@ -81,7 +81,7 @@ pub fn should_notify(last: Option<Look>, now: Look) -> bool {
 
 mod bounds;
 pub mod commands;
-mod field;
+mod pinball;
 mod popover;
 mod settings;
 mod tick;
@@ -89,7 +89,7 @@ mod window;
 
 pub use bounds::*;
 pub use commands::*;
-pub use field::*;
+pub use pinball::*;
 pub use popover::*;
 pub use settings::*;
 pub use tick::*;

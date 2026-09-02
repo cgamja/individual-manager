@@ -18,11 +18,11 @@ use super::*;
 /// 핀볼 덮개 창의 라벨. **`capabilities/default.json`의 `windows`에 있어야 한다** —
 /// 없으면 이 창이 부르는 커맨드가 컴파일·테스트를 다 통과하고 **런타임에서만
 /// 조용히 reject된다** (`docs/solutions/best-practices/tauri-command-registration-silent-failure.md`).
-pub const FIELD_LABEL_PREFIX: &str = "pinball-field-";
+pub const PINBALL_LABEL_PREFIX: &str = "pinball-board-";
 
 /// 화면 `index`를 덮는 판의 라벨.
-pub fn field_label(index: usize) -> String {
-    format!("{FIELD_LABEL_PREFIX}{index}")
+pub fn pinball_label(index: usize) -> String {
+    format!("{PINBALL_LABEL_PREFIX}{index}")
 }
 
 /// 화면 하나를 재서 넘기는 값 — (좌상단 물리 좌표, 물리 크기, 배율).
@@ -44,7 +44,7 @@ pub fn screen_rect(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<(f64
 }
 
 /// 덮개가 덮을 사각형들 — **화면 하나에 하나씩**이다.
-pub fn field_rects_of(screens: &[ScreenSpec]) -> Vec<(f64, f64, f64, f64)> {
+pub fn pinball_rects_of(screens: &[ScreenSpec]) -> Vec<(f64, f64, f64, f64)> {
     screens
         .iter()
         .filter_map(|(pos, size, scale)| screen_rect(*pos, *size, *scale))
@@ -52,7 +52,7 @@ pub fn field_rects_of(screens: &[ScreenSpec]) -> Vec<(f64, f64, f64, f64)> {
 }
 
 /// 핀볼 덮개 창을 만든다. 이미 있으면 그대로 둔다.
-pub fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
+pub fn create_pinball_window(app: &AppHandle) -> tauri::Result<()> {
     let screens: Vec<ScreenSpec> = app
         .available_monitors()
         .unwrap_or_default()
@@ -65,17 +65,17 @@ pub fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
             )
         })
         .collect();
-    let rects = field_rects_of(&screens);
+    let rects = pinball_rects_of(&screens);
     if rects.is_empty() {
         return Err(tauri::Error::WindowNotFound);
     }
 
     for (index, (x, y, w, h)) in rects.into_iter().enumerate() {
-        let label = field_label(index);
+        let label = pinball_label(index);
         if app.get_webview_window(&label).is_some() {
             continue;
         }
-        WebviewWindowBuilder::new(app, &label, WebviewUrl::App("field.html".into()))
+        WebviewWindowBuilder::new(app, &label, WebviewUrl::App("pinball.html".into()))
             .title("Pinball Field")
             .inner_size(w, h)
             .position(x, y)
@@ -93,19 +93,19 @@ pub fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
             .show()?;
     }
 
-    sink_field_below_pets(app);
+    sink_pinball_below_pets(app);
     Ok(())
 }
 
 /// 판을 펭귄보다 **한 레벨 아래**로 내린다.
 #[cfg(target_os = "macos")]
-pub fn sink_field_below_pets(app: &AppHandle) {
+pub fn sink_pinball_below_pets(app: &AppHandle) {
     use objc2_app_kit::NSWindow;
 
     let labels: Vec<String> = app
         .webview_windows()
         .keys()
-        .filter(|label| label.starts_with(FIELD_LABEL_PREFIX))
+        .filter(|label| label.starts_with(PINBALL_LABEL_PREFIX))
         .cloned()
         .collect();
     for label in labels {
@@ -121,24 +121,24 @@ pub fn sink_field_below_pets(app: &AppHandle) {
         };
         unsafe {
             let ns = &*(ptr as *const NSWindow);
-            ns.setLevel(FIELD_WINDOW_LEVEL);
+            ns.setLevel(PINBALL_WINDOW_LEVEL);
         }
     }
 }
 
 /// 판의 창 레벨. `NSFloatingWindowLevel`(3, 펭귄이 쓰는 값) 바로 아래.
 #[cfg(target_os = "macos")]
-pub const FIELD_WINDOW_LEVEL: isize = 2;
+pub const PINBALL_WINDOW_LEVEL: isize = 2;
 
 #[cfg(not(target_os = "macos"))]
-pub fn sink_field_below_pets(_app: &AppHandle) {}
+pub fn sink_pinball_below_pets(_app: &AppHandle) {}
 
 /// 핀볼 덮개 창을 닫는다.
-pub fn close_field_window(app: &AppHandle) {
+pub fn close_pinball_window(app: &AppHandle) {
     let labels: Vec<String> = app
         .webview_windows()
         .keys()
-        .filter(|label| label.starts_with(FIELD_LABEL_PREFIX))
+        .filter(|label| label.starts_with(PINBALL_LABEL_PREFIX))
         .cloned()
         .collect();
     for label in labels {

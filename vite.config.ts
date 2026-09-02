@@ -8,15 +8,17 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
-  // 팝오버(index)·바탕화면 펭귄(pet)·핀볼 판(pinball)은 별도 엔트리다 —
-  // 상태·CSS를 섞지 않는다 (KTD8). 판은 React도 쓰지 않는다: 커서 CSS 한 줄과
-  // Esc 핸들러 하나가 전부라 상태도 그릴 것도 없다.
+  // 팝오버(index)·바탕화면 펭귄(pet)·핀볼 판(pinball)·볼링 공(ball)은 별도
+  // 엔트리다 — 상태·CSS를 섞지 않는다 (KTD8). 판과 공은 React도 쓰지 않는다:
+  // 판은 커서 CSS와 Esc 핸들러가 전부고, 공은 SVG 하나와 포인터 셋이 전부라
+  // 그릴 트리가 없다.
   build: {
     rollupOptions: {
       input: {
         main: "index.html",
         pet: "pet.html",
         pinball: "pinball.html",
+        ball: "ball.html",
       },
     },
   },

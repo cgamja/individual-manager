@@ -63,7 +63,12 @@ function App() {
   const [theme, setThemeState] = useState(DEFAULT_PET_SETTINGS.theme);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
   /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
-  const [petSummary, setPetSummary] = useState<PetSummary>({ count: 1, max: 8, focused: null });
+  const [petSummary, setPetSummary] = useState<PetSummary>({
+    count: 1,
+    max: 8,
+    focused: null,
+    bowling: false,
+  });
 
   useEffect(() => {
     let cancelled = false;

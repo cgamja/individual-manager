@@ -3,23 +3,15 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../lib/pet";
 
-/**
- * 동작이 CSS에 실제로 그려져 있는지 확인한다.
- *
- * 코어에 동작을 추가하고 CSS를 빠뜨리면 아무것도 실패하지 않는다 — 펭귄이
- * 그 동작 동안 아무 반응 없이 서 있을 뿐이라 눈으로만 잡힌다. 커맨드 등록
- * 누락과 같은 부류의 조용한 실패라 소스를 직접 대조한다.
- */
+/** 동작이 CSS에 실제로 그려져 있는지 확인한다. */
 /** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
-// vitest는 프로젝트 루트에서 돈다. `?raw`는 vitest의 CSS 처리에 걸려 원본을
-// 주지 않으므로 파일을 직접 읽는다 (그래서 @types/node가 dev 의존성에 있다)
-const css = readFileSync(resolve("src/pet/pet.css"), "utf8");
-// 상수가 어느 모듈에 있든 값만 맞으면 된다 — PET_SIZE는 기준점 계산 때문에
-// 코어(pet.rs)로 옮겼고 여백은 창을 만드는 브릿지에 남았다. 둘 다 읽는다.
+const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout"]
+  .map((n) => readFileSync(resolve(`src/pet/css/${n}.css`), "utf8"))
+  .join("\n");
 const petRs =
-  readFileSync(resolve("src-tauri/src/pet.rs"), "utf8") +
-  readFileSync(resolve("src-tauri/src/pet_bridge.rs"), "utf8");
-// 화면에 그리는 곳이 둘이다 — 한쪽만 보면 옮겨간 클래스를 놓친다
+  readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
+  readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
+  readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8");
 const petApp =
   readFileSync(resolve("src/pet/PetApp.tsx"), "utf8") +
   readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
@@ -85,32 +77,22 @@ describe("pet.css 커버리지", () => {
   );
 
   it("세로_방향_클래스가_모두_쓰인다", () => {
-    // level은 기본값이라 규칙이 없어도 된다 — 기울이지 않는 것이 정상이다
     for (const v of ["up", "down"] as Vertical[]) {
       expect(css).toContain(`.${verticalClass(v)}`);
     }
   });
 
   it("핀볼_커서_규칙이_실제로_있다", () => {
-    // PetApp이 클래스를 걸고 CSS를 빠뜨리면 **아무것도 실패하지 않는다** —
-    // 모드를 켰는데 커서만 그대로일 뿐이라 눈으로만 잡힌다 (이 파일이 있는 이유)
     expect(petApp).toContain("pg-pinball");
     expect(css).toContain(".pg-pinball");
-    // **누르는 동안에도 방망이가 남아야 한다.** 프론트가 모든 pointerdown에서
-    // `drag_start`를 부르므로, `.pg--dragged`를 제외하면 칠 때마다 손 모양으로
-    // 깜빡인다 — 채를 들고 있다가 칠 때마다 놓는 꼴이다
     expect(css).not.toMatch(/\.pg-pinball:not\(/);
   });
 
   it("CSS에_없어진_동작의_잔재가_남아있지_않다", () => {
-    // Startled는 Sassy로 대체됐다. 죽은 규칙이 남으면 다음 사람이 헷갈린다
     expect(css).not.toContain("pg--startled");
   });
 
   it("같은_이름의_keyframes가_두_번_정의되지_않는다", () => {
-    // 실제로 겪은 사고: 던져짐의 회전이 `pg-tumble`이라는 이름을 굴러떨어지기와
-    // 나눠 써서, 나중 정의가 이겨 **굴러떨어지기 그림이 통째로 죽어 있었다.**
-    // 길이 동기화 가드로도 안 잡힌다 — 길이는 각자 맞기 때문이다
     const defined = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
     const 중복 = defined.filter((n, i) => defined.indexOf(n) !== i);
     expect(중복, `중복 정의된 @keyframes: ${중복.join(", ")}`).toEqual([]);
@@ -120,8 +102,6 @@ describe("pet.css 커버리지", () => {
     const defined = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
     expect(defined.length).toBeGreaterThan(0);
     for (const name of defined) {
-      // \b는 하이픈 앞에서도 성립해 pg-turn이 pg-turn-away 안에서 잡힌다.
-      // 이름 뒤에 이어지는 글자·하이픈이 없어야 진짜 그 이름을 쓴 것이다
       const uses = countExact(css, name);
       expect(uses, `@keyframes ${name}가 정의만 되고 쓰이지 않는다`).toBeGreaterThan(1);
     }
@@ -129,9 +109,6 @@ describe("pet.css 커버리지", () => {
 });
 
 describe("창 여백 상수 동기화", () => {
-  // 창은 펭귄보다 크다(말풍선·방망이 자리). Rust는 창을 그만큼 물려 놓고,
-  // CSS는 그만큼 안으로 들여 펭귄을 그린다. 둘이 어긋나면 펭귄이 화면
-  // 경계에서 엉뚱한 자리에 서는데, 눈으로만 잡힌다.
   it.each([
     ["pg-size", "PET_SIZE"],
     ["pg-pad-x", "PET_PAD_X"],
@@ -160,9 +137,6 @@ function cssDurationMs(cls: string): number | null {
 }
 
 describe("동작 길이 동기화", () => {
-  // 코어가 정한 길이와 CSS 길이가 어긋나도 **아무것도 실패하지 않는다.**
-  // 짧으면 다 눕기 전에 애니메이션이 끝나 자세가 튀고, 길면 이미 일어나
-  // 걷는 펭귄이 아직 넘어져 있다. 둘 다 눈으로만 잡힌다.
   it("굴러떨어지기가 Rust의 TUMBLE_MS와 같다", () => {
     const a = cssDurationMs("pg--tumble");
     const b = rustMs("TUMBLE_MS");
@@ -171,8 +145,6 @@ describe("동작 길이 동기화", () => {
     expect(a).toBe(b);
   });
 
-  // 드리우기(wait)와 발작의 돌진(dash)은 무한 반복이라 대조 대상이 아니다 —
-  // 길이가 코어의 추첨값이지 고정 상수가 아니다.
   it.each([
     ["pg--fishing-dig", "FISHING_DIG_MS"],
     ["pg--fishing-bite", "FISHING_BITE_MS"],
@@ -192,21 +164,13 @@ describe("동작 길이 동기화", () => {
 });
 
 describe("평소 숨기는 도형", () => {
-  // **실제로 밟은 함정이다.** 후광은 같은 도형을 한 벌 더 그리는데,
-  // `.pg-halo :is(path, circle, ellipse, rect) { opacity: 1 }`이 도형 클래스보다
-  // 구체적이라 `opacity: 0`으로 감추면 **후광 한 벌이 화면에 그대로 남는다.**
-  // 눈으로만 잡히고 커버리지 테스트도 통과한다 — `display: none`이어야 한다.
   const 숨기는_도형 = ["pg-hole", "pg-rod", "pg-line", "pg-float", "pg-fish", "pg-beak-lower"];
 
-  /** 선택자에 이 클래스가 정확히 등장하는 모든 규칙 블록의 본문.
-   *
-   * **주석을 먼저 걷어낸다.** 안 걷어내면 주석에 적힌 클래스 이름이 바로 뒤
-   * 규칙의 선택자로 읽혀 엉뚱한 규칙이 걸린다 — 이 테스트를 쓰다 실제로 겪었다. */
+  /** 선택자에 이 클래스가 정확히 등장하는 모든 규칙 블록의 본문. */
   function 규칙들(cls: string): string[] {
     const 본문 = css.replace(/\/\*[\s\S]*?\*\//g, " ");
     const found: string[] = [];
     for (const m of 본문.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-      // `@keyframes` 안쪽 블록과 미디어 쿼리 헤더는 선택자가 아니다
       if (m[1].includes("@")) continue;
       if (new RegExp(`\\.${cls}(?![\\w-])`).test(m[1])) found.push(m[2]);
     }
@@ -230,9 +194,6 @@ describe("평소 숨기는 도형", () => {
 });
 
 describe("빽빽거리기 부위 애니메이션 길이", () => {
-  // 부위 애니메이션은 짧은 주기를 여러 번 돌린다. **주기 × 횟수**가 코어의
-  // `SQUAWK_MS`와 어긋나도 아무것도 실패하지 않는다 — 짧으면 날개가 먼저 멈춘 채
-  // 몸만 가라앉고, 길면 퍼덕이다 잘린다. 위의 "동작 길이 동기화"는 `.pg-all`만 본다.
   it("부위마다_주기_×_횟수가_SQUAWK_MS와_같다", () => {
     const total = rustMs("SQUAWK_MS");
     expect(total, "Rust에서 SQUAWK_MS를 못 찾았다").not.toBeNull();
@@ -247,13 +208,9 @@ describe("빽빽거리기 부위 애니메이션 길이", () => {
 });
 
 describe("PetApp이 쓰는 클래스에 스타일이 있다", () => {
-  // 실제로 겪은 사고: 말풍선·방망이를 그려 놓고 CSS를 빠뜨렸다. 아무 테스트도
-  // 실패하지 않았고, 방망이가 거대한 정지 이미지로 화면에 남았다.
-  // 동작 클래스(pg--)는 위에서 따로 보고, 여기서는 UI 클래스(pg-)를 본다.
   const used = new Set<string>();
   for (const m of petApp.matchAll(/\bpg-[a-z0-9-]+/g)) {
     const cls = m[0];
-    // 동작·상태 클래스는 코어가 만들어 위 테스트가 담당한다
     if (cls.startsWith("pg--") || cls.startsWith("pg-v--")) continue;
     used.add(cls);
   }

@@ -1,0 +1,161 @@
+/* 바탕화면 펭귄의 스타일과 동작 애니메이션. */
+
+/* 후광 — 어두운 터미널·다크 모드에서 검은 몸통이 배경에 묻히는 문제. */
+:root {
+  --pg-halo-color: #cfd6e0;
+  --pg-halo-spread: 2.6;
+  --pg-halo-opacity: 0.42;
+}
+
+/* 창은 펭귄보다 크다 — 위쪽은 말풍선, 좌우는 방망이 자리다. */
+:root {
+  --pg-size: 140px;
+  --pg-pad-x: 52px;
+  --pg-pad-top: 80px;
+}
+
+html,
+body,
+#pet-root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 무대 — 진행 방향(좌우 반전)만 담당한다. 동작 애니메이션과 transform이 */
+.pg-stage {
+  position: absolute;
+  left: var(--pg-pad-x);
+  top: var(--pg-pad-top);
+  width: var(--pg-size);
+  height: var(--pg-size);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.pg-stage--flip {
+  transform: scaleX(-1);
+}
+
+.penguin {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  cursor: grab;
+}
+
+.pg--dragged {
+  cursor: grabbing;
+}
+
+/* 뒤에 깔린 도형 한 벌을 통째로 한 색으로 칠하고 조금 부풀린다. */
+.pg-halo {
+  opacity: var(--pg-halo-opacity);
+}
+
+.pg-halo :is(path, circle, ellipse, rect) {
+  fill: var(--pg-halo-color);
+  stroke: var(--pg-halo-color);
+  stroke-width: var(--pg-halo-spread);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  /* 본체가 저마다 다른 opacity를 갖지만 후광은 하나로 보여야 한다 */
+  opacity: 1;
+}
+
+/* 바닥 그림자는 배경에 녹아야 하므로 후광 대상이 아니다 */
+.pg-halo .pg-shadow {
+  display: none;
+}
+
+/* SVG 부위의 회전축. 퍼센트는 요소의 바운딩 박스 기준이라 부위마다 어긋나므로 */
+.pg-head {
+  transform-origin: 50px 44px;
+}
+.pg-body {
+  transform-origin: 50px 113px;
+}
+.pg-eye {
+  transform-origin: 57.5px 27.5px;
+}
+.pg-wing-near {
+  transform-origin: 66px 52px;
+}
+.pg-wing-far {
+  transform-origin: 38px 54px;
+}
+.pg-foot--near,
+.pg-foot--far {
+  transform-origin: 56px 112px;
+}
+/* 본체 전체의 축은 **발밑(바닥)**이다. 눌리면 바닥으로 내려앉아야 한다 — */
+.pg-all {
+  transform-origin: 50px 120px;
+}
+
+/* ── 베이스 레이어 — 동작과 무관하게 항상 돈다 ───────────────────── */
+
+@keyframes pg-breathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.022);
+  }
+}
+
+/* 4~7초에 한 번, 가끔 두 번 연속으로 깜빡인다 */
+@keyframes pg-blink {
+  0%,
+  91%,
+  100% {
+    transform: scaleY(1);
+  }
+  92.5% {
+    transform: scaleY(0.08);
+  }
+  94% {
+    transform: scaleY(1);
+  }
+  95.5% {
+    transform: scaleY(0.08);
+  }
+  97% {
+    transform: scaleY(1);
+  }
+}
+
+.pg-body {
+  animation: pg-breathe 3.2s ease-in-out infinite;
+}
+
+.pg-eye {
+  animation: pg-blink 5.5s linear infinite;
+}
+
+/* 시선 추적 — 눈동자만 커서 쪽으로 밀린다 (R7). 깜빡임은 .pg-eye가 따로 */
+.pg-gaze {
+  transform: translate(var(--gaze-x, 0), var(--gaze-y, 0));
+  transition: transform 0.18s ease-out;
+}
+
+/* 눈을 감고 있을 때는 시선도 멈춘다 */
+.pg--sleep .pg-gaze {
+  transform: none;
+}
+
+/* 움직임을 줄이는 시스템 설정을 존중한다 */
+@media (prefers-reduced-motion: reduce) {
+  .penguin *,
+  .penguin {
+    animation: none !important;
+  }
+}

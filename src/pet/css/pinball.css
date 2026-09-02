@@ -1,0 +1,29 @@
+/* 핀볼 모드 — **커서가 채가 된다. */
+.penguin.pg-pinball {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg transform='rotate(55 10 30)'%3E%3Cpath d='M10 30 L17 23' stroke='%233a2a1a' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M15 25 C20 20 25 14 29 9 C31.5 6.5 34 9 31.5 11.5 C27 17 21 22 17 25 Z' fill='%23d59a55' stroke='%236b4520' stroke-width='2' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E")
+      10 30,
+    grab;
+}
+/* **아래에서 위로 휘두른다.** 커서 이미지에는 CSS 애니메이션이 안 걸리므로 */
+.penguin.pg-pinball:active {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg transform='rotate(-40 10 30)'%3E%3Cpath d='M10 30 L17 23' stroke='%233a2a1a' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M15 25 C20 20 25 14 29 9 C31.5 6.5 34 9 31.5 11.5 C27 17 21 22 17 25 Z' fill='%23d59a55' stroke='%236b4520' stroke-width='2' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E")
+      10 30,
+    grab;
+}
+
+/* **핀볼 중에는 창 전체가 방망이다. */
+body.pg-pinball-mode {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg transform='rotate(55 10 30)'%3E%3Cpath d='M10 30 L17 23' stroke='%233a2a1a' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M15 25 C20 20 25 14 29 9 C31.5 6.5 34 9 31.5 11.5 C27 17 21 22 17 25 Z' fill='%23d59a55' stroke='%236b4520' stroke-width='2' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E")
+      10 30,
+    grab;
+}
+
+body.pg-pinball-mode:active {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg transform='rotate(-40 10 30)'%3E%3Cpath d='M10 30 L17 23' stroke='%233a2a1a' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M15 25 C20 20 25 14 29 9 C31.5 6.5 34 9 31.5 11.5 C27 17 21 22 17 25 Z' fill='%23d59a55' stroke='%236b4520' stroke-width='2' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E")
+      10 30,
+    grab;
+}

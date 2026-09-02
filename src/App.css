@@ -37,10 +37,6 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
 }
 
-
-
-
-
 button {
   font: inherit;
   padding: 6px 14px;
@@ -58,8 +54,7 @@ button:active:not(:disabled) {
   background: #e4e4e8;
 }
 
-/* 비활성을 명시한다 — 다크 블록이 글자색을 지정하는 순간 브라우저 기본
-   비활성 회색이 덮여서, 명시하지 않으면 다크에서 전부 활성으로 보인다 */
+/* 비활성을 명시한다 — 다크 블록이 글자색을 지정하는 순간 브라우저 기본 */
 button:disabled {
   color: #b8b8bd;
   background: #f5f5f7;
@@ -99,8 +94,7 @@ button:disabled {
   color: #98989d;
 }
 
-/* 카드 안의 버튼 줄. `PetCountCard`·`MotionCard`가 공유한다 —
- * 규칙이 없으면 버튼이 서로 붙어 한 덩어리로 보인다. */
+/* 카드 안의 버튼 줄. `PetCountCard`·`MotionCard`가 공유한다 — */
 .pet-count-actions {
   display: flex;
   gap: 8px;

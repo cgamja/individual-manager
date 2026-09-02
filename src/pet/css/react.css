@@ -1,0 +1,333 @@
+/* ── 반응 ──────────────────────────────────────────────────────── */
+
+/* ── 클릭 반응 — 놀라지 않고 싸가지 없게 군다 (R5) ──────────────── */
+
+/* 등을 홱 돌리고 안 돌아본다 */
+@keyframes pg-turn-away {
+  0% {
+    transform: scaleX(1) translateX(0);
+  }
+  35% {
+    transform: scaleX(0.15) translateX(-4px);
+  }
+  70% {
+    transform: scaleX(-1) translateX(-8px);
+  }
+  100% {
+    transform: scaleX(-1) translateX(-6px);
+  }
+}
+.pg--sassy-turn-away {
+  animation: pg-turn-away 0.5s ease-out forwards;
+}
+
+/* 고개만 홱 돌려 외면한다 */
+@keyframes pg-head-flick {
+  0% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-46deg);
+  }
+  100% {
+    transform: rotate(-38deg);
+  }
+}
+.pg--sassy-head-flick .pg-head {
+  animation: pg-head-flick 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) forwards;
+}
+/* 부리를 살짝 치켜든 채로 버틴다 */
+.pg--sassy-head-flick .pg-body {
+  animation: none;
+  transform: rotate(-4deg);
+}
+
+/* 날개를 휘휘 저어 쫓아낸다 */
+@keyframes pg-wing-flick {
+  0%,
+  100% {
+    transform: rotate(-34deg);
+  }
+  25% {
+    transform: rotate(-72deg);
+  }
+  50% {
+    transform: rotate(-30deg);
+  }
+  75% {
+    transform: rotate(-68deg);
+  }
+}
+/* SASSY_MS(900ms) 안에 끝나야 한다 — 넘치면 자세가 중간에 잘린다 */
+.pg--sassy-wing-flick .pg-wing-near {
+  animation: pg-wing-flick 0.45s ease-in-out 2;
+}
+.pg--sassy-wing-flick .pg-head {
+  transform: rotate(-16deg);
+}
+
+/* 눈을 굴린다 — 눈동자만 크게 한 바퀴 */
+@keyframes pg-eye-roll {
+  0% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(0.4px, -1.9px);
+  }
+  40% {
+    transform: translate(1.7px, -0.6px);
+  }
+  60% {
+    transform: translate(0.6px, 1.5px);
+  }
+  80% {
+    transform: translate(-1.5px, -0.4px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+.pg--sassy-eye-roll .pg-gaze {
+  /* 시선 추적(--gaze-*)을 덮어써야 하므로 애니메이션으로 건다 */
+  animation: pg-eye-roll 0.8s ease-in-out 1;
+}
+/* 굴리는 동안 고개를 살짝 젖힌다 */
+.pg--sassy-eye-roll .pg-head {
+  transform: rotate(-8deg);
+}
+
+/* 엉덩이를 흔든다 */
+@keyframes pg-butt-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(9deg);
+  }
+  35% {
+    transform: rotate(-9deg);
+  }
+  55% {
+    transform: rotate(8deg);
+  }
+  75% {
+    transform: rotate(-7deg);
+  }
+}
+@keyframes pg-tail-wag {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-16deg);
+  }
+  75% {
+    transform: rotate(16deg);
+  }
+}
+.pg--sassy-butt-wiggle .pg-body {
+  transform-origin: 50px 46px;
+  animation: pg-butt-wiggle 0.7s ease-in-out 1.3;
+}
+.pg--sassy-butt-wiggle .pg-tail {
+  transform-origin: 33px 100px;
+  animation: pg-tail-wag 0.3s ease-in-out 3;
+}
+
+/* ── 야구방망이 — 한 번 휘두르고 사라진다 ───────────────────────── */
+
+/* ── 빠따 — 펭귄이 방망이를 휘두른다 (날아가는 건 던지기 전용) ──── */
+
+/* 휘두르기 — 몸을 앞으로 돌리며 후려친다 */
+@keyframes pg-swing-body {
+  0% {
+    transform: rotate(-13deg);
+  }
+  14% {
+    transform: rotate(-15deg);
+  }
+  46% {
+    transform: rotate(15deg);
+  }
+  72% {
+    transform: rotate(5deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+@keyframes pg-swing-head {
+  0% {
+    transform: rotate(-16deg);
+  }
+  46% {
+    transform: rotate(20deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+/* 방망이를 쥔 날개가 방망이를 따라 돈다 */
+@keyframes pg-swing-wing {
+  0% {
+    /* 뒤로 치켜든 자세에서 곧바로 시작한다 (뜸 들이지 않는다). */
+    transform: rotate(112deg);
+  }
+  40% {
+    transform: rotate(-46deg);
+  }
+  62% {
+    transform: rotate(-28deg);
+  }
+  100% {
+    transform: rotate(-22deg);
+  }
+}
+/* 반대쪽 날개는 균형을 잡는다 — 가까운 쪽과 반대로 움직인다 */
+@keyframes pg-swing-wing-far {
+  0% {
+    transform: rotate(-30deg);
+  }
+  40% {
+    transform: rotate(26deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.pg--swing .pg-body {
+  animation: pg-swing-body 0.35s cubic-bezier(0.22, 0, 0.1, 1);
+}
+.pg--swing .pg-head {
+  animation: pg-swing-head 0.35s cubic-bezier(0.22, 0, 0.1, 1);
+}
+.pg--swing .pg-wing-near {
+  animation: pg-swing-wing 0.35s cubic-bezier(0.22, 0, 0.1, 1) forwards;
+}
+.pg--swing .pg-wing-far {
+  animation: pg-swing-wing-far 0.42s ease-out;
+}
+
+/* ── 방망이 — 날개와 한 몸으로 돈다 ───────────────────────────── */
+.pg-bat {
+  transform-origin: 66px 52px;
+  /* 평소엔 없다. 휘두를 때만 나타난다 */
+  opacity: 0;
+}
+
+.pg--swing .pg-bat {
+  opacity: 1;
+  animation: pg-swing-wing 0.35s cubic-bezier(0.22, 0, 0.1, 1) forwards;
+}
+
+/* ── 빽빽거리기 — 연타로 맞으면 정면으로 화낸다 ────────────────── */
+
+/* 몸을 부풀리며 부르르 떤다. 가로 1.14배는 잘림 한계(약 3.3배) 한참 안쪽이라 */
+@keyframes pg-squawk {
+  0% {
+    transform: scale(1, 1) translateX(0);
+  }
+  10% {
+    transform: scale(1.14, 1.06) translateX(-1.5px);
+  }
+  18% {
+    transform: scale(1.1, 1.08) translateX(1.5px);
+  }
+  26% {
+    transform: scale(1.14, 1.05) translateX(-1.5px);
+  }
+  34% {
+    transform: scale(1.1, 1.08) translateX(1.5px);
+  }
+  42% {
+    transform: scale(1.14, 1.05) translateX(-1.5px);
+  }
+  50% {
+    transform: scale(1.1, 1.08) translateX(1.5px);
+  }
+  58% {
+    transform: scale(1.13, 1.06) translateX(-1.2px);
+  }
+  70% {
+    transform: scale(1.08, 1.04) translateX(0.8px);
+  }
+  100% {
+    transform: scale(1, 1) translateX(0);
+  }
+}
+
+/* 날개를 빠르게 퍼덕인다. 몸 애니메이션과 달리 짧은 주기를 여러 번 돌린다 — */
+@keyframes pg-squawk-wing {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-42deg);
+  }
+}
+@keyframes pg-squawk-wing-far {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(38deg);
+  }
+}
+
+/* 고개를 젖혔다 앞으로 내지른다 — 빽, 빽 하고 내뱉는 박자다 */
+@keyframes pg-squawk-head {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  30% {
+    transform: rotate(-20deg);
+  }
+  60% {
+    transform: rotate(6deg);
+  }
+}
+
+/* 부리를 크게 벌린다. 닫히지 않고 계속 벌어져 있으면 "빽빽대는" 것이 아니라 */
+@keyframes pg-squawk-beak {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(24deg);
+  }
+  70% {
+    transform: rotate(8deg);
+  }
+}
+
+/* 아래턱은 평소에 없다 — 벌릴 때만 나타난다. */
+.pg-beak-lower {
+  transform-origin: 64px 33px;
+  display: none;
+}
+
+/* 길이는 코어의 SQUAWK_MS와 같아야 한다 — `pet-css.test.ts`가 대조한다 */
+.pg--squawk .pg-all {
+  animation: pg-squawk 1.4s cubic-bezier(0.3, 0, 0.2, 1);
+}
+/* 주기 × 횟수가 SQUAWK_MS(1.4초)와 **정확히** 맞아야 한다. 짧으면 날개가 */
+.pg--squawk .pg-wing-near {
+  animation: pg-squawk-wing 0.175s ease-in-out 8;
+}
+.pg--squawk .pg-wing-far {
+  animation: pg-squawk-wing-far 0.175s ease-in-out 8;
+}
+.pg--squawk .pg-head {
+  animation: pg-squawk-head 0.35s ease-in-out 4;
+}
+.pg--squawk .pg-beak-lower {
+  display: inline;
+  animation: pg-squawk-beak 0.35s ease-in-out 4;
+}

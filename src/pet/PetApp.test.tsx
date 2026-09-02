@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PetApp } from "./PetApp";
 
 afterEach(() => {
-  // 언마운트가 unlisten을 부르므로 mock을 걷기 전에 정리해야 한다
   cleanup();
   clearMocks();
 });
@@ -17,17 +16,12 @@ interface Call {
 /** 펫 커맨드 IPC를 가로채 호출 순서를 기록한다. */
 function mockPet(): Call[] {
   const calls: Call[] = [];
-  // 상태 구독은 **자기 창에 묶인** 리스너다(`getCurrentWebviewWindow().listen`).
-  // 창 라벨을 심어 두지 않으면 `__TAURI_INTERNALS__.metadata`가 없어 그 자리에서
-  // 터진다 — 테스트는 통과한 것처럼 보이고 unhandled error로만 샌다.
   mockWindows("pet-1");
-  // 언마운트 시 unlisten이 이 내부 훅을 찾는다 — 없으면 정리 단계에서 rejection이 샌다
   (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
     unregisterListener: () => {},
   };
   mockIPC((cmd, args) => {
     const a = (args ?? {}) as Record<string, unknown>;
-    // 이벤트 구독은 통과시킨다 (listen은 핸들러 id를 기대한다)
     if (cmd === "plugin:event|listen") return 1;
     if (cmd === "plugin:event|unlisten") return undefined;
     calls.push({ cmd, args: a });
@@ -75,14 +69,12 @@ function pointer(
 }
 
 async function flush() {
-  // 커맨드 왕복(Promise)들이 정산될 틈을 준다
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function penguin(): Element {
   const el = screen.getByRole("img", { name: "펭귄" });
-  // jsdom에는 포인터 캡처 API가 없다
   Object.assign(el, {
     setPointerCapture: () => {},
     releasePointerCapture: () => {},
@@ -104,22 +96,17 @@ describe("펭귄 드래그", () => {
 
     const drag = calls.find((c) => c.cmd === "pet_drag_by");
     expect(drag).toBeDefined();
-    // 화면 좌표 기준의 증분이어야 한다 — 절대 좌표를 보내면 펭귄이 순간이동한다
     expect(drag?.args).toMatchObject({ dx: 30, dy: -10 });
   });
 
   it("클릭은_맞은_지점을_같이_보낸다", async () => {
-    // 핀볼 모드에서 이 값이 **채가 어디를 쳤는지**가 된다. 모드를 프론트가
-    // 보지 않으므로 좌표는 늘 보낸다.
     const calls = mockPet();
     render(<PetApp />);
     await flush();
     const el = penguin();
-    // jsdom은 레이아웃이 없어 모든 사각형이 0이다 — 펭귄 크기를 심어 준다
     el.getBoundingClientRect = () =>
       ({ left: 0, top: 0, width: 200, height: 200 }) as DOMRect;
 
-    // 왼쪽 위 사분면(50, 40)을 누른다 → nx = -0.25, ny = -0.3
     pointer("pointerdown", el, { screenX: 100, screenY: 100, clientX: 50, clientY: 40 });
     await flush();
     pointer("pointerup", el, { screenX: 100, screenY: 100, clientX: 50, clientY: 40 });
@@ -130,8 +117,6 @@ describe("펭귄 드래그", () => {
   });
 
   it("펭귄_크기를_못_재면_정중앙으로_친_것으로_본다", async () => {
-    // 첫 페인트 전 등으로 사각형이 0×0이면 0으로 나누게 된다 — NaN이 코어까지
-    // 흘러가면 펭귄이 좌표계 밖으로 사라진다
     const calls = mockPet();
     render(<PetApp />);
     await flush();
@@ -153,7 +138,6 @@ describe("펭귄 드래그", () => {
 
     pointer("pointerdown", el, { screenX: 100, screenY: 100 });
     await flush();
-    // 임계값(4px) 미만으로만 흔들린 뒤 놓는다
     pointer("pointermove", el, { screenX: 101, screenY: 100 });
     pointer("pointerup", el, { screenX: 101, screenY: 100 });
     await flush();
@@ -179,8 +163,6 @@ describe("펭귄 드래그", () => {
   });
 
   it("빠르게_튕겨_놓아도_이동량이_유실되지_않는다", async () => {
-    // 시작 왕복이 끝나기 전에 움직이고 놓는 경우 — 이동량을 버리면
-    // 펭귄이 제자리에서 떨어지기만 한다
     const calls = mockPet();
     render(<PetApp />);
     await flush();
@@ -193,14 +175,12 @@ describe("펭귄 드래그", () => {
 
     const drag = calls.find((c) => c.cmd === "pet_drag_by");
     expect(drag?.args).toMatchObject({ dx: 300 });
-    // 이동량이 놓기보다 먼저 도착해야 코어가 Dragged인 동안 반영된다
     const byIndex = calls.findIndex((c) => c.cmd === "pet_drag_by");
     const endIndex = calls.findIndex((c) => c.cmd === "pet_drag_end");
     expect(byIndex).toBeLessThan(endIndex);
   });
 
   it("우클릭은_빠따가_아니라_창_열기다", async () => {
-    // 왼쪽은 빠따가 가져갔으므로 타이머·설정은 오른쪽 클릭으로 연다
     const calls = mockPet();
     render(<PetApp />);
     await flush();
@@ -216,7 +196,6 @@ describe("펭귄 드래그", () => {
   });
 
   it("연달아_클릭하면_매번_빠따가_나간다", async () => {
-    // 1클릭 1회 — 연타가 먹히지 않으면 저글링이 안 된다
     const calls = mockPet();
     render(<PetApp />);
     await flush();
@@ -239,14 +218,12 @@ describe("펭귄 드래그", () => {
 
     pointer("pointerdown", el, { screenX: 100, screenY: 100, pointerId: 1 });
     await flush();
-    // 다른 손가락/버튼이 끼어든다
     pointer("pointerdown", el, { screenX: 500, screenY: 500, pointerId: 2 });
     await flush();
     pointer("pointermove", el, { screenX: 110, screenY: 100, pointerId: 1 });
     await flush();
 
     const drags = calls.filter((c) => c.cmd === "pet_drag_by");
-    // 원래 포인터 기준의 +10이어야 한다. 기준점이 덮였다면 -390이 된다
     expect(drags[drags.length - 1]?.args).toMatchObject({ dx: 10 });
     expect(calls.filter((c) => c.cmd === "pet_drag_start")).toHaveLength(1);
   });

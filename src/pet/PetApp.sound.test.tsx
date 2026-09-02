@@ -3,12 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PetSnapshot } from "../lib/pet";
 
-/**
- * 소리 배선 테스트 — `PetApp.test.tsx`와 달리 IPC가 아니라 **모듈을 모킹한다.**
- * 스냅샷 흐름과 SoundPlayer 호출을 직접 쥐어야 "전이마다 판정 한 번"을 셀 수
- * 있는데, `vi.mock`은 파일 전체에 걸리므로 실제 IPC를 쓰는 기존 파일과 섞지
- * 않고 따로 둔다.
- */
+/** 소리 배선 테스트 — `PetApp.test.tsx`와 달리 IPC가 아니라 **모듈을 모킹한다. */
 
 const h = vi.hoisted(() => ({
   players: [] as Array<{
@@ -125,10 +120,7 @@ describe("PetApp 소리 배선", () => {
     render(<PetApp />);
     await flush();
     const player = h.players[0];
-    // 저장된 설정(꺼짐)이 초기값으로 걸린다
     expect(player.enabled).toBe(false);
-    // 퍽이 날 전이를 흘려도, 판정은 하되 재생 게이트는 player가 쥔다 —
-    // 꺼짐은 SoundPlayer 안에서 걸러진다 (sound.test.ts가 증명한다)
     h.stateCb?.(snap({ whack_seq: 1 }));
     expect(player.enabled).toBe(false);
   });
@@ -136,7 +128,6 @@ describe("PetApp 소리 배선", () => {
   it("설정_이벤트가_오면_즉시_반영된다", async () => {
     render(<PetApp />);
     await flush();
-    // 설정 창의 방송이 앱 재시작 없이 걸린다 (R2)
     h.soundCb?.({ sound: true, volume: 2 });
     expect(h.players[0].enabled).toBe(true);
     h.soundCb?.({ sound: false, volume: 2 });
@@ -166,7 +157,6 @@ describe("PetApp 소리 배선", () => {
     h.stateCb?.(s1);
     h.stateCb?.(s2);
     h.stateCb?.(s3);
-    // 직전 값과 짝지어 세 번 — React 렌더 배칭에 얹으면 중간 스냅샷이 스킵된다
     expect(h.soundsForSpy.mock.calls).toEqual([
       [null, s1],
       [s1, s2],
@@ -191,7 +181,6 @@ describe("PetApp 소리 배선", () => {
     Object.assign(down, { pointerId: 1, button: 0, screenX: 0, screenY: 0 });
     el.dispatchEvent(down);
     expect(h.players[0].nudged).toBe(1);
-    // 우클릭도 제스처다 — 깨우기는 버튼 분기보다 앞이다 (KTD4)
     const right = new Event("pointerdown", { bubbles: true });
     Object.assign(right, { pointerId: 1, button: 2, screenX: 0, screenY: 0 });
     el.dispatchEvent(right);
@@ -212,13 +201,9 @@ describe("PetApp 소리 배선", () => {
   });
 
   it("핀볼_클릭은_낙관적으로_휙을_재생한다", async () => {
-    // 핀볼에서 공중 재타격은 Thrown→Thrown이라 전이 검출이 못 본다 (리뷰 #1).
-    // 클릭이 곧 타격이므로 스냅샷을 기다리지 않고 재생한다
     render(<PetApp />);
     await flush();
     h.stateCb?.(snap({ pinball: true }));
-    // 스냅샷이 effect(pinballRef 갱신)까지 반영된 뒤에 클릭해야 한다 —
-    // 실제 앱에서도 클릭은 언제나 스냅샷 뒤에 온다
     await flush();
     const el = screen.getByRole("img", { name: "펭귄" });
     Object.assign(el, { setPointerCapture: () => {}, releasePointerCapture: () => {} });
@@ -233,7 +218,6 @@ describe("PetApp 소리 배선", () => {
   });
 
   it("핀볼이_아니면_클릭으로_휙이_안_난다", async () => {
-    // 평소의 빠따 소리는 whack_seq 스냅샷이 낸다 — 클릭 자체는 조용하다
     render(<PetApp />);
     await flush();
     h.stateCb?.(snap({ pinball: false }));

@@ -1,0 +1,41 @@
+/* 매달림 — 집어 든 동안 날개는 위로, 발은 버둥거린다 (R6) */
+@keyframes pg-dangle-wing {
+  0%,
+  100% {
+    transform: rotate(-30deg);
+  }
+  50% {
+    transform: rotate(-38deg);
+  }
+}
+@keyframes pg-dangle-wing-far {
+  0%,
+  100% {
+    transform: rotate(30deg);
+  }
+  50% {
+    transform: rotate(38deg);
+  }
+}
+@keyframes pg-kick {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-8deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(8deg);
+  }
+}
+
+.pg--dragged .pg-wing-near {
+  animation: pg-dangle-wing 0.5s ease-in-out infinite;
+}
+.pg--dragged .pg-wing-far {
+  animation: pg-dangle-wing-far 0.5s ease-in-out infinite;
+}
+.pg--dragged .pg-foot--near {
+  animation: pg-kick 0.32s ease-in-out infinite;
+}
+.pg--dragged .pg-foot--far {
+  animation: pg-kick 0.32s ease-in-out infinite -0.16s;
+}

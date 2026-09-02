@@ -1,0 +1,90 @@
+/* ── 발작 — 며칠에 한 번 이유 없이 터지는 광란 ────────────────── */
+
+/* 몸을 부르르 떤다. 이동은 코어가 창을 옮겨서 만들고, 여기서는 **떨림만 */
+@keyframes pg-freakout-shake {
+  0%,
+  100% {
+    transform: translate(-2px, 0) rotate(-5deg);
+  }
+  25% {
+    transform: translate(2px, -1.5px) rotate(6deg);
+  }
+  50% {
+    transform: translate(-1.5px, 1px) rotate(-6deg);
+  }
+  75% {
+    transform: translate(2px, 1.5px) rotate(5deg);
+  }
+}
+
+/* 날개를 미친 듯이 젓는다 */
+@keyframes pg-freakout-wing {
+  0%,
+  100% {
+    transform: rotate(-34deg);
+  }
+  50% {
+    transform: rotate(30deg);
+  }
+}
+@keyframes pg-freakout-wing-far {
+  0%,
+  100% {
+    transform: rotate(30deg);
+  }
+  50% {
+    transform: rotate(-34deg);
+  }
+}
+
+/* 고개를 마구 흔든다 */
+@keyframes pg-freakout-head {
+  0%,
+  100% {
+    transform: rotate(-14deg);
+  }
+  50% {
+    transform: rotate(14deg);
+  }
+}
+
+/* 숨 고르기 — 어깨로 크게 두 번 들썩이고 가라앉는다. */
+@keyframes pg-freakout-pant {
+  0% {
+    transform: scale(1.06, 0.94);
+  }
+  25% {
+    transform: scale(0.97, 1.05);
+  }
+  55% {
+    transform: scale(1.05, 0.96);
+  }
+  80% {
+    transform: scale(0.99, 1.02);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+.pg--freakout-dash .pg-all {
+  animation: pg-freakout-shake 0.14s linear infinite;
+}
+.pg--freakout-dash .pg-wing-near {
+  animation: pg-freakout-wing 0.1s linear infinite;
+}
+.pg--freakout-dash .pg-wing-far {
+  animation: pg-freakout-wing-far 0.1s linear infinite;
+}
+.pg--freakout-dash .pg-head {
+  animation: pg-freakout-head 0.12s linear infinite;
+}
+/* 눈동자를 키워 놀란 얼굴을 만든다. **값이 변하지 않는 애니메이션을 두지 */
+.pg--freakout-dash .pg-eye {
+  animation: none;
+  transform: scale(1.45);
+}
+
+.pg--freakout-pant .pg-all {
+  animation: pg-freakout-pant 0.7s ease-out;
+}

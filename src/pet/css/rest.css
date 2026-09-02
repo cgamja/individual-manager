@@ -1,0 +1,135 @@
+/* ── 유휴 동작 ─────────────────────────────────────────────────── */
+
+@keyframes pg-look-around {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-13deg);
+  }
+  60% {
+    transform: rotate(13deg);
+  }
+}
+
+.pg--idle-look-around .pg-head {
+  animation: pg-look-around 2.6s ease-in-out infinite;
+}
+
+@keyframes pg-stretch-wing {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  40%,
+  60% {
+    transform: rotate(-42deg);
+  }
+}
+@keyframes pg-stretch-wing-far {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  40%,
+  60% {
+    transform: rotate(42deg);
+  }
+}
+@keyframes pg-stretch-body {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.08) translateY(-3px);
+  }
+}
+
+.pg--idle-stretch .pg-wing-near {
+  animation: pg-stretch-wing 1.6s ease-in-out infinite;
+}
+.pg--idle-stretch .pg-wing-far {
+  animation: pg-stretch-wing-far 1.6s ease-in-out infinite;
+}
+.pg--idle-stretch .pg-body {
+  animation: pg-stretch-body 1.6s ease-in-out infinite;
+}
+
+/* 몸 털기 — 빠른 좌우 진동 */
+@keyframes pg-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  20% {
+    transform: translateX(-3px) rotate(-4deg);
+  }
+  40% {
+    transform: translateX(3px) rotate(4deg);
+  }
+  60% {
+    transform: translateX(-2px) rotate(-3deg);
+  }
+  80% {
+    transform: translateX(2px) rotate(3deg);
+  }
+}
+
+.pg--idle-shake .pg-body,
+.pg--idle-shake .pg-head {
+  animation: pg-shake 0.42s ease-in-out infinite;
+}
+
+/* 발 갈아 딛기 — 한 발씩 번갈아 든다 */
+@keyframes pg-shift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.pg--idle-shift-feet .pg-foot--near {
+  animation: pg-shift 1.4s ease-in-out infinite;
+}
+.pg--idle-shift-feet .pg-foot--far {
+  animation: pg-shift 1.4s ease-in-out infinite -0.7s;
+}
+
+/* ── 졸기 ──────────────────────────────────────────────────────── */
+
+@keyframes pg-doze {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(0.94);
+  }
+  50% {
+    transform: translateY(3px) scaleY(0.92);
+  }
+}
+
+@keyframes pg-nod {
+  0%,
+  100% {
+    transform: rotate(6deg) translateY(2px);
+  }
+  50% {
+    transform: rotate(12deg) translateY(5px);
+  }
+}
+
+.pg--sleep .pg-body {
+  animation: pg-doze 4s ease-in-out infinite;
+}
+.pg--sleep .pg-head {
+  animation: pg-nod 4s ease-in-out infinite;
+}
+/* 자는 동안에는 눈을 감고 있는다 */
+.pg--sleep .pg-eye {
+  animation: none;
+  transform: scaleY(0.12);
+}

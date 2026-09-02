@@ -8,30 +8,13 @@ const TAUNTS_KEY = "taunts";
 
 export interface PetSettings {
   enabled: boolean;
-  /**
-   * 효과음을 낼지. **기본은 꺼짐이다** (PRD Q6).
-   *
-   * 상주 앱이 예고 없이 소리를 내면 회의 중에 사고가 난다. 켜는 것은 사용자의
-   * 선택이어야 한다.
-   */
+  /** 효과음을 낼지. **기본은 꺼짐이다** (PRD Q6). */
   sound: boolean;
-  /**
-   * 핀볼 모드. **기본은 꺼짐이다.**
-   *
-   * 켜면 철푸덕·널브러짐이 가려지고 계속 튕기며, 클릭이 빠따 대신 채가 된다.
-   * 착지 4단계를 **지우는 게 아니라 가려두는** 모드라 끄면 그대로 돌아온다.
-   */
+  /** 핀볼 모드. **기본은 꺼짐이다. */
   pinball: boolean;
-  /**
-   * 음량 단계 0~4. 가운데(2)가 원래 크기(-18 dBFS)라 기존 사용자의 소리
-   * 크기가 안 바뀐다. 단계 정의는 `sound.ts`의 `gainForVolume`이 소유한다.
-   */
+  /** 음량 단계 0~4. 가운데(2)가 원래 크기(-18 dBFS)라 기존 사용자의 소리 */
   volume: number;
-  /**
-   * 겉모습 테마 — 설정 창이 따른다 (2026-09-01 사용자 지시). 트레이 아이콘은
-   * 항상 자동(템플릿)이다 — 고정하면 메뉴바에 묻히는 경우가 생긴다 (lib.rs).
-   * 기본은 시스템: 사용자가 고르기 전에는 아무것도 강제하지 않는다.
-   */
+  /** 겉모습 테마 — 설정 창이 따른다 (2026-09-01 사용자 지시). 트레이 아이콘은 */
   theme: AppTheme;
 }
 
@@ -45,8 +28,7 @@ const sanitizeTheme = (v: unknown): AppTheme =>
 const sanitizeVolume = (v: unknown): number =>
   typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 4 ? v : 2;
 
-/** 펭귄은 기본 켜짐(사용자가 직접 요청한 기능이라 opt-in으로 숨기지 않는다),
- * 소리는 기본 꺼짐(예고 없이 소리를 내면 사고가 난다). */
+/** 펭귄은 기본 켜짐(사용자가 직접 요청한 기능이라 opt-in으로 숨기지 않는다), */
 export const DEFAULT_PET_SETTINGS: PetSettings = {
   enabled: true,
   sound: false,
@@ -55,8 +37,7 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   theme: "system",
 };
 
-/** 저장된 펭귄 설정을 로드한다. 깨진 값은 항목별로 기본값에 수렴시킨다 —
- * 한 항목이 깨졌다고 나머지까지 되돌리면 펭귄이 조용히 사라진다. */
+/** 저장된 펭귄 설정을 로드한다. 깨진 값은 항목별로 기본값에 수렴시킨다 — */
 export async function loadPetSettings(): Promise<PetSettings> {
   const store = await load(STORE_FILE);
   const value = await store.get<Partial<PetSettings>>(PET_KEY);
@@ -70,31 +51,19 @@ export async function loadPetSettings(): Promise<PetSettings> {
   };
 }
 
-/**
- * 펭귄 설정을 저장한다. Rust는 다음 실행의 시작 시점에 이 값을 읽는다.
- *
- * **읽고-고쳐-쓰기여야 한다.** 같은 `pet` 키 아래에 Rust가 쓰는 마릿수(`count`)가
- * 함께 살아서, 객체를 통째로 덮어쓰면 켜고 끄는 것만으로 마릿수가 1로 돌아간다.
- */
+/** 펭귄 설정을 저장한다. Rust는 다음 실행의 시작 시점에 이 값을 읽는다. */
 export async function savePetSettings(settings: Partial<PetSettings>): Promise<void> {
   const store = await load(STORE_FILE);
   const current = (await store.get<Record<string, unknown>>(PET_KEY)) ?? {};
   await store.set(PET_KEY, { ...current, ...settings });
 }
 
-/**
- * 펭귄이 할 말 목록. 저장된 게 없으면 기본 목록을 쓴다.
- *
- * 펭귄 창과 팝오버가 서로 다른 웹뷰라 이 저장소가 둘 사이의 유일한 통로다.
- * 펭귄 창은 새 대사가 나올 때마다 다시 읽어 편집을 곧바로 반영한다.
- */
+/** 펭귄이 할 말 목록. 저장된 게 없으면 기본 목록을 쓴다. */
 export async function loadTaunts(): Promise<string[]> {
   const store = await load(STORE_FILE);
   const value = await store.get<unknown>(TAUNTS_KEY);
   if (!Array.isArray(value)) return [...DEFAULT_TAUNTS];
   const lines = normalizeTaunts(value.filter((v): v is string => typeof v === "string"));
-  // 전부 지웠다면 그 뜻을 존중한다 — 기본값으로 되살리지 않는다.
-  // 저장된 적이 없는 것(위 Array 검사)과는 다른 상태다
   return lines;
 }
 

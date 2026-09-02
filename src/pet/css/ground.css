@@ -1,0 +1,204 @@
+/* ── 걷기 ──────────────────────────────────────────────────────── */
+
+@keyframes pg-step {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(4px, -5px);
+  }
+}
+
+/* 뒤뚱거림 — 몸통이 좌우로 기울고 살짝 위아래로 뜬다 */
+@keyframes pg-waddle {
+  0%,
+  100% {
+    transform: rotate(-5deg) translateY(0);
+  }
+  50% {
+    transform: rotate(5deg) translateY(-2px);
+  }
+}
+
+.pg--walk .pg-foot--near {
+  animation: pg-step 0.52s ease-in-out infinite;
+}
+.pg--walk .pg-foot--far {
+  /* 반 박자 밀어 두 발이 교차하게 한다 */
+  animation: pg-step 0.52s ease-in-out infinite -0.26s;
+}
+.pg--walk .pg-body,
+.pg--walk .pg-head {
+  animation: pg-waddle 0.52s ease-in-out infinite;
+}
+
+/* ── 방향 전환 — 제자리에서 돈다 (R4) ──────────────────────────── */
+
+@keyframes pg-turn {
+  0% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(0.12);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+.pg--turn {
+  animation: pg-turn 0.25s ease-in-out;
+}
+
+/* 굴러떨어지기 — 벽에 브레이크를 못 잡고 그대로 박아 뒤로 나자빠진다. */
+@keyframes pg-tumble {
+  /* 벽에 박는 순간 — 정면으로 콱 눌린다 */
+  0% {
+    transform: rotate(0deg) scale(1.18, 0.82);
+  }
+  /* 반동으로 뒤로 넘어가기 시작한다 */
+  22% {
+    transform: rotate(-32deg) scale(1.06, 0.95);
+  }
+  /* 등을 깔고 뻗는다 */
+  42% {
+    transform: rotate(-56deg) scale(1.02, 0.9);
+  }
+  /* 뻗은 채로 한 박자 버틴다 — 바로 일어나면 그냥 비틀한 것으로 보인다 */
+  64% {
+    transform: rotate(-54deg) scale(1.02, 0.9);
+  }
+  /* 끙, 하고 일어난다 */
+  85% {
+    transform: rotate(-9deg) scale(0.97, 1.05);
+  }
+  94% {
+    transform: rotate(3deg) scale(1.02, 0.98);
+  }
+  100% {
+    transform: rotate(0deg) scale(1, 1);
+  }
+}
+
+/* 날개는 허우적댄다 — 몸만 기울면 팔이 몸에 박힌 채로 넘어간다 */
+@keyframes pg-tumble-wing {
+  0% {
+    transform: rotate(14deg);
+  }
+  42%,
+  64% {
+    transform: rotate(74deg);
+  }
+  85% {
+    transform: rotate(12deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* 길이는 코어의 TUMBLE_MS(1100ms)와 맞춘다 — 짧으면 다 눕기 전에 끝나고, */
+.pg--tumble .pg-all {
+  animation: pg-tumble 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pg--tumble .pg-wing-near {
+  animation: pg-tumble-wing 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pg--tumble .pg-wing-far {
+  animation: pg-tumble-wing 1.1s cubic-bezier(0.22, 1, 0.36, 1) reverse;
+}
+
+/* ── 슬라이딩 — 배를 깔고 주르륵 미끄러진다 ────────────────────── */
+
+@keyframes pg-slide {
+  0% {
+    transform: translateY(0) rotate(0deg) scaleX(1) scaleY(1);
+  }
+  /* 몸을 던지듯 앞으로 기울이며 눕는다 */
+  10% {
+    transform: translateY(2px) rotate(58deg) scaleX(1.04) scaleY(0.94);
+  }
+  16%,
+  78% {
+    /* translateY를 주지 않는다 — 축이 발밑이라 눕히기만 해도 몸이 바닥에 닿고, */
+    transform: translateY(0) rotate(78deg) scaleX(1.06) scaleY(0.92);
+  }
+  /* 속도가 죽으면서 상체부터 든다 */
+  92% {
+    transform: translateY(1px) rotate(26deg) scaleX(1.02) scaleY(0.97);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scaleX(1) scaleY(1);
+  }
+}
+
+/* 날개는 뒤로 눕혀 몸에 붙인다 — 펴고 있으면 미는 것처럼 보인다 */
+@keyframes pg-slide-wing {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  16%,
+  78% {
+    transform: rotate(-34deg);
+  }
+}
+
+/* **머리는 반대로 돌려 앞을 보게 한다. */
+@keyframes pg-slide-head {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  16%,
+  78% {
+    transform: rotate(-62deg);
+  }
+}
+
+/* 그림자도 몸을 따라간다 — 축이 발밑이라 몸은 앞으로 뻗는데 그림자만 제자리에 */
+@keyframes pg-slide-shadow {
+  0%,
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+  16%,
+  78% {
+    transform: translateX(26px) scaleX(1.7);
+  }
+}
+
+/* 발은 뒤로 쭉 뻗는다 */
+@keyframes pg-slide-foot {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  16%,
+  78% {
+    transform: rotate(22deg);
+  }
+}
+
+/* 길이는 코어의 SLIDE_MS와 같아야 한다 — `pet-css.test.ts`가 대조한다 */
+.pg--slide .pg-all {
+  animation: pg-slide 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-wing-near {
+  animation: pg-slide-wing 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-wing-far {
+  animation: pg-slide-wing 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-foot--near,
+.pg--slide .pg-foot--far {
+  animation: pg-slide-foot 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-head {
+  animation: pg-slide-head 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}
+.pg--slide .pg-shadow {
+  transform-origin: 50px 123px;
+  animation: pg-slide-shadow 2.4s cubic-bezier(0.17, 0.84, 0.44, 1);
+}

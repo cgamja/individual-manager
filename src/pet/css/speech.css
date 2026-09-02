@@ -1,0 +1,49 @@
+/* ── 킹받는 한마디 ──────────────────────────────────────────────── */
+
+@keyframes pg-bubble-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 7px) scale(0.85);
+  }
+  65% {
+    opacity: 1;
+    transform: translate(-50%, -1px) scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.pg-bubble {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  /* 애니메이션이 transform을 잡고 있으므로 기본 위치도 keyframe 안에서 잡는다 — */
+  transform: translate(-50%, 0);
+  max-width: 212px;
+  padding: 9px 13px;
+  border-radius: 14px;
+  background: rgba(252, 252, 254, 0.97);
+  color: #1b1f24;
+  font: 600 14.5px/1.35 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  text-align: center;
+  white-space: pre-wrap;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  animation: pg-bubble-in 0.22s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+/* 꼬리 — 아래를 향한다 */
+.pg-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 11px;
+  height: 11px;
+  margin-left: -5.5px;
+  background: inherit;
+  transform: rotate(45deg);
+  border-radius: 0 0 2px 0;
+}

@@ -352,3 +352,117 @@ pub(super) const BOWLING_HIT_RADIUS: f64 = 52.0;
 pub(super) const BOWLING_SPEED_LOSS_PER_PIN: f64 = 0.12;
 const _: () = assert!(BOWLING_SPEED_LOSS_PER_PIN > 0.0);
 const _: () = assert!(BOWLING_SPEED_LOSS_PER_PIN < 1.0);
+
+// ── 비치발리볼 ─────────────────────────────────────────────────
+//
+// **관전형 한 판이다** — 사용자가 아무것도 안 한다. 그래서 실패 모드가 "물리가
+// 틀렸다"가 아니라 "20초 동안 보고 있기 지루하다"이고, 아래 값의 절반은 그 답이다.
+// 랠리는 판이 가진 시드 난수로 만들고(PRINCIPLE 3), 판을 끝내는 것은 예산뿐이다.
+
+/// 비치볼 지름 (논리 px). 브릿지가 공 창 크기에 쓴다.
+pub const VOLLEY_BALL_SIZE: f64 = 56.0;
+const _: () = assert!(VOLLEY_BALL_SIZE < PET_SIZE);
+
+/// 네트가 모래 위로 서는 높이.
+pub(super) const VOLLEY_NET_HEIGHT: f64 = 120.0;
+
+/// 모래사장이 발밑에서 아래로 뻗는 깊이. 작업 영역 바닥이 곧 발밑이라 이만큼은
+/// 화면 밖으로 나가고, 그래서 모래의 아래 모서리가 안 보인다.
+pub(super) const VOLLEY_SAND_DEPTH: f64 = 80.0;
+
+/// 펭귄이 공을 치는 높이 — 펭귄 `y`(좌상단)보다 이만큼 **위**다.
+pub(super) const VOLLEY_REACH: f64 = 40.0;
+
+/// **타점이 네트 꼭대기보다 높다 — 이 한 줄이 네트 판정을 통째로 없앤다.**
+///
+/// 펭귄 발밑(= 모래)은 `y + PET_SIZE`이므로 타점의 모래 위 높이는
+/// `PET_SIZE + VOLLEY_REACH`다. 타점에서 출발해 타점으로 돌아오는 포물선은
+/// **전 구간이 타점 이상**이라 네트에 걸릴 수가 없다. 네트인 처리도, 그 테스트도,
+/// "걸렸을 때 어떻게 하나"라는 논의도 이 부등식이 사는 동안에는 필요 없다.
+const _: () = assert!(VOLLEY_NET_HEIGHT < PET_SIZE + VOLLEY_REACH);
+
+/// 네트에서 가장 가까운 자리까지 (몸통 가운데 기준). 네트에 딱 붙어 서면
+/// 공을 넘기는 게 아니라 네트를 넘겨다보는 그림이 된다.
+pub(super) const VOLLEY_NET_GAP: f64 = 110.0;
+
+/// 네트에서 코트 끝까지.
+pub(super) const VOLLEY_COURT_HALF: f64 = 460.0;
+/// 한쪽에 최소한 펭귄 하나가 여유 있게 설 폭은 남아야 한다.
+const _: () = assert!(VOLLEY_COURT_HALF > VOLLEY_NET_GAP + PET_SIZE);
+
+/// 이보다 좁은 세계에서는 판을 열지 않는다 — 코트가 안 들어간다.
+pub(super) const VOLLEY_MIN_WORLD_WIDTH: f64 = 2.0 * (VOLLEY_NET_GAP + PET_SIZE);
+
+/// 판을 열 수 있는 최소 마릿수. **한 마리면 팀이 안 나온다** (R3).
+pub(super) const VOLLEY_MIN_PETS: usize = 2;
+const _: () = assert!(VOLLEY_MIN_PETS >= 2);
+
+/// 자기 자리로 **날아가는** 속도. 볼링과 같은 이유로 헤엄보다 빠르다 — 평소
+/// 헤엄으로 가면 다 서는 데만 십 초가 걸려 판이 시작하기 전에 지친다.
+pub(super) const VOLLEY_GATHER_SPEED: f64 = 420.0;
+const _: () = assert!(VOLLEY_GATHER_SPEED > SWIM_SPEED);
+const _: () = assert!(VOLLEY_GATHER_SPEED < FREAKOUT_SPEED);
+
+/// 받으러 뛰는 속도. 걷기보다 훨씬 빠르고 슬라이딩 상한보다 느리다 —
+/// 배를 깔지 않고 두 발로 뛰는 그림이다.
+pub(super) const VOLLEY_CHASE_SPEED: f64 = 300.0;
+const _: () = assert!(VOLLEY_CHASE_SPEED > WALK_SPEED);
+const _: () = assert!(VOLLEY_CHASE_SPEED < SLIDE_SPEED.1);
+
+/// 공에만 쓰는 중력. **`GRAVITY`를 빌리지 않는다** — 빌리면 착지 튜닝이 랠리
+/// 리듬을 조용히 바꾼다 (볼링 상수가 던지기를 안 빌린 것과 같은 규칙).
+pub(super) const VOLLEY_GRAVITY: f64 = 1_200.0;
+
+/// 체공 시간 세 등급 (ms) — **스파이크·평타·토스.**
+///
+/// **랠리에서 체감이 가장 큰 갈래다.** 포물선의 정점이 체공의 제곱에 비례하므로
+/// 리듬과 그림이 함께 갈린다 — 같은 속도로 열두 번 오가는 것이 정확히 지루함이다.
+pub(super) const VOLLEY_FLIGHT_MS: [u64; 3] = [550, 950, 1_500];
+const _: () = assert!(VOLLEY_FLIGHT_MS[0] < VOLLEY_FLIGHT_MS[1]);
+const _: () = assert!(VOLLEY_FLIGHT_MS[1] < VOLLEY_FLIGHT_MS[2]);
+
+/// 받을 마리가 목적지에 도착하고 남는 여유.
+pub(super) const VOLLEY_ARRIVE_MARGIN_MS: u64 = 250;
+const _: () = assert!(VOLLEY_ARRIVE_MARGIN_MS < VOLLEY_FLIGHT_MS[0]);
+
+/// **가장 긴 체공으로 코트 반쪽을 가로지를 수 있어야 한다.** 못 하면 아무리 길게
+/// 띄워도 받을 마리가 못 닿아 **랠리가 첫 왕복에서 끝난다** — 20초짜리 기능이
+/// 1초짜리가 되는데 테스트도 로그도 깨끗하다.
+const _: () = assert!(
+    VOLLEY_CHASE_SPEED * ((VOLLEY_FLIGHT_MS[2] - VOLLEY_ARRIVE_MARGIN_MS) as f64 / 1_000.0)
+        >= VOLLEY_COURT_HALF - VOLLEY_NET_GAP
+);
+
+/// 공 중심이 받을 마리의 몸통 가운데에서 이 거리 안이면 닿는다.
+pub(super) const VOLLEY_REACH_X: f64 = 70.0;
+const _: () = assert!(VOLLEY_REACH_X < PET_SIZE);
+
+/// 때리는 자세 길이.
+pub(super) const VOLLEY_BUMP_MS: u64 = 380;
+
+/// 서브 토스 — 자기 위로 띄웠다가 다시 받기까지. **서브는 국면이 아니라
+/// "자기에게 보내는 왕복 0번"이라** 이 값이 곧 그 왕복의 체공이다.
+pub(super) const VOLLEY_SERVE_MS: u64 = 800;
+const _: () = assert!(VOLLEY_SERVE_MS > VOLLEY_BUMP_MS);
+
+/// 좋아하거나 약 오르는 시간. **`SASSY_MS`와 같아야 한다** — CSS가 싸가지 반응의
+/// keyframe(`pg-butt-wiggle`·`pg-turn-away`)을 그대로 참조하므로, 어긋나면
+/// 자세가 중간에 멈춘 채 끝난다.
+pub(super) const VOLLEY_CHEER_MS: u64 = SASSY_MS;
+
+/// 공이 모래에 닿고 코트가 걷히기까지의 뜸. **축하보다 길다** — 모래가 먼저
+/// 사라지면 축하가 허공에서 끝난다.
+pub(super) const VOLLEY_POINT_MS: u64 = VOLLEY_CHEER_MS + 200;
+const _: () = assert!(VOLLEY_POINT_MS > VOLLEY_CHEER_MS);
+
+/// 한 판의 예산 범위 — **"20초쯤"** (R9). 얼음낚시와 같은 꼴로, **판을 끝내는 것은
+/// 이것뿐이다**: 예산이 지나면 다음 왕복이 킬샷이 되고 그 뒤로는 아무도 못 받는다.
+/// "몇 번 오가면 끝"으로 하면 길이가 4초에서 30초까지 튄다.
+pub(super) const VOLLEY_SESSION_MS: (u64, u64) = (18_000, 22_000);
+const _: () = assert!(VOLLEY_SESSION_MS.1 >= VOLLEY_SESSION_MS.0);
+/// 예산 안에 왕복이 열 번 넘게 들어가야 랠리로 보인다 — 가장 긴 체공만 나와도.
+const _: () = assert!(VOLLEY_SESSION_MS.0 / VOLLEY_FLIGHT_MS[2] >= 10);
+
+/// 판이 어떤 이유로도 마리를 이보다 오래 붙들지 못한다 (R14의 마지막 장치).
+pub(super) const VOLLEY_MAX_MS: u64 = 60_000;
+const _: () = assert!(VOLLEY_MAX_MS > VOLLEY_SESSION_MS.1 + VOLLEY_POINT_MS);

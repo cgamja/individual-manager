@@ -12,14 +12,19 @@ mod test_support;
 mod tuning;
 
 /// 브릿지가 창 크기를 계산하는 데 쓴다 — 코어 밖으로 나가는 튜닝 값은 이 둘뿐이다.
-pub use tuning::{BOWLING_BALL_SIZE, PET_SIZE};
+pub use tuning::{BOWLING_BALL_SIZE, PET_SIZE, VOLLEY_BALL_SIZE};
 use tuning::*;
 
 mod behavior;
 mod bowling;
+mod volleyball;
 
 pub use bowling::{BallSnapshot, BoardPhase, Bowling};
 use bowling::{dist2_to_segment, pin_positions};
+
+pub use volleyball::{Court, CourtPhase, Side, VolleyBallSnapshot, VolleySnapshot};
+#[allow(unused_imports)]
+use volleyball::assign_sides;
 
 pub use behavior::{
     Behavior, BowlingPhase, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech,

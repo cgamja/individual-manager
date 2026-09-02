@@ -16,8 +16,11 @@ export type FishingPhase = "dig" | "wait" | "bite" | "catch" | "miss" | "pack";
 export type FreakoutPhase = "dash" | "pant";
 
 /** 볼링 한 판에서 **마리 하나가** 거쳐 가는 국면. 판 전체의 국면은 코어 안에만
- * 있다 — 웹뷰는 자기 펭귄이 무엇을 하는지만 알면 된다. */
-export type BowlingPhase = "gather" | "ready" | "struck" | "scatter";
+ * 있다 — 웹뷰는 자기 펭귄이 무엇을 하는지만 알면 된다.
+ *
+ * **"맞은 상태"가 없다.** 맞은 핀은 `thrown`이 되어 평소 던져졌을 때의 그림을
+ * 그대로 쓴다 (2026-09-02 사용자 지시). */
+export type BowlingPhase = "gather" | "ready" | "scatter";
 
 /** 클릭했을 때의 반응 — 놀라지 않고 싸가지 없게 군다. */
 export type SassyKind =

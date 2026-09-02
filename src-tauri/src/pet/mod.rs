@@ -19,7 +19,7 @@ mod behavior;
 mod bowling;
 
 pub use bowling::{BallSnapshot, BoardPhase, Bowling};
-use bowling::pin_positions;
+use bowling::{dist2_to_segment, pin_positions};
 
 pub use behavior::{
     Behavior, BowlingPhase, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech,
@@ -222,13 +222,13 @@ impl Pets {
         }
         let ids = self.ids();
         let mut pins = std::collections::BTreeMap::new();
-        for (id, pin_x) in ids.iter().zip(pin_positions(ids.len(), lane)) {
+        for (id, (pin_x, pin_y)) in ids.iter().zip(pin_positions(ids.len(), lane)) {
             let joined = self
                 .pets
                 .get_mut(id)
-                .is_some_and(|pet| pet.start_bowling(now_ms, pin_x, lane.floor_y));
+                .is_some_and(|pet| pet.start_bowling(now_ms, pin_x, pin_y));
             if joined {
-                pins.insert(*id, pin_x);
+                pins.insert(*id, (pin_x, pin_y));
             }
         }
         if pins.is_empty() {
@@ -285,14 +285,21 @@ impl Pets {
         };
 
         // 1) 판을 떠난 마리를 추린다. 드래그·빠따로 다른 동작에 넘어갔거나(A4)
-        //    사라진(AE4) 마리가 여기서 빠지고, 아무도 안 남으면 판을 접는다.
-        //    `Scatter`는 이미 판을 나가는 중이라 참여로 세지 않는다.
+        //    사라진(AE4) 마리가 여기서 빠진다. 맞아서 `Thrown`이 된 마리도
+        //    여기서 자연히 빠져나간다 — 맞은 상태는 볼링 국면이 아니다.
         for id in board.participants() {
             if !pets.get(&id).is_some_and(Pet::is_bowling) {
                 board.leave(id);
             }
         }
-        if board.is_empty() {
+        // 착지한 마리는 더는 아무것도 못 친다.
+        board.retain_knocked(|id| pets.get(&id).is_some_and(Pet::is_flying));
+
+        // 굴러가는 중에는 핀이 하나도 안 남아도 판을 접지 않는다 — 스트라이크가
+        // 나면 공이 아직 날아가는 중인데 창이 닫혀 버린다.
+        let 접을까 = board.is_empty()
+            && matches!(board.phase(), BoardPhase::Gathering | BoardPhase::Ready);
+        if 접을까 {
             *bowling = None;
             return;
         }
@@ -311,6 +318,7 @@ impl Pets {
         }
 
         let dt = board.tick(now_ms);
+        let world = board.lane_width();
         match board.phase() {
             BoardPhase::Gathering => {
                 let 다_섰다 = board
@@ -325,16 +333,54 @@ impl Pets {
             BoardPhase::Ready => {}
             BoardPhase::Rolling => {
                 board.roll(dt);
+
+                // 공이 핀을 친다. **판정도 2차원이다** — 공이 지나는 줄에서 먼
+                // 핀은 직접 맞지 않고 아래의 연쇄로만 쓰러진다.
                 for id in board.participants() {
-                    let Some(center) = pets.get(&id).map(Pet::center_x) else {
+                    let Some(pet) = pets.get(&id) else { continue };
+                    let at = (pet.center_x(), pet.center_y());
+                    let Some((dx, dy)) = board.ball_hit(at.0, at.1) else {
                         continue;
                     };
-                    if board.hit(id, center) {
-                        if let Some(pet) = pets.get_mut(&id) {
-                            pet.bowling_struck(now_ms);
-                        }
+                    if let Some(pet) = pets.get_mut(&id) {
+                        pet.bowling_knocked(now_ms, dx, dy, world);
                     }
+                    board.knock(id, at);
                 }
+
+                // 튕겨 나간 마리가 아직 선 핀을 친다 — **연쇄**. 이게 없으면
+                // 공이 지나는 한 줄만 쓰러져 삼각형을 세운 보람이 없다.
+                //
+                // **판정은 지나온 구간으로 한다.** 튕기는 속도가 세계 폭에
+                // 비례하므로 넓은 화면에서는 한 틱에 140px 넘게 날아, 지금
+                // 위치만 보면 이웃 옆을 스쳐 지나가면서도 어느 틱에도 반경
+                // 안에 안 잡힌다 (공 판정과 똑같은 함정이다).
+                let 반경2 = BOWLING_KNOCK_RADIUS * BOWLING_KNOCK_RADIUS;
+                for (hitter, 직전) in board.knocked() {
+                    let Some(h) = pets.get(&hitter) else { continue };
+                    let 지금 = (h.center_x(), h.center_y());
+                    for id in board.participants() {
+                        let Some(pet) = pets.get(&id) else { continue };
+                        let at = (pet.center_x(), pet.center_y());
+                        let (d2, 가까운) = dist2_to_segment(at, 직전, 지금);
+                        if d2 > 반경2 {
+                            continue;
+                        }
+                        // 지나간 자리에서 **밀려나는** 방향이다. 정확히 겹쳤으면
+                        // 때린 쪽이 가던 방향으로 민다.
+                        let (mut dx, mut dy) = (at.0 - 가까운.0, at.1 - 가까운.1);
+                        if dx * dx + dy * dy <= f64::EPSILON {
+                            dx = 지금.0 - 직전.0;
+                            dy = 지금.1 - 직전.1;
+                        }
+                        if let Some(pet) = pets.get_mut(&id) {
+                            pet.bowling_knocked(now_ms, dx, dy, world);
+                        }
+                        board.knock(id, at);
+                    }
+                    board.track_knocked(hitter, 지금);
+                }
+
                 if board.ball_done() {
                     board.settle(now_ms);
                 }
@@ -473,10 +519,14 @@ impl Pet {
         self.behavior
     }
 
-    /// 몸통 가운데의 x. `x`는 왼쪽 위 모서리라 마리끼리·공과의 거리를 잴 때는
-    /// 이쪽을 써야 폭(`PET_SIZE`)만큼 어긋나지 않는다.
+    /// 몸통 가운데. `x`/`y`는 왼쪽 위 모서리라 마리끼리·공과의 거리를 잴 때는
+    /// 이쪽을 써야 크기(`PET_SIZE`)만큼 어긋나지 않는다.
     pub(in crate::pet) fn center_x(&self) -> f64 {
         self.x + PET_SIZE / 2.0
+    }
+
+    pub(in crate::pet) fn center_y(&self) -> f64 {
+        self.y + PET_SIZE / 2.0
     }
 
     /// 판정의 기준점 — **발밑 중앙**이다 (PRD §5.2).
@@ -557,8 +607,7 @@ impl Pet {
             | Behavior::Dragged
             | Behavior::Swing
             | Behavior::Squawk
-            | Behavior::IceFishing { .. }
-            | Behavior::Bowling { .. } => {}
+            | Behavior::IceFishing { .. } => {}
             Behavior::Land | Behavior::Splat | Behavior::Sprawl | Behavior::Tumble => {
                 self.air = false
             }

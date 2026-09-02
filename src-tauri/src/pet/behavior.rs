@@ -105,11 +105,9 @@ pub enum FishingPhase {
 pub enum BowlingPhase {
     /// 자기 핀 자리로 걸어간다
     Gather,
-    /// 자리에 서서 공을 기다린다
+    /// 자리에 떠서 공을 기다린다
     Ready,
-    /// 공이 지나갔다. 빙글빙글 돈다
-    Struck,
-    /// 흩어져 일어난다 — **모든 판이 이 국면으로 끝난다**
+    /// 안 맞은 채로 판이 끝났다. 흩어져 돌아간다
     Scatter,
 }
 
@@ -189,9 +187,10 @@ pub enum Behavior {
     IceFishing {
         fishing: FishingPhase,
     },
-    /// 볼링 — 핀이 되어 한 줄로 서고, 공이 지나가면 돈다. **여러 마리가 하나의
-    /// 사건에 함께 참여하는 첫 동작**이라 국면을 혼자 진행하지 않는다:
-    /// `Gather`만 스스로 끝나고 나머지는 판(`Pets::bowling`)이 몰아 준다.
+    /// 볼링 — 핀이 되어 화면 중앙에 삼각형으로 뜨고, 공이 지나가면 튕겨
+    /// 나간다(그때는 `Thrown`이 된다). **여러 마리가 하나의 사건에 함께
+    /// 참여하는 첫 동작**이라 국면을 혼자 진행하지 않는다: `Gather`만 스스로
+    /// 끝나고 나머지는 판(`Pets::bowling`)이 몰아 준다.
     Bowling {
         bowling: BowlingPhase,
     },
@@ -219,6 +218,8 @@ impl Behavior {
                 | Behavior::Freakout {
                     freakout: FreakoutPhase::Dash
                 }
+                // 판이 바닥이 아니라 **화면 세로 중앙**에 서므로 핀은 떠 있다.
+                | Behavior::Bowling { .. }
         )
     }
 }

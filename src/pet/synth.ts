@@ -1,4 +1,4 @@
-/** 소리 다섯을 그 자리에서 합성한다 (KTD1 — Q9 확정). */
+/** 소리 일곱을 그 자리에서 합성한다 (KTD1 — Q9 확정). */
 
 /** 반음 오프셋 → 주파수 배율. 마리마다 목소리를 다르게 만드는 손잡이다. */
 const ratio = (semitones: number): number => Math.pow(2, semitones / 12);
@@ -188,4 +188,83 @@ export const playFreakout = (
   for (let i = 0; i < 6; i++) {
     squawkBurst(ctx, out, t0 + i * 0.115, 750 * r * ratio(i), 0.09, 1.3);
   }
+};
+
+/** 딱 — 볼링공에 핀이 맞는 소리. 나무 두 개가 부딪히는 짧고 단단한 어택.
+ * 퍽(`playWhack`)보다 **높고 짧다** — 살점이 아니라 나무여야 한다. ≈90ms. */
+export const playStrike = (
+  ctx: BaseAudioContext,
+  out: AudioNode,
+  semitones: number,
+): void => {
+  const r = ratio(semitones);
+  const t0 = ctx.currentTime;
+
+  // 딱 하는 어택 — 짧은 노이즈를 하이패스로 올려 나무 결을 만든다.
+  const click = ctx.createBufferSource();
+  click.buffer = noiseBuffer(ctx, 0.05);
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 1600 * r;
+  const cg = ctx.createGain();
+  envelope(cg, t0, 0.9, 0.002, 0.035);
+  click.connect(hp);
+  hp.connect(cg);
+  cg.connect(out);
+  click.start(t0);
+  click.stop(t0 + 0.05);
+
+  // 통 — 핀 몸통이 울리는 음정. 두 배음을 살짝 어긋나게 겹쳐 나무처럼 만든다.
+  for (const [hz, peak] of [
+    [420, 0.7],
+    [631, 0.35],
+  ]) {
+    const body = ctx.createOscillator();
+    body.type = "triangle";
+    body.frequency.setValueAtTime(hz * r, t0);
+    body.frequency.exponentialRampToValueAtTime(hz * r * 0.86, t0 + 0.085);
+    const g = ctx.createGain();
+    envelope(g, t0, peak, 0.003, 0.08);
+    body.connect(g);
+    g.connect(out);
+    body.start(t0);
+    body.stop(t0 + 0.09);
+  }
+};
+
+/** 드르륵 — 공이 굴러가기 시작하는 소리. 낮은 노이즈를 로우패스에 넣고
+ * 천천히 죽인다. **한 발로 끝낸다** — 굴러가는 내내 이어지는 소리는 상주 앱이
+ * 낼 만한 것이 아니고, 이 앱의 소리 장치는 전부 한 발짜리다. ≈700ms. */
+export const playRoll = (
+  ctx: BaseAudioContext,
+  out: AudioNode,
+  semitones: number,
+): void => {
+  const r = ratio(semitones);
+  const t0 = ctx.currentTime;
+
+  const rumble = ctx.createBufferSource();
+  rumble.buffer = noiseBuffer(ctx, 0.75);
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.setValueAtTime(320 * r, t0);
+  lp.frequency.exponentialRampToValueAtTime(140 * r, t0 + 0.7);
+  lp.Q.value = 3;
+  // 나무 바닥의 결 — 느린 흔들림을 얹어야 "구른다"로 읽힌다.
+  const wob = ctx.createOscillator();
+  wob.type = "sine";
+  wob.frequency.value = 17;
+  const wobGain = ctx.createGain();
+  wobGain.gain.value = 60 * r;
+  wob.connect(wobGain);
+  wobGain.connect(lp.frequency);
+  const g = ctx.createGain();
+  envelope(g, t0, 0.8, 0.03, 0.66);
+  rumble.connect(lp);
+  lp.connect(g);
+  g.connect(out);
+  rumble.start(t0);
+  rumble.stop(t0 + 0.75);
+  wob.start(t0);
+  wob.stop(t0 + 0.75);
 };

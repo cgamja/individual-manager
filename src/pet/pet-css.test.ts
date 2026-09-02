@@ -46,7 +46,6 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "freakout", freakout: "pant" },
   { kind: "bowling", bowling: "gather" },
   { kind: "bowling", bowling: "ready" },
-  { kind: "bowling", bowling: "struck" },
   { kind: "bowling", bowling: "scatter" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },

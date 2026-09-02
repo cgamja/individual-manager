@@ -171,30 +171,48 @@ pub(super) const FISHING_CATCH_PERCENT: u64 = 40;
 pub const BOWLING_BALL_SIZE: f64 = 64.0;
 const _: () = assert!(BOWLING_BALL_SIZE < PET_SIZE);
 
-/// 핀 사이 간격. **펭귄 폭보다 좁아 살짝 겹친다** — 벌려 놓으면 한 줄이 아니라
-/// 그냥 흩어져 선 펭귄들로 보인다.
-pub(super) const BOWLING_PIN_GAP: f64 = 96.0;
-const _: () = assert!(BOWLING_PIN_GAP < PET_SIZE);
+/// 삼각 대형에서 **줄과 줄 사이**(가로) 간격. 펭귄 폭보다 좁아 살짝 겹친다 —
+/// 벌려 놓으면 삼각형이 아니라 그냥 흩어져 뜬 펭귄들로 보인다.
+pub(super) const BOWLING_ROW_GAP: f64 = 104.0;
+const _: () = assert!(BOWLING_ROW_GAP < PET_SIZE);
+
+/// 삼각 대형에서 **한 줄 안**(세로) 간격.
+pub(super) const BOWLING_COL_GAP: f64 = 118.0;
+const _: () = assert!(BOWLING_COL_GAP < PET_SIZE);
 
 /// 오른쪽 끝에서 첫 핀까지 띄우는 거리. 공이 마지막 핀을 지나 빠져나갈 자리다.
 pub(super) const BOWLING_PIN_MARGIN: f64 = 24.0;
 
-/// 공 자리에서 가장 왼쪽 핀까지 **반드시** 남기는 길이. 여덟 마리가 좁은 화면에
-/// 서면 핀 줄이 공까지 뻗는데, 그러면 굴리기 전에 이미 닿아 있다 (A5).
+/// 공 자리에서 삼각형 꼭짓점까지 **반드시** 남기는 길이. 대형이 넓어지면
+/// 공까지 뻗는데, 그러면 굴리기 전에 이미 닿아 있다 (A5).
 pub(super) const BOWLING_LANE_MIN: f64 = 240.0;
 
-/// 핀 자리로 걸어가는 속도. **걷기보다 빠르다** — 평소 걷기(42px/s)로 가면
-/// 화면을 가로지르는 데 30초가 걸려 판이 시작되기 전에 지친다.
-pub(super) const BOWLING_GATHER_SPEED: f64 = 380.0;
-const _: () = assert!(BOWLING_GATHER_SPEED > WALK_SPEED);
+/// 핀 자리로 **날아가는** 속도. 판은 바닥이 아니라 화면 세로 중앙에 서므로
+/// 걷는 게 아니라 헤엄쳐 간다. 헤엄보다 빠르다 — 평소 헤엄(95px/s)으로 가면
+/// 다 서는 데 십 초가 넘어 판이 시작되기 전에 지친다.
+pub(super) const BOWLING_GATHER_SPEED: f64 = 420.0;
+const _: () = assert!(BOWLING_GATHER_SPEED > SWIM_SPEED);
 const _: () = assert!(BOWLING_GATHER_SPEED < FREAKOUT_SPEED);
 
-/// 공중에 있던 마리가 판에 합류하며 내려오는 속도. 순간이동하면 R2를 어긴다.
-pub(super) const BOWLING_DESCENT_SPEED: f64 = 300.0;
+/// 맞은 핀이 튕겨 나가는 속도 — 초당 세계를 몇 번 가로지르는가. 던지기보다
+/// 세다: 볼링공에 맞은 핀이 살살 밀려나면 맞은 것으로 안 보인다.
+pub(super) const BOWLING_KNOCK_WORLDS_PER_SEC: f64 = 0.95;
+const _: () = assert!(BOWLING_KNOCK_WORLDS_PER_SEC > THROW_MAX_WORLDS_PER_SEC);
 
-// 맞은 펭귄이 도는 **주기**는 여기 없다. 도는 것을 멈추는 것은 시간이 아니라
-// 판이라 대응하는 국면 길이가 없고, 상수만 두면 Rust에서 아무도 안 쓴다.
-// 반복 애니메이션의 주기는 CSS가 혼자 정한다 (`pg-bowling-spin`).
+/// 튕겨 나간 핀이 아직 선 핀을 치는 거리. **연쇄가 이 값으로 산다.**
+///
+/// **대형의 이웃 거리보다 커야 한다.** 작으면 나란히 선 핀들이 서로 안 닿아
+/// 공이 지나는 한 줄만 쓰러지고 끝난다 — 처음에 96으로 뒀다가 실제로 그랬다.
+/// 아래 두 `assert!`가 대형 간격을 바꿀 때 이 값이 따라오도록 묶는다.
+pub(super) const BOWLING_KNOCK_RADIUS: f64 = 126.0;
+/// 옆줄의 대각선 이웃 — `sqrt(ROW_GAP² + (COL_GAP/2)²)`를 제곱으로 비교한다.
+const _: () = assert!(
+    BOWLING_KNOCK_RADIUS * BOWLING_KNOCK_RADIUS
+        >= BOWLING_ROW_GAP * BOWLING_ROW_GAP
+            + (BOWLING_COL_GAP / 2.0) * (BOWLING_COL_GAP / 2.0)
+);
+/// 같은 줄의 위아래 이웃.
+const _: () = assert!(BOWLING_KNOCK_RADIUS >= BOWLING_COL_GAP);
 
 /// 흩어지며 일어나는 시간. 얼음낚시의 `Pack`, 발작의 `Pant`와 같은 귀결 국면이다.
 pub(super) const BOWLING_SCATTER_MS: u64 = 600;

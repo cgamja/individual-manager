@@ -1,9 +1,13 @@
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { advance, newDragTrack, pushSample, type DragTrack } from "../lib/drag";
+import { loadPetSettings } from "../lib/settings";
+import { SoundPlayer } from "../pet/sound";
 import {
   DRAG_THRESHOLD_PX,
   dragBallBy,
   endBallDrag,
   onBallState,
+  onPetSound,
   startBallDrag,
   throwVelocity,
   type BallSnapshot,
@@ -48,6 +52,20 @@ if (root) {
   // 정산을 가로채 버퍼가 뒤섞인다.
   let drag: BallDrag | null = null;
 
+  // 이 창의 소리 — 굴러가기 시작할 때 딱 한 발. 켜짐/꺼짐·음량은 펭귄 창과
+  // **같은 설정 하나**를 따른다 (`pet://sound` 방송).
+  const player = new SoundPlayer(getCurrentWebviewWindow().label);
+  void loadPetSettings()
+    .then((s) => {
+      player.setEnabled(s.sound);
+      player.setVolume(s.volume);
+    })
+    .catch(() => {});
+  void onPetSound(({ sound, volume }) => {
+    player.setEnabled(sound);
+    player.setVolume(volume);
+  }).catch(() => {});
+
   /** 집히기 전에 모아 둔 이동량을 한 번에 보낸다. */
   const flushPending = (track: BallDrag): Promise<void> => {
     if (track.pending === 0) return Promise.resolve();
@@ -58,6 +76,8 @@ if (root) {
 
   root.addEventListener("pointerdown", (e) => {
     const pe = e as PointerEvent;
+    // 사용자 제스처에서만 suspended 컨텍스트를 깨울 수 있다 (WKWebView).
+    player.nudge();
     if (pe.button !== 0 || drag) return;
     try {
       root.setPointerCapture?.(pe.pointerId);
@@ -129,9 +149,14 @@ if (root) {
   root.addEventListener("pointercancel", release);
   root.addEventListener("contextmenu", (e) => e.preventDefault());
 
+  let 굴렀나 = false;
   const paint = (ball: BallSnapshot) => {
     root.classList.toggle("bw-ball--rolling", ball.rolling);
     root.classList.toggle("bw-ball--held", ball.held);
+    // 구르기 **시작하는 순간**에만 낸다. 상태를 그대로 소리에 연결하면
+    // 굴러가는 내내 매 알림마다 다시 울린다.
+    if (ball.rolling && !굴렀나) player.play("roll", performance.now());
+    굴렀나 = ball.rolling;
   };
 
   // **받는 쪽을 창에 묶는다.** 전역 `listen()`은 대상을 `Any`로 등록해서

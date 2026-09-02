@@ -94,12 +94,23 @@ describe("볼링 공 창", () => {
   it("공_상태_구독이_창에_묶여_있다", () => {
     // 전역 `listen()`은 대상을 `Any`로 등록해 emit 대상과 무관하게 전부
     // 호출된다. 창이 하나일 때는 안 드러나다가 여러 창에서 터진다.
-    const listen = calls.find((c) => c.cmd === "plugin:event|listen");
+    // 이 창은 `pet://sound`(전역)도 구독하므로 **이벤트를 지정해** 찾는다.
+    const listen = calls.find(
+      (c) => c.cmd === "plugin:event|listen" && c.args.event === "bowling://ball",
+    );
     expect(listen, "공 상태를 구독하지 않았다").toBeDefined();
-    expect(listen!.args.event).toBe("bowling://ball");
     const target = listen!.args.target as { kind?: string; label?: string };
     expect(target.kind).not.toBe("Any");
     expect(target.label).toBe("bowling-ball");
+  });
+
+  it("소리_설정은_전역으로_받는다", () => {
+    // 소리 켜짐/꺼짐은 설정 창이 전 창에 방송하는 값이라 창에 묶으면 안 온다.
+    const listen = calls.find(
+      (c) => c.cmd === "plugin:event|listen" && c.args.event === "pet://sound",
+    );
+    expect(listen, "소리 설정을 구독하지 않았다").toBeDefined();
+    expect((listen!.args.target as { kind?: string }).kind).toBe("Any");
   });
 
   it("집을_때_코어에_먼저_알린다", async () => {

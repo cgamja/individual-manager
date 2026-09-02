@@ -10,7 +10,7 @@
 //! [`BowlingPhase`](super::BowlingPhase)다. 나눈 이유는 "전부 섰는가"를 물어볼
 //! 자리가 필요해서다 — **판이 마리를 몰지 그 반대가 아니다** (KTD8).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 
@@ -60,11 +60,16 @@ pub struct BallSnapshot {
 /// 한 판.
 pub struct Bowling {
     phase: BoardPhase,
-    /// 참여 마리 → 핀 자리(펭귄 `x`). **id 오름차순으로 오른쪽부터** 배정하므로
-    /// 같은 마릿수는 항상 같은 배치를 낳는다 (R12).
-    pins: BTreeMap<PetId, f64>,
-    /// 이미 맞은 마리. 같은 펭귄을 두 번 맞히지 않는다.
-    struck: BTreeSet<PetId>,
+    /// 아직 서 있는 마리 → 핀 자리(펭귄 `x`, `y`). **id 오름차순으로 꼭짓점부터**
+    /// 배정하므로 같은 마릿수는 항상 같은 배치를 낳는다 (R12).
+    pins: BTreeMap<PetId, (f64, f64)>,
+    /// 튕겨 나간 마리 → **직전 틱의 몸통 가운데.** 연쇄가 여기서 산다 —
+    /// 날아가는 동안 아직 선 핀을 친다. 착지하면 빠진다.
+    ///
+    /// 위치를 들고 있는 이유는 판정을 **지나온 구간**으로 하기 위해서다.
+    /// 튕기는 속도가 세계 폭에 비례하므로 넓은 화면에서는 한 틱에 140px 넘게
+    /// 날아, 지금 위치만 보면 이웃을 통째로 뛰어넘는다 (공 판정과 같은 함정).
+    knocked: BTreeMap<PetId, (f64, f64)>,
     /// 판이 열릴 때 잰 레인. 판이 도는 몇 초 동안은 이게 세계다 — 도중에 경계가
     /// 바뀌어도 핀과 공이 서로 다른 좌표계를 보지 않게 한다.
     lane: Bounds,
@@ -81,11 +86,11 @@ pub struct Bowling {
 }
 
 impl Bowling {
-    pub(super) fn new(pins: BTreeMap<PetId, f64>, lane: Bounds, now_ms: u64) -> Self {
+    pub(super) fn new(pins: BTreeMap<PetId, (f64, f64)>, lane: Bounds, now_ms: u64) -> Self {
         Bowling {
             phase: BoardPhase::Gathering,
             pins,
-            struck: BTreeSet::new(),
+            knocked: BTreeMap::new(),
             lane,
             ball: None,
             until_ms: 0,
@@ -104,8 +109,31 @@ impl Bowling {
     }
 
     /// 이 마리의 핀 자리. 참여하지 않으면 `None`.
-    pub fn pin_of(&self, id: PetId) -> Option<f64> {
+    pub fn pin_of(&self, id: PetId) -> Option<(f64, f64)> {
         self.pins.get(&id).copied()
+    }
+
+    /// 지금 날아가는 중인 마리들과 **직전 틱의 위치** — 이들이 아직 선 핀을 친다.
+    pub(super) fn knocked(&self) -> Vec<(PetId, (f64, f64))> {
+        self.knocked.iter().map(|(id, at)| (*id, *at)).collect()
+    }
+
+    /// 한 마리가 맞아 판에서 튕겨 나간다. `at`은 지금 몸통 가운데다.
+    pub(super) fn knock(&mut self, id: PetId, at: (f64, f64)) {
+        self.pins.remove(&id);
+        self.knocked.insert(id, at);
+    }
+
+    /// 날아가는 마리의 위치를 이번 틱 값으로 갱신한다.
+    pub(super) fn track_knocked(&mut self, id: PetId, at: (f64, f64)) {
+        if let Some(slot) = self.knocked.get_mut(&id) {
+            *slot = at;
+        }
+    }
+
+    /// 착지해서 더는 아무것도 못 치는 마리를 연쇄 목록에서 뺀다.
+    pub(super) fn retain_knocked(&mut self, mut flying: impl FnMut(PetId) -> bool) {
+        self.knocked.retain(|id, _| flying(*id));
     }
 
     /// 지금 화면에 있어야 하는 공. 모으는 중에는 없다 (R4).
@@ -127,7 +155,7 @@ impl Bowling {
     /// 맞아서 다른 동작으로 넘어갔거나.
     pub(super) fn leave(&mut self, id: PetId) {
         self.pins.remove(&id);
-        self.struck.remove(&id);
+        self.knocked.remove(&id);
     }
 
     /// 이번 틱의 경과 시간(초). 틱이 밀려도 공이 순간이동하지 않게
@@ -226,24 +254,28 @@ impl Bowling {
         }
     }
 
-    /// 이 마리가 지금 공에 맞았는가. 맞았으면 표시하고 공의 속도를 깎는다.
-    /// **같은 마리를 두 번 맞히지 않고, 맞아도 공은 멈추지 않는다** (A2).
-    pub(super) fn hit(&mut self, id: PetId, pet_center_x: f64) -> bool {
-        if self.struck.contains(&id) {
-            return false;
+    /// 이 마리가 지금 공에 맞았는가. 맞았으면 공의 속도를 깎고 **튕겨 나갈
+    /// 방향**을 준다. 맞아도 공은 멈추지 않는다 (A2).
+    ///
+    /// 판이 화면 중앙의 평면에 서므로 판정도 2차원이다 — 공이 지나는 줄에서
+    /// 멀리 떨어진 핀은 공에 직접 맞지 않고, **연쇄로만** 쓰러진다.
+    pub(super) fn ball_hit(
+        &mut self,
+        pet_center_x: f64,
+        pet_center_y: f64,
+    ) -> Option<(f64, f64)> {
+        let ball = self.ball.as_mut()?;
+        // 세로는 점으로, 가로는 **이번 틱에 지나온 구간**으로 잰다. 지금 위치만
+        // 보면 틱이 밀렸을 때 핀을 통째로 뛰어넘는다.
+        if (ball.y - pet_center_y).abs() > BOWLING_HIT_RADIUS {
+            return None;
         }
-        let Some(ball) = self.ball.as_mut() else {
-            return false;
-        };
-        // **점이 아니라 이번 틱에 지나온 구간으로 잰다.** 지금 위치만 보면
-        // 틱이 밀렸을 때 핀을 통째로 뛰어넘는다.
         let (lo, hi) = (ball.prev_x.min(ball.x), ball.prev_x.max(ball.x));
         if pet_center_x < lo - BOWLING_HIT_RADIUS || pet_center_x > hi + BOWLING_HIT_RADIUS {
-            return false;
+            return None;
         }
         ball.vx *= 1.0 - BOWLING_SPEED_LOSS_PER_PIN;
-        self.struck.insert(id);
-        true
+        Some((pet_center_x - ball.x, pet_center_y - ball.y))
     }
 
     /// 공이 멎었거나 레인을 벗어났는가 — 판이 끝나는 조건이다. 시간 상한을
@@ -277,9 +309,9 @@ impl Bowling {
         now_ms >= self.deadline_ms
     }
 
-    /// 이 판의 세계 폭. 속도 상한과 감속이 여기에 비례한다 — 판이 도는 동안은
-    /// 레인이 세계이므로 바깥 `World::width()`를 다시 묻지 않는다.
-    fn lane_width(&self) -> f64 {
+    /// 이 판의 세계 폭. 속도 상한과 감속과 튕겨 나가는 세기가 여기에 비례한다 —
+    /// 판이 도는 동안은 레인이 세계이므로 바깥 `World::width()`를 다시 묻지 않는다.
+    pub(super) fn lane_width(&self) -> f64 {
         let w = self.lane.right - self.lane.left;
         if w > 0.0 {
             w
@@ -287,6 +319,107 @@ impl Bowling {
             FALLBACK_WORLD_WIDTH
         }
     }
+}
+
+/// 삼각 대형의 핀 자리들 — **꼭짓점이 왼쪽**(공이 오는 쪽)을 향한다.
+///
+/// 줄 `r`에는 `r+1`자리가 있고(1, 2, 3, …), 앞줄부터 채우다 남은 마지막 줄은
+/// 가운데로 모은다. 반환 순서가 곧 id 오름차순의 배정 순서라, 같은 마릿수면
+/// 항상 같은 배치가 나온다 (R12).
+///
+/// **바닥이 아니라 화면 세로 중앙에 선다** — 2차원 바닥은 선이라 삼각형을
+/// 만들 수 없었다(그래서 처음에는 한 줄이었다). 판을 공중의 평면으로 옮기면
+/// 그 제약이 사라진다 (2026-09-02 사용자 지시).
+///
+/// **좁은 화면 방어**: 대형이 공이 굴러올 길([`BOWLING_LANE_MIN`])을 침범하거나
+/// 위아래로 넘치면 간격을 줄여 다시 배분한다. 영역이 아예 없어도 패닉하지 않는다.
+pub(super) fn pin_positions(count: usize, lane: Bounds) -> Vec<(f64, f64)> {
+    if count == 0 {
+        return Vec::new();
+    }
+    let rows = triangle_rows(count);
+    let widest = rows.iter().copied().max().unwrap_or(1);
+
+    let right = lane.right.max(lane.left);
+    let back = (right - BOWLING_PIN_MARGIN).max(lane.left);
+    let lane_left = (lane.left + BOWLING_LANE_MIN).min(back);
+    let row_gap = if rows.len() > 1 {
+        BOWLING_ROW_GAP.min((back - lane_left).max(0.0) / (rows.len() - 1) as f64)
+    } else {
+        BOWLING_ROW_GAP
+    };
+
+    let center_y = lane_center_y(lane);
+    let half_height = ((lane.floor_y - lane.top) / 2.0).max(0.0);
+    let col_gap = if widest > 1 {
+        BOWLING_COL_GAP.min(2.0 * half_height / (widest - 1) as f64)
+    } else {
+        BOWLING_COL_GAP
+    };
+
+    let mut out = Vec::with_capacity(count);
+    for (r, &in_row) in rows.iter().enumerate() {
+        // 뒷줄일수록 오른쪽이다. 꼭짓점(r=0)이 가장 왼쪽.
+        let x = back - row_gap * (rows.len() - 1 - r) as f64;
+        for k in 0..in_row {
+            let y = center_y + (k as f64 - (in_row - 1) as f64 / 2.0) * col_gap;
+            out.push((
+                x.clamp(lane.left, right),
+                y.clamp(lane.top.min(lane.floor_y), lane.floor_y),
+            ));
+        }
+    }
+    out
+}
+
+/// 점 `p`에서 선분 `a`–`b`까지의 **거리 제곱과 가장 가까운 점.**
+///
+/// 연쇄 판정이 점이 아니라 "이번 틱에 지나온 구간"이라 필요하다. 제곱으로
+/// 돌려주는 이유는 비교만 하면 되기 때문이다 — `sqrt`를 매 쌍마다 부르지 않는다.
+pub(super) fn dist2_to_segment(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> (f64, (f64, f64)) {
+    let (abx, aby) = (b.0 - a.0, b.1 - a.1);
+    let len2 = abx * abx + aby * aby;
+    // 제자리에 있었으면 선분이 아니라 점이다.
+    let t = if len2 <= f64::EPSILON {
+        0.0
+    } else {
+        (((p.0 - a.0) * abx + (p.1 - a.1) * aby) / len2).clamp(0.0, 1.0)
+    };
+    let near = (a.0 + abx * t, a.1 + aby * t);
+    let (dx, dy) = (p.0 - near.0, p.1 - near.1);
+    (dx * dx + dy * dy, near)
+}
+
+/// `count`마리를 삼각형으로 세울 때 각 줄에 몇 마리가 서는가.
+/// 앞줄(꼭짓점)부터 1, 2, 3, …으로 채우고 마지막 줄만 모자랄 수 있다.
+fn triangle_rows(count: usize) -> Vec<usize> {
+    let mut rows = Vec::new();
+    let mut left = count;
+    let mut width = 1;
+    while left > 0 {
+        let take = left.min(width);
+        rows.push(take);
+        left -= take;
+        width += 1;
+    }
+    rows
+}
+
+/// 판이 서는 높이 — 펭귄 `y`(왼쪽 위 모서리) 기준의 화면 세로 중앙.
+pub(super) fn lane_center_y(lane: Bounds) -> f64 {
+    (lane.top.min(lane.floor_y) + lane.floor_y) / 2.0
+}
+
+/// 공이 처음 놓이는 자리 — 레인 **왼쪽 끝, 판과 같은 높이**. 반환은 공 **중심**이다.
+///
+/// 세로는 핀의 몸통 가운데에 맞춘다. 펭귄은 `y`에 **왼쪽 위 모서리**가 놓이므로
+/// 몸통 가운데는 `y + PET_SIZE / 2`이고, 공 중심이 그 선에 있어야 가운데 줄을
+/// 정면으로 맞힌다.
+pub(super) fn ball_home(lane: Bounds) -> (f64, f64) {
+    (
+        lane.left + BOWLING_BALL_SIZE / 2.0,
+        lane_center_y(lane) + PET_SIZE / 2.0,
+    )
 }
 
 /// 굴리기 속도를 세계 폭이 정한 상한으로 자른다 — 던지기(`clamp_throw`)와
@@ -299,40 +432,6 @@ pub(super) fn clamp_roll(vx: f64, world_width: f64) -> f64 {
     };
     let max = (width * BOWLING_MAX_WORLDS_PER_SEC).max(BOWLING_MIN_MAX_SPEED);
     vx.clamp(-max, max)
-}
-
-/// 핀 자리들 — 오른쪽 끝에서 왼쪽으로 `count`개. 반환 순서가 곧 id 오름차순의
-/// 배정 순서라, 같은 마릿수면 항상 같은 배치가 나온다 (R12).
-///
-/// **좁은 화면 방어**: 계산한 가장 왼쪽 핀이 공이 굴러올 길([`BOWLING_LANE_MIN`])을
-/// 침범하면 간격을 줄여 다시 배분한다 (A5). 레인이 아예 없는 경우(폭 0)에도
-/// 패닉하지 않고 전부 같은 자리에 겹쳐 선다.
-pub(super) fn pin_positions(count: usize, lane: Bounds) -> Vec<f64> {
-    if count == 0 {
-        return Vec::new();
-    }
-    let right = lane.right.max(lane.left);
-    let first = (right - BOWLING_PIN_MARGIN).max(lane.left);
-    let lane_left = (lane.left + BOWLING_LANE_MIN).min(first);
-    let gap = if count > 1 {
-        BOWLING_PIN_GAP.min((first - lane_left).max(0.0) / (count - 1) as f64)
-    } else {
-        BOWLING_PIN_GAP
-    };
-    (0..count)
-        .map(|i| (first - gap * i as f64).clamp(lane.left, right))
-        .collect()
-}
-
-/// 공이 처음 놓이는 자리 — 레인 **왼쪽 바닥**. 반환은 공 **중심**이다.
-///
-/// 세로는 펭귄 발밑과 같은 선에 맞춘다. 펭귄은 `floor_y`에 **왼쪽 위 모서리**가
-/// 놓이므로 발밑은 `floor_y + PET_SIZE`이고, 공은 그 선에 밑면이 닿아야 한다.
-pub(super) fn ball_home(lane: Bounds) -> (f64, f64) {
-    (
-        lane.left + BOWLING_BALL_SIZE / 2.0,
-        lane.floor_y + PET_SIZE - BOWLING_BALL_SIZE / 2.0,
-    )
 }
 
 #[cfg(test)]

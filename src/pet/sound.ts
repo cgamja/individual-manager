@@ -1,8 +1,27 @@
 import type { PetSnapshot } from "../lib/pet";
-import { playCatch, playFreakout, playSquawk, playWhack, playWhoosh } from "./synth";
+import {
+  playCatch,
+  playFreakout,
+  playRoll,
+  playSquawk,
+  playStrike,
+  playWhack,
+  playWhoosh,
+} from "./synth";
 
-/** 펭귄이 낼 수 있는 소리 다섯. 이게 전부다 — 걷기·헤엄·착지·졸기는 무음이다. */
-export type SoundName = "whack" | "whoosh" | "squawk" | "freakout" | "catch";
+/** 낼 수 있는 소리 일곱. 이게 전부다 — 걷기·헤엄·착지·졸기는 무음이다.
+ *
+ * `strike`와 `roll`은 볼링에서만 난다. 자격 규칙 ①("사용자가 방금 한 짓의
+ * 결과")에 그대로 부합한다 — 판을 연 것도 공을 굴린 것도 사용자다.
+ * `roll`만 **공 창**이 내고 나머지는 펭귄 창이 낸다. */
+export type SoundName =
+  | "whack"
+  | "whoosh"
+  | "squawk"
+  | "freakout"
+  | "catch"
+  | "strike"
+  | "roll";
 
 /** 직전 스냅샷과 비교해 이번에 낼 소리를 판정한다. 순수 함수 — Web Audio가 */
 export const soundsFor = (
@@ -13,7 +32,9 @@ export const soundsFor = (
   const out: SoundName[] = [];
   if (next.whack_seq > prev.whack_seq) out.push("whack");
   if (prev.behavior.kind !== "thrown" && next.behavior.kind === "thrown") {
-    out.push("whoosh");
+    // 볼링 핀이 맞아 날아가는 것은 **맞은 소리**가 나야 한다. 휙 소리만 나면
+    // 스스로 날아간 것처럼 들려 공에 맞았다는 사실이 사라진다.
+    out.push(prev.behavior.kind === "bowling" ? "strike" : "whoosh");
   }
   if (prev.behavior.kind !== "squawk" && next.behavior.kind === "squawk") {
     out.push("squawk");
@@ -36,6 +57,10 @@ export const SOUND_COOLDOWN_MS: Record<SoundName, number> = {
   squawk: 400,
   freakout: 1000,
   catch: 1500,
+  // 연쇄로 여러 마리가 거의 동시에 맞는다. 창이 마리마다 따로라 쿨다운은
+  // 한 마리 안에서만 걸리므로 짧게 둔다 — 길면 두 번 맞은 것이 한 번으로 들린다.
+  strike: 60,
+  roll: 900,
 };
 
 /** 시각을 인자로 받아 시계 없이 테스트한다 (`pet.rs`가 `now_ms`를 받는 이유와 같다). */
@@ -74,6 +99,8 @@ const SYNTH: Record<
   squawk: playSquawk,
   freakout: playFreakout,
   catch: playCatch,
+  strike: playStrike,
+  roll: playRoll,
 };
 
 /** 한 펭귄 창의 소리 전부 — 컨텍스트 수명, 켜짐/꺼짐, 쿨다운을 소유한다. */

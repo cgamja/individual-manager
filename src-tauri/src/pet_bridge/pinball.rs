@@ -42,6 +42,41 @@ pub fn pinball_rects_of(screens: &[ScreenSpec]) -> Vec<(f64, f64, f64, f64)> {
         .collect()
 }
 
+/// 여럿을 만들다 **하나라도 실패하면 앞서 만든 것을 전부 되돌린다.**
+///
+/// 반쯤 깔린 판을 남기면 안 되는 이유가 분명하다: 커맨드는 실패를 보고 모드를
+/// "꺼짐"으로 되돌리는데, 창이 남아 있으면 **화면은 판이고 상태는 꺼짐**이라
+/// Esc도 트레이도 그 판을 닫지 않는다 — "나가는 문이 둘"(PRD §5.8)이 이 경로
+/// 하나에서만 무너지고, 사용자는 클릭을 먹는 투명 막에 갇힌다.
+///
+/// **되돌릴 때는 이번에 만든 것만 닫는다.** 라벨 접두어로 싹 닫으면 이미 떠
+/// 있던 판까지 사라진다 — 펭귄을 껐다 켜면(`pet_set_enabled`) 판은 살아 있는
+/// 채로 이 함수가 다시 불리므로, 그때 새 모니터 하나가 실패하면 멀쩡히 돌던
+/// 판을 전부 걷어내게 된다. 그래서 `build`는 **만든 것**을 돌려주고
+/// (이미 있어서 건너뛴 것은 `None`), `undo`는 그것만 받는다.
+///
+/// 창 생성 자체는 Tauri 런타임 표면이라 단위 테스트로 안 잡힌다. 그래서 **판단만**
+/// 여기로 떼어 놓는다 — 이 함수는 클로저 둘로 테스트된다.
+pub(super) fn build_all_or_none<T, E>(
+    count: usize,
+    mut build: impl FnMut(usize) -> Result<Option<T>, E>,
+    undo: impl FnOnce(Vec<T>),
+) -> Result<(), E> {
+    let mut 만든 = Vec::new();
+    for i in 0..count {
+        match build(i) {
+            Ok(Some(made)) => 만든.push(made),
+            // 이미 있어서 건너뛰었다 — 되돌릴 대상이 아니다.
+            Ok(None) => {}
+            Err(err) => {
+                undo(만든);
+                return Err(err);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 핀볼 덮개 창을 만든다. 이미 있으면 그대로 둔다.
 pub fn create_pinball_window(app: &AppHandle) -> tauri::Result<()> {
     let screens: Vec<ScreenSpec> = app
@@ -61,28 +96,40 @@ pub fn create_pinball_window(app: &AppHandle) -> tauri::Result<()> {
         return Err(tauri::Error::WindowNotFound);
     }
 
-    for (index, (x, y, w, h)) in rects.into_iter().enumerate() {
-        let label = pinball_label(index);
-        if app.get_webview_window(&label).is_some() {
-            continue;
-        }
-        WebviewWindowBuilder::new(app, &label, WebviewUrl::App("pinball.html".into()))
-            .title("Pinball Field")
-            .inner_size(w, h)
-            .position(x, y)
-            .transparent(true)
-            .decorations(false)
-            .shadow(false)
-            .resizable(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .visible_on_all_workspaces(true)
-            .accept_first_mouse(true)
-            .focused(false)
-            .visible(true)
-            .build()?
-            .show()?;
-    }
+    build_all_or_none(
+        rects.len(),
+        |index| -> tauri::Result<Option<String>> {
+            let (x, y, w, h) = rects[index];
+            let label = pinball_label(index);
+            if app.get_webview_window(&label).is_some() {
+                return Ok(None);
+            }
+            WebviewWindowBuilder::new(app, &label, WebviewUrl::App("pinball.html".into()))
+                .title("Pinball Field")
+                .inner_size(w, h)
+                .position(x, y)
+                .transparent(true)
+                .decorations(false)
+                .shadow(false)
+                .resizable(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible_on_all_workspaces(true)
+                .accept_first_mouse(true)
+                .focused(false)
+                .visible(true)
+                .build()?
+                .show()?;
+            Ok(Some(label))
+        },
+        |만든| {
+            for label in 만든 {
+                if let Some(window) = app.get_webview_window(&label) {
+                    let _ = window.close();
+                }
+            }
+        },
+    )?;
 
     sink_pinball_below_pets(app);
     Ok(())

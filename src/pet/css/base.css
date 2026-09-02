@@ -154,8 +154,24 @@ body,
 
 /* 움직임을 줄이는 시스템 설정을 존중한다 */
 @media (prefers-reduced-motion: reduce) {
+  /* **`.pg-bubble`을 빠뜨리면 안 된다.** 말풍선은 `.penguin`의 자손이 아니라
+     `.pg-stage`의 형제라, `.penguin *`로는 한 번도 안 걸린다 — 그러면 튀어나오기
+     연출만 그대로 살아남는다. */
+  .penguin,
   .penguin *,
-  .penguin {
+  .pg-bubble,
+  .pg-bubble::after {
     animation: none !important;
+    /* **전환도 함께 꺼야 한다.** `animation`만 끄면 `.penguin`의
+       `transform 0.25s`가 그대로 남아, 움직임 감소를 켠 사용자에게 방향 전환이
+       여전히 회전한다 — 절반만 듣는 접근성 설정이 안 듣는 것보다 나쁘다. */
+    transition: none !important;
+  }
+
+  /* 전환만 끄면 눈동자가 커서를 **툭툭 튀며** 따라간다 — 완충을 없앤 것이지
+     움직임을 없앤 게 아니다. 시선 이동 자체를 멈춘다 (`.pg--sleep .pg-gaze`와
+     같은 처리). */
+  .pg-gaze {
+    transform: none !important;
   }
 }

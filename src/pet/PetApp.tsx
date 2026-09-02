@@ -22,6 +22,7 @@ import {
   DEFAULT_TAUNTS,
   whackPet,
   type PetSnapshot,
+  type RestartKey,
 } from "../lib/pet";
 
 /** 드래그 진행 정보. 공 창과 공유하는 부분은 `lib/drag`에 있다 — 여기서
@@ -45,10 +46,18 @@ export function PetApp() {
   const pendingRef = useRef({ dx: 0, dy: 0 });
   /** 진행 중인 pet_drag_start 왕복 — 놓기 정산이 이걸 기다린다. */
   const startPromiseRef = useRef<Promise<void> | null>(null);
-  /** 한 번짜리 애니메이션을 되감기 위한 remount 카운터. */
+  /** 한 번짜리 애니메이션을 되감기 위한 remount 카운터.
+   *
+   * **되감기는 SVG를 통째로 다시 만드는 것이라 대가가 있다** — 그 안에서 늘
+   * 돌던 것(눈 깜빡임 5.5초 주기, 숨쉬기)도 함께 0으로 되돌아간다. 빠따가
+   * 한 번짜리 목록에 들어오면서 **클릭할 때마다** 그렇게 되므로, 쉬지 않고
+   * 클릭하는 동안에는 눈을 깜빡이지 않는다. 되감기 없이는 방망이가 아예 다시
+   * 안 휘둘러지므로 지금은 이쪽을 택했다. 거슬리면 대안은 remount 대신
+   * `getAnimations()`로 스윙 애니메이션만 되감는 것이다. */
   const [restartKey, setRestartKey] = useState(0);
-  /** 직전 스냅샷의 동작 클래스 — 되감기 판정의 근거 (`shouldRestart` 참고). */
-  const lastClassRef = useRef<string | null>(null);
+  /** 직전 스냅샷의 동작 클래스와 빠따 횟수 — 되감기 판정의 근거
+   * (`shouldRestart` 참고). 클래스만으로는 연타한 스윙을 구분할 수 없다. */
+  const lastRestartRef = useRef<RestartKey | null>(null);
   /** 눈동자가 커서를 향해 밀리는 양 (SVG 좌표, R7). */
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
   /** 사용자가 팝오버에서 고칠 수 있으므로 저장소가 원천이다. */
@@ -102,9 +111,9 @@ export function PetApp() {
         }
         prevSnapRef.current = next;
         if (next.speech) loadTaunts().then(setTaunts).catch(() => {});
-        const cls = behaviorClass(next.behavior);
-        if (shouldRestart(lastClassRef.current, cls)) setRestartKey((k) => k + 1);
-        lastClassRef.current = cls;
+        const key = { cls: behaviorClass(next.behavior), whackSeq: next.whack_seq };
+        if (shouldRestart(lastRestartRef.current, key)) setRestartKey((k) => k + 1);
+        lastRestartRef.current = key;
       });
     })();
     return () => {

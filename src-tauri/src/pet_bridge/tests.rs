@@ -595,3 +595,93 @@ fn 한_마리라도_움직이면_틱이_빨라진다() {
 fn 전부_멈춰_있으면_틱이_느려진다() {
     assert_eq!(tick_interval(false), SLEEP_TICK_MS);
 }
+
+// ── 여럿 만들기: 전부 아니면 하나도 ────────────────────────────
+
+#[test]
+fn 전부_성공하면_되돌리지_않는다() {
+    let mut 만든 = Vec::new();
+    let mut 되돌린 = None;
+    let r: Result<(), ()> = build_all_or_none(
+        3,
+        |i| {
+            만든.push(i);
+            Ok(Some(i))
+        },
+        |x| 되돌린 = Some(x),
+    );
+    assert!(r.is_ok());
+    assert_eq!(만든, vec![0, 1, 2]);
+    assert_eq!(되돌린, None);
+}
+
+/// 둘째 화면에서 실패하면 첫째 판 창이 그대로 남는다 — 커맨드는 모드를 "꺼짐"으로
+/// 되돌리므로 **화면은 판이고 상태는 꺼짐**이 되어 Esc도 트레이도 그 판을 못 닫는다.
+/// "나가는 문이 둘"이 이 경로 하나에서만 무너진다.
+#[test]
+fn 중간에_실패하면_앞서_만든_것을_되돌린다() {
+    let mut 시도 = Vec::new();
+    let mut 되돌린 = None;
+    let r = build_all_or_none(
+        3,
+        |i| {
+            시도.push(i);
+            if i == 1 {
+                Err("둘째 화면에서 실패")
+            } else {
+                Ok(Some(i))
+            }
+        },
+        |x| 되돌린 = Some(x),
+    );
+    assert_eq!(r, Err("둘째 화면에서 실패"));
+    assert_eq!(시도, vec![0, 1], "실패한 뒤로는 더 시도하지 않는다");
+    assert_eq!(되돌린, Some(vec![0]), "앞서 만든 것만 되돌려야 한다");
+}
+
+/// **이미 있어서 건너뛴 것은 되돌리지 않는다.** 라벨 접두어로 싹 닫으면
+/// 펭귄을 껐다 켤 때 멀쩡히 돌던 판까지 사라진다 — 그때 판은 살아 있는 채로
+/// `create_pinball_window`가 다시 불린다.
+#[test]
+fn 이미_있던_것은_되돌리지_않는다() {
+    let mut 되돌린 = None;
+    let r = build_all_or_none(
+        3,
+        |i| match i {
+            0 => Ok(None), // 이미 있어서 건너뜀
+            1 => Ok(Some(1)),
+            _ => Err("셋째에서 실패"),
+        },
+        |x| 되돌린 = Some(x),
+    );
+    assert_eq!(r, Err("셋째에서 실패"));
+    assert_eq!(
+        되돌린,
+        Some(vec![1]),
+        "이번에 만든 1만 닫는다 — 원래 있던 0은 그대로 둔다"
+    );
+}
+
+#[test]
+fn 첫_번째에서_실패하면_되돌릴_것이_없다() {
+    let mut 되돌린 = None;
+    let r: Result<(), &str> = build_all_or_none(
+        2,
+        |_| Err("첫 화면부터 실패"),
+        |x: Vec<u32>| 되돌린 = Some(x),
+    );
+    assert_eq!(r, Err("첫 화면부터 실패"));
+    assert_eq!(되돌린, Some(vec![]), "만든 게 없으면 빈 목록이다");
+}
+
+#[test]
+fn 만들_것이_없으면_아무것도_안_한다() {
+    let mut 되돌린 = None;
+    let r: Result<(), ()> = build_all_or_none(
+        0,
+        |_| -> Result<Option<u32>, ()> { unreachable!() },
+        |x| 되돌린 = Some(x),
+    );
+    assert!(r.is_ok());
+    assert_eq!(되돌린, None);
+}

@@ -129,7 +129,9 @@
 }
 .pg--sassy-butt-wiggle .pg-body {
   transform-origin: 50px 46px;
-  animation: pg-butt-wiggle 0.7s ease-in-out 1.3;
+  /* 0.45 × 2 = 900ms — `SASSY_MS`와 정확히 같고 **정수 반복**이다.
+     0.7 × 1.3(=910ms)이면 keyframe 30% 지점에서 잘려 몸이 중간 자세로 끝난다. */
+  animation: pg-butt-wiggle 0.45s ease-in-out 2;
 }
 .pg--sassy-butt-wiggle .pg-tail {
   transform-origin: 33px 100px;

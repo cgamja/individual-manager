@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
-use crate::pet::{Behavior, Facing, PetId, Pets, Snapshot, Vertical};
+use crate::pet::{BallSnapshot, Behavior, Facing, PetId, Pets, Snapshot, Vertical};
 
 /// 지금(epoch ms). 코어(`pet.rs`)는 시간을 주입받는 순수 모듈이라 시계를 갖지 않는다 —
 /// 시계를 읽는 곳은 브릿지 하나뿐이어야 테스트가 시간을 마음대로 돌릴 수 있다.
@@ -23,6 +23,11 @@ pub const EVENT_PET_STATE: &str = "pet://state";
 
 /// 설정이 **이 창 밖에서** 바뀌었음을 설정 창에 알린다.
 pub const EVENT_PET_SETTINGS: &str = "pet://settings";
+
+/// 공 창이 구독하는 상태 이벤트. 펭귄과 나누는 이유는 받는 창이 다르고
+/// 페이로드도 다르기 때문이다 — 하나로 합치면 공 창이 스무 마리치 이벤트를
+/// 걸러 내야 한다.
+pub const EVENT_BALL_STATE: &str = "bowling://ball";
 
 pub struct PetState {
     pub pets: Mutex<Pets>,
@@ -47,6 +52,8 @@ pub struct PetSummary {
     pub count: usize,
     pub max: usize,
     pub focused: Option<PetId>,
+    /// 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로(A3) 버튼을 끈다.
+    pub bowling: bool,
 }
 
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
@@ -71,6 +78,15 @@ pub fn should_notify(last: Option<Look>, now: Look) -> bool {
     last != Some(now)
 }
 
+/// 공 웹뷰가 보는 "겉모습". 위치는 창이 옮기므로 여기 들어가지 않는다 —
+/// 넣으면 굴러가는 내내 20Hz로 리렌더한다.
+pub type BallLook = (bool, bool);
+
+pub fn ball_look_of(ball: &BallSnapshot) -> BallLook {
+    (ball.rolling, ball.held)
+}
+
+mod ball_window;
 mod bounds;
 pub mod commands;
 mod pinball;
@@ -79,6 +95,7 @@ mod settings;
 mod tick;
 mod window;
 
+pub use ball_window::*;
 pub use bounds::*;
 pub use commands::*;
 pub use pinball::*;

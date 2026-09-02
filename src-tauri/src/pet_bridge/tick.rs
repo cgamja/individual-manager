@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, EventTarget, LogicalPosition, Manager, WebviewWindow};
 
-use crate::pet::{PetId, Snapshot, World};
+use crate::pet::{BallSnapshot, PetId, Snapshot, World};
 
 use super::*;
 
@@ -60,6 +60,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
     std::thread::spawn(move || {
         let mut worlds: HashMap<PetId, (World, u64)> = HashMap::new();
         let mut last_look: HashMap<PetId, Look> = HashMap::new();
+        let mut last_ball: Option<BallLook> = None;
         let mut mismatch_since: HashMap<PetId, u64> = HashMap::new();
         loop {
             let ids = app.state::<PetState>().pets.lock().unwrap().ids();
@@ -97,6 +98,9 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             }
 
             if ids.is_empty() {
+                // 펭귄을 전부 껐거나 마지막 마리가 사라졌다. 공만 남겨 두면
+                // 굴릴 핀이 없는 공이 바탕화면에 영원히 놓여 있다 (R11).
+                apply_ball(&app, None, &mut last_ball);
                 std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
                 continue;
             }
@@ -131,15 +135,19 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
 
             // 2) 코어를 한 번에 진행시킨다. **락을 마리마다 잡지 않는다** — 틱 하나가
             //    전 마리에 대해 원자적이어야 서로를 보는 판정을 여기에 얹을 수 있다.
-            let stepped = {
+            let (stepped, ball) = {
                 let state = app.state::<PetState>();
                 let mut pets = state.pets.lock().unwrap();
-                pets.step_all(now, |id| {
+                let stepped = pets.step_all(now, |id| {
                     if !ready.contains_key(&id) {
                         return None;
                     }
                     worlds.get(&id).map(|(world, _)| world)
-                })
+                });
+                // 공은 **같은 락 안에서** 읽는다. 밖에서 다시 잡으면 그 사이에
+                // 커맨드가 판을 끝내 공과 펭귄이 다른 틱을 보게 된다.
+                let ball = pets.bowling().and_then(|b| b.ball());
+                (stepped, ball)
             };
 
             // 3) 창 위치와 웹뷰에 반영한다. **락 밖에서** 한다 — 창 IPC는 이벤트 루프를
@@ -163,6 +171,8 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 );
                 last_look.insert(id, look);
             }
+            any_moves |= ball.is_some_and(|b| b.rolling);
+            apply_ball(&app, ball, &mut last_ball);
 
             std::thread::sleep(Duration::from_millis(tick_interval(any_moves)));
         }
@@ -183,6 +193,58 @@ pub(super) fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: boo
             snapshot,
         );
     }
+}
+
+/// 공을 창에 반영한다. 판이 끝나면(`None`) 창을 닫는다 — **`app.hide()`가
+/// 아니라 `window.close()`다.**
+///
+/// 창을 만드는 것도 여기다. 공은 전부 서기 전에는 없으므로(R4) 창의 생성
+/// 시점이 곧 "다 섰다"는 신호가 된다.
+pub(super) fn apply_ball(
+    app: &AppHandle,
+    ball: Option<BallSnapshot>,
+    last: &mut Option<BallLook>,
+) {
+    let Some(ball) = ball else {
+        if last.take().is_some() {
+            close_ball_window(app);
+        }
+        return;
+    };
+    let at = ball_window_origin(ball.x, ball.y);
+    let window = match ball_window(app) {
+        Some(window) => window,
+        None => match create_ball_window(app, at) {
+            Ok(window) => window,
+            Err(err) => {
+                eprintln!("[penguin] 공 창을 못 만들었다: {err}");
+                return;
+            }
+        },
+    };
+    let _ = window.set_position(LogicalPosition::new(at.0, at.1));
+    let look = ball_look_of(&ball);
+    if *last != Some(look) {
+        let _ = window.emit_to(EventTarget::webview_window(BALL_LABEL), EVENT_BALL_STATE, ball);
+        *last = Some(look);
+    }
+}
+
+/// 공을 끄는 동안 다음 틱(최대 50ms)을 기다리면 손을 따라오지 못한다.
+/// 펭귄의 [`flush`]와 같은 이유다.
+pub(super) fn flush_ball(app: &AppHandle) {
+    let ball = app
+        .state::<PetState>()
+        .pets
+        .lock()
+        .unwrap()
+        .bowling()
+        .and_then(|b| b.ball());
+    let (Some(ball), Some(window)) = (ball, ball_window(app)) else {
+        return;
+    };
+    let (wx, wy) = ball_window_origin(ball.x, ball.y);
+    let _ = window.set_position(LogicalPosition::new(wx, wy));
 }
 
 /// 커맨드가 상태를 바꾼 뒤 즉시 화면에 반영한다 — 다음 틱(최대 500ms)을

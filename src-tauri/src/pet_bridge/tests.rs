@@ -92,6 +92,45 @@ fn 덮개_라벨이_capabilities에_등록되어_있다() {
     assert_eq!(pinball_label(0), "pinball-board-0");
 }
 
+/// 공 창도 같은 부류다 — 라벨이 capabilities에 없으면 공을 집는 순간
+/// `ball_drag_start`가 조용히 reject되고, 공은 끌리지 않는데 오류도 안 난다.
+#[test]
+fn 공_창_라벨이_capabilities에_등록되어_있다() {
+    let capabilities = include_str!("../../capabilities/default.json");
+    assert!(
+        capabilities.contains(&format!("\"{BALL_LABEL}\"")),
+        "`{BALL_LABEL}`이 capabilities의 windows 목록에 없다"
+    );
+}
+
+/// 공 창의 창 좌표는 **중심**에서 나온다. 좌상단으로 착각하면 공이 반 칸씩
+/// 어긋나 눈으로는 보이지만 히트 판정과 어긋난다.
+#[test]
+fn 공_창은_중심을_기준으로_놓인다() {
+    let (x, y) = ball_window_origin(500.0, 800.0);
+    assert_eq!(x, 500.0 - BALL_WINDOW_SIZE / 2.0);
+    assert_eq!(y, 800.0 - BALL_WINDOW_SIZE / 2.0);
+}
+
+/// 위치는 `BallLook`에 안 들어간다 — 넣으면 굴러가는 내내 20Hz로 리렌더한다.
+#[test]
+fn 공은_구르기_시작할_때만_웹뷰에_알린다() {
+    use crate::pet::BallSnapshot;
+    let 멈춤 = BallSnapshot {
+        x: 0.0,
+        y: 0.0,
+        rolling: false,
+        held: false,
+    };
+    let 옮김 = BallSnapshot { x: 900.0, ..멈춤 };
+    let 구름 = BallSnapshot {
+        rolling: true,
+        ..멈춤
+    };
+    assert_eq!(ball_look_of(&멈춤), ball_look_of(&옮김));
+    assert_ne!(ball_look_of(&멈춤), ball_look_of(&구름));
+}
+
 /// 등록을 빠뜨리면 컴파일도 되고 테스트도 통과하는데 런타임에서 모든 IPC가
 /// reject된다 — 커맨드는 `pub`이라 dead_code 경고도 안 뜬다. 실제로 한 번
 /// 놓쳤던 사각지대라 소스를 직접 대조한다.

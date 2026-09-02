@@ -188,6 +188,10 @@ pub fn run() {
             pet_bridge::commands::pet_slide,
             pet_bridge::commands::pet_squawk,
             pet_bridge::commands::pet_freakout,
+            pet_bridge::commands::bowling_start,
+            pet_bridge::commands::ball_drag_start,
+            pet_bridge::commands::ball_drag_by,
+            pet_bridge::commands::ball_drag_end,
             pet_set_theme,
         ])
         .run(tauri::generate_context!())

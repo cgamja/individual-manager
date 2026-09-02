@@ -75,6 +75,37 @@ const _: () = assert!(SPRAWL_MS > SPLAT_MS);
 /// 일어난 뒤 약을 올릴 확률(%).
 pub(super) const SASSY_AFTER_LAND_PERCENT: u64 = 70;
 
+// ── 스윙 넉백 ──────────────────────────────────────────────────
+//
+// 휘두른 방망이가 **앞에 있는 다른 마리**를 날린다. 판정은 커맨드 경로
+// (`Pets::whack`)에 있고 난수를 쓰지 않는다.
+
+/// 방망이가 닿는 거리 — **몸통 가운데끼리** 잰다.
+///
+/// **`PET_SIZE`보다 커야 한다.** 작으면 어깨를 맞대고 선 이웃조차 중심 거리가
+/// 사거리 밖이라 한 마리도 안 날아간다 — 기능이 통째로 조용히 죽는다.
+pub(super) const SWING_REACH: f64 = 200.0;
+const _: () = assert!(SWING_REACH > PET_SIZE);
+
+/// 방망이가 닿는 **위아래** 폭. 몸통보다 좁다 — 한 층 위를 헤엄쳐 지나가는
+/// 마리까지 맞으면 "방망이"가 아니라 장판이다.
+pub(super) const SWING_REACH_V: f64 = 100.0;
+const _: () = assert!(SWING_REACH_V < PET_SIZE);
+
+/// 맞은 이웃이 날아가는 속도 — 초당 세계를 몇 번 가로지르는가.
+///
+/// **손으로 던지기보다 느리다.** 조준해서 던진 것이 옆에서 스친 것보다 세야
+/// "던졌다"와 "스쳤다"의 그림이 뒤집히지 않는다. 아래 `assert!`가 그 순서를
+/// 붙든다 — 볼링 핀(1.5) > 던지기(1.4) > 스윙 넉백 > 핀볼 채(0.8) 순이다.
+pub(super) const SWING_KNOCK_WORLDS_PER_SEC: f64 = 1.0;
+const _: () = assert!(SWING_KNOCK_WORLDS_PER_SEC < THROW_MAX_WORLDS_PER_SEC);
+
+/// 날아가는 각도 — 앞으로 1일 때 **위로** 얼마인가. 0이면 바닥을 기고, 1에
+/// 가까우면 옆으로 안 가고 제자리에서 솟았다 떨어진다.
+pub(super) const SWING_KNOCK_LIFT: f64 = 0.5;
+const _: () = assert!(SWING_KNOCK_LIFT > 0.0);
+const _: () = assert!(SWING_KNOCK_LIFT < 1.0);
+
 // ── 핀볼 모드 ──────────────────────────────────────────────────
 
 /// 모든 면이 범퍼일 때 남는 속도 비율.

@@ -64,6 +64,32 @@ impl Pet {
         self.enter(Behavior::Swing, now_ms + SWING_MS);
     }
 
+    /// 옆에서 휘두른 방망이에 맞아 날아간다 — **`Pets`가 부른다.** `forward`는
+    /// 때린 마리가 보는 방향(양수면 오른쪽)이고, 여기서 앞으로 비스듬히 위로
+    /// 뜨는 속도가 된다.
+    ///
+    /// **`whack_seq`를 올리지 않는다.** 그 값은 웹뷰에서 "방망이를 한 번
+    /// 휘두른다"는 신호인데 이 마리는 맞는 쪽이다 — 올리면 방망이가 두 개 보인다.
+    /// 대신 "퍽" 소리도 안 난다(핀볼 채 타격과 같은 취급이다).
+    ///
+    /// **착지 등급을 그대로 탄다.** 사용자가 방금 클릭해서 만든 결과라 철푸덕이
+    /// 나오는 편이 "내가 날렸다"는 인과가 선명하다 — 저절로 나는 철푸덕과 성격이
+    /// 다르다.
+    pub(in crate::pet) fn swing_knocked(&mut self, now_ms: u64, forward: f64, world_width: f64) {
+        self.last_stimulus_ms = now_ms;
+        let speed = (world_width * SWING_KNOCK_WORLDS_PER_SEC).max(THROW_MIN_SPEED);
+        // (앞 1, 위 LIFT)를 정규화한다 — 각도를 바꿔도 세기가 안 따라 변하게.
+        let len = (1.0 + SWING_KNOCK_LIFT * SWING_KNOCK_LIFT).sqrt();
+        self.vx = if forward < 0.0 { -speed } else { speed } / len;
+        self.vy = -SWING_KNOCK_LIFT * speed / len;
+        self.facing = if self.vx > 0.0 {
+            Facing::Right
+        } else {
+            Facing::Left
+        };
+        self.enter(Behavior::Thrown, now_ms);
+    }
+
     /// 사용자가 시켜서 빽빽거린다 (설정 창의 "빽빽거리기").
     pub fn start_squawk(&mut self, now_ms: u64) -> bool {
         if matches!(self.behavior, Behavior::Dragged | Behavior::Squawk) {

@@ -1,0 +1,371 @@
+use crate::pet::PET_SIZE;
+use super::*;
+
+use super::*;
+
+fn 경계(right: f64) -> Bounds {
+    Bounds { left: 0.0, right, top: 0.0, floor_y: 800.0 }
+}
+
+#[test]
+fn 경계를_못_읽으면_주_모니터로_떨어진다() {
+    let 주 = World::single(경계(1_440.0));
+    let got = world_to_cache(None, || Some(주.clone()));
+    assert_eq!(
+        got.map(|w| w.first().bounds.right),
+        Some(1_440.0),
+        "읽기에 실패했으면 주 모니터로 떨어져야 한다"
+    );
+}
+
+#[test]
+fn 경계를_읽었으면_그대로_쓴다() {
+    let 지금 = World::single(경계(3_008.0));
+    let 주 = World::single(경계(1_440.0));
+    let got = world_to_cache(Some(지금), || Some(주));
+    assert_eq!(got.map(|w| w.first().bounds.right), Some(3_008.0));
+}
+
+#[test]
+fn 둘_다_못_읽으면_캐시를_건드리지_않는다() {
+    assert!(world_to_cache(None, || None).is_none());
+}
+
+#[test]
+fn 크기가_0인_작업_영역은_모니터로_치지_않는다() {
+    assert!(bounds_of_work_area((0, 0), (0, 0), 1.0).is_none());
+    assert!(bounds_of_work_area((0, 0), (1_440, 0), 2.0).is_none());
+    assert!(bounds_of_work_area((0, 0), (0, 900), 2.0).is_none());
+    assert!(
+        bounds_of_work_area((0, 0), (2_880, 1_800), 2.0).is_some(),
+        "멀쩡한 모니터는 통과해야 한다"
+    );
+}
+
+#[test]
+fn 덮개는_화면_전체를_배율로_나눈다() {
+    let rects = field_rects_of(&[((0, 0), (2_880, 1_800), 2.0)]);
+    assert_eq!(rects, vec![(0.0, 0.0, 1_440.0, 900.0)]);
+}
+
+#[test]
+fn 화면마다_판을_하나씩_깐다() {
+    let rects = field_rects_of(&[
+        ((0, 0), (2_880, 1_800), 2.0),
+        ((1_800, -333), (3_008, 1_692), 1.0),
+    ]);
+    assert_eq!(
+        rects,
+        vec![
+            (0.0, 0.0, 1_440.0, 900.0),
+            (1_800.0, -333.0, 3_008.0, 1_692.0),
+        ]
+    );
+}
+
+#[test]
+fn 크기가_0인_화면은_건너뛴다() {
+    assert!(field_rects_of(&[]).is_empty());
+    assert!(field_rects_of(&[((0, 0), (0, 900), 2.0)]).is_empty());
+    assert!(field_rects_of(&[((0, 0), (1_440, 900), 0.0)]).is_empty());
+    assert_eq!(
+        field_rects_of(&[((0, 0), (0, 0), 1.0), ((100, 0), (200, 200), 1.0)]),
+        vec![(100.0, 0.0, 200.0, 200.0)],
+        "멀쩡한 화면 하나는 남는다"
+    );
+}
+
+/// 새 창의 라벨을 capabilities에 안 넣으면 그 창이 부르는 커맨드가
+/// **런타임에서만 조용히 reject된다** — 아래 커맨드 등록 누락과 같은 부류다.
+/// 덮개는 Esc로 `pet_set_pinball`을 부르므로 여기 걸리면 나가는 문 하나가 죽는다.
+#[test]
+fn 덮개_라벨이_capabilities에_등록되어_있다() {
+    let capabilities = include_str!("../../capabilities/default.json");
+    assert!(
+        capabilities.contains(&format!("{FIELD_LABEL_PREFIX}*")),
+        "`{FIELD_LABEL_PREFIX}*` 글롭이 capabilities의 windows 목록에 없다"
+    );
+    assert_eq!(field_label(0), "pinball-field-0");
+}
+
+/// 등록을 빠뜨리면 컴파일도 되고 테스트도 통과하는데 런타임에서 모든 IPC가
+/// reject된다 — 커맨드는 `pub`이라 dead_code 경고도 안 뜬다. 실제로 한 번
+/// 놓쳤던 사각지대라 소스를 직접 대조한다.
+#[test]
+fn 모든_펫_커맨드가_invoke_handler에_등록되어_있다() {
+    let bridge = concat!(include_str!("mod.rs"), include_str!("commands.rs"), include_str!("window.rs"), include_str!("field.rs"), include_str!("settings.rs"), include_str!("tick.rs"), include_str!("bounds.rs"), include_str!("popover.rs"));
+    let lib = include_str!("../lib.rs");
+
+    let mut commands = Vec::new();
+    let mut lines = bridge.lines().peekable();
+    while let Some(line) = lines.next() {
+        if line.trim() != "#[tauri::command]" {
+            continue;
+        }
+        let signature = lines.peek().expect("커맨드 속성 뒤에 함수가 없다");
+        let name = signature
+            .trim()
+            .strip_prefix("pub fn ")
+            .and_then(|rest| rest.split('(').next())
+            .expect("`pub fn 이름(` 형태를 기대한다");
+        commands.push(name.to_string());
+    }
+
+    assert!(!commands.is_empty(), "커맨드를 하나도 찾지 못했다 — 탐지가 깨졌다");
+    for name in commands {
+        assert!(
+            lib.contains(&format!("pet_bridge::commands::{name},")),
+            "`{name}`이 lib.rs의 invoke_handler 목록에 없다"
+        );
+    }
+}
+
+#[test]
+fn 방금_어긋난_것은_정리하지_않는다() {
+    let mut seen = HashMap::new();
+    seen.insert(2, 10_000);
+    assert!(due_for_cleanup(&seen, 10_050).is_empty(), "50ms만에 지우면 안 된다");
+    assert!(due_for_cleanup(&seen, 10_999).is_empty());
+}
+
+#[test]
+fn 유예를_다_쓰면_정리한다() {
+    let mut seen = HashMap::new();
+    seen.insert(2, 10_000);
+    assert_eq!(due_for_cleanup(&seen, 11_000), vec![2]);
+    assert_eq!(due_for_cleanup(&seen, 30_000), vec![2]);
+}
+
+#[test]
+fn 시계가_뒤로_가도_정리가_앞당겨지지_않는다() {
+    let mut seen = HashMap::new();
+    seen.insert(2, 10_000);
+    assert!(due_for_cleanup(&seen, 9_000).is_empty(), "음수 대신 0으로 본다");
+}
+
+#[test]
+fn 라벨에서_펭귄_id를_뽑는다() {
+    assert_eq!(pet_label(3), "pet-3");
+    assert_eq!(pet_id_from_label("pet-3"), Some(3));
+    assert_eq!(pet_id_from_label(&pet_label(42)), Some(42));
+}
+
+#[test]
+fn 펫이_아닌_라벨은_id가_없다() {
+    for label in ["main", "pet", "pet-", "pet-x", "pets-1", "", "PET-1"] {
+        assert_eq!(pet_id_from_label(label), None, "`{label}`은 펫 창이 아니다");
+    }
+}
+
+#[test]
+fn 옆자리는_영역_안에_들어온다() {
+    let b = Bounds { left: 0.0, right: 1_000.0, top: 0.0, floor_y: 800.0 };
+    assert!(next_to(100.0, b) > 100.0);
+    assert!(next_to(b.right, b) < b.right);
+    for x in [b.left, 500.0, b.right] {
+        let n = next_to(x, b);
+        assert!(n >= b.left && n <= b.right, "{n}이 영역을 벗어났다");
+    }
+}
+
+#[test]
+fn 영역이_없어도_옆자리_계산이_패닉하지_않는다() {
+    let flat = Bounds { left: 0.0, right: 0.0, top: 0.0, floor_y: 0.0 };
+    assert_eq!(next_to(0.0, flat), 0.0);
+}
+
+use crate::pet::{IdleKind, SassyKind, Vertical};
+
+/// 1440x900 작업 영역, 360x540 팝오버, 140px 펭귄.
+const AREA: (f64, f64, f64, f64) = (0.0, 25.0, 1440.0, 875.0);
+const POP: (f64, f64) = (360.0, 540.0);
+
+#[test]
+fn 팝오버는_펭귄_오른쪽에_붙는다() {
+    let (x, y) = popover_position_near((200.0, 120.0), PET_SIZE, POP, AREA);
+    assert_eq!(x, 200.0 + PET_SIZE + POPOVER_GAP);
+    assert_eq!(y, 120.0);
+}
+
+#[test]
+fn 아래쪽_펭귄에서는_팝오버가_화면_안으로_올라온다() {
+    let (_, y) = popover_position_near((200.0, 760.0), PET_SIZE, POP, AREA);
+    assert_eq!(y, AREA.1 + AREA.3 - POP.1);
+    assert!(y < 760.0, "펭귄보다 위로 올라와야 한다");
+}
+
+#[test]
+fn 오른쪽이_모자라면_펭귄_왼쪽에_붙는다() {
+    let (x, _) = popover_position_near((1200.0, 400.0), PET_SIZE, POP, AREA);
+    assert_eq!(x, 1200.0 - POP.0 - POPOVER_GAP);
+}
+
+#[test]
+fn 어느_위치에서도_화면을_벗어나지_않는다() {
+    for px in [0.0, 300.0, 700.0, 1100.0, 1300.0] {
+        for py in [25.0, 300.0, 700.0, 760.0] {
+            let (x, y) = popover_position_near((px, py), PET_SIZE, POP, AREA);
+            assert!(x >= AREA.0, "왼쪽으로 벗어남: {x}");
+            assert!(x + POP.0 <= AREA.0 + AREA.2 + 0.001, "오른쪽으로 벗어남: {x}");
+            assert!(y >= AREA.1, "위로 벗어남: {y}");
+            assert!(y + POP.1 <= AREA.1 + AREA.3 + 0.001, "아래로 벗어남: {y}");
+        }
+    }
+}
+
+#[test]
+fn 팝오버가_영역보다_커도_패닉하지_않는다() {
+    let tiny = (0.0, 0.0, 200.0, 200.0);
+    let (x, y) = popover_position_near((10.0, 10.0), PET_SIZE, POP, tiny);
+    assert_eq!((x, y), (0.0, 0.0));
+}
+
+#[test]
+fn 겉모습이_그대로면_다시_알리지_않는다() {
+    let look = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, false);
+    assert!(!should_notify(Some(look), look));
+    assert!(should_notify(None, look), "처음에는 알려야 한다");
+}
+
+#[test]
+fn 겉모습_비교에_핀볼이_들어간다() {
+    let 꺼짐 = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, false);
+    let 켜짐 = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, true);
+    assert!(should_notify(Some(꺼짐), 켜짐));
+}
+
+#[test]
+fn 핀볼_설정이_없으면_꺼짐이다() {
+    assert!(!pinball_from(None));
+    assert!(!pinball_from(Some(&serde_json::json!({}))));
+    assert!(!pinball_from(Some(&serde_json::json!({ "enabled": true, "count": 3 }))));
+    assert!(
+        !pinball_from(Some(&serde_json::json!({ "pinball": "true" }))),
+        "문자열은 켜짐으로 읽지 않는다"
+    );
+    assert!(pinball_from(Some(&serde_json::json!({ "pinball": true }))));
+}
+
+#[test]
+fn 테마_설정이_없으면_시스템이다() {
+    assert_eq!(theme_from(None), Theme::System);
+    assert_eq!(theme_from(Some(&serde_json::json!({}))), Theme::System);
+}
+
+#[test]
+fn 저장된_테마를_그대로_읽는다() {
+    assert_eq!(
+        theme_from(Some(&serde_json::json!({ "theme": "light" }))),
+        Theme::Light
+    );
+    assert_eq!(
+        theme_from(Some(&serde_json::json!({ "theme": "dark" }))),
+        Theme::Dark
+    );
+    assert_eq!(
+        theme_from(Some(&serde_json::json!({ "theme": "system" }))),
+        Theme::System
+    );
+}
+
+#[test]
+fn 깨진_테마는_시스템으로_수렴한다() {
+    assert_eq!(
+        theme_from(Some(&serde_json::json!({ "theme": "어둡게" }))),
+        Theme::System
+    );
+    assert_eq!(theme_from(Some(&serde_json::json!({ "theme": 2 }))), Theme::System);
+}
+
+#[test]
+fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
+    let up = (Behavior::Swim, Facing::Right, Vertical::Up, true, None, 0, false);
+    let down = (Behavior::Swim, Facing::Right, Vertical::Down, true, None, 0, false);
+    assert!(should_notify(Some(up), down));
+}
+
+#[test]
+fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
+    let right = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, false);
+    let left = (Behavior::Walk, Facing::Left, Vertical::Level, false, None, 0, false);
+    assert!(should_notify(Some(right), left));
+}
+
+#[test]
+fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
+    let ground = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, false, None, 0, false);
+    let air = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, true, None, 0, false);
+    assert!(should_notify(Some(ground), air));
+}
+
+#[test]
+fn 유휴_종류가_바뀌면_웹뷰에_알린다() {
+    let a = (
+        Behavior::Idle { idle: IdleKind::LookAround },
+        Facing::Right,
+        Vertical::Level,
+        false,
+        None,
+        0,
+        false,
+    );
+    let b = (
+        Behavior::Idle { idle: IdleKind::Shake },
+        Facing::Right,
+        Vertical::Level,
+        false,
+        None,
+        0,
+        false,
+    );
+    assert!(should_notify(Some(a), b));
+}
+
+#[test]
+fn 경계는_창_여백까지_화면_안에_들어오게_잡는다() {
+    let b = bounds_from_work_area((0, 25), (1440, 875), 1.0, 140.0);
+    assert_eq!(b.left, PET_PAD_X, "왼쪽 여백만큼 안으로 들어와야 한다");
+    assert_eq!(b.right, 1440.0 - 140.0 - PET_PAD_X);
+    assert_eq!(b.top, 25.0 + PET_PAD_TOP, "말풍선이 메뉴바 뒤로 숨으면 안 된다");
+    assert_eq!(b.floor_y, 25.0 + 875.0 - 140.0);
+}
+
+#[test]
+fn 어느_경계에_서도_창_전체가_화면_안이다() {
+    let area = (0.0, 25.0, 1440.0, 875.0);
+    let b = bounds_from_work_area((0, 25), (1440, 875), 1.0, PET_SIZE);
+    for (px, py) in [
+        (b.left, b.top),
+        (b.right, b.top),
+        (b.left, b.floor_y),
+        (b.right, b.floor_y),
+    ] {
+        let (wx, wy) = window_origin(px, py);
+        assert!(wx >= area.0 - 0.001, "창이 왼쪽으로 벗어남: {wx}");
+        assert!(wx + PET_WINDOW_W <= area.0 + area.2 + 0.001, "오른쪽으로 벗어남");
+        assert!(wy >= area.1 - 0.001, "창이 위로 벗어남: {wy}");
+        assert!(wy + PET_WINDOW_H <= area.1 + area.3 + 0.001, "아래로 벗어남");
+    }
+}
+
+#[test]
+fn 레티나_배율에서도_논리_좌표로_환산한다() {
+    let b = bounds_from_work_area((0, 50), (2880, 1750), 2.0, 140.0);
+    assert_eq!(b.left, PET_PAD_X);
+    assert_eq!(b.right, 1440.0 - 140.0 - PET_PAD_X);
+    assert_eq!(b.floor_y, 25.0 + 875.0 - 140.0);
+}
+
+#[test]
+fn 보조_모니터처럼_원점이_음수여도_경계가_밀린다() {
+    let b = bounds_from_work_area((-1920, 0), (1920, 1080), 1.0, 140.0);
+    assert_eq!(b.left, -1920.0 + PET_PAD_X);
+    assert_eq!(b.right, -1920.0 + 1920.0 - 140.0 - PET_PAD_X);
+}
+
+#[test]
+fn 영역이_펭귄보다_좁아도_경계가_뒤집히지_않는다() {
+    let b = bounds_from_work_area((0, 0), (100, 100), 1.0, 140.0);
+    assert!(b.right >= b.left, "right가 left보다 작아지면 clamp가 패닉한다");
+    assert!(b.floor_y >= 0.0);
+}

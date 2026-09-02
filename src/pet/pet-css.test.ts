@@ -11,7 +11,7 @@ const css = ["base","ground","rest","react","pinball","drag","air","speech","fis
 const petRs =
   readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
   readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
-  readFileSync(resolve("src-tauri/src/pet_bridge.rs"), "utf8");
+  readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8");
 const petApp =
   readFileSync(resolve("src/pet/PetApp.tsx"), "utf8") +
   readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");

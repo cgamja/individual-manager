@@ -296,19 +296,30 @@ describe("비치발리볼", () => {
     );
     expect(상의.length, "상의 그림을 못 찾았다").toBeGreaterThan(0);
 
+    // **도형 단위로 쪼갠다.** 아래 검사들이 문자 수나 전체 문자열로 세면
+    // 도형 하나를 지워도 옆 도형이 대신 통과시킨다.
+    const 도형 = 상의.split("<path").slice(1);
+
     // (1) 삼각형 두 개 — 닫힌 경로 둘.
-    const 삼각형 = [...상의.matchAll(/d="M[^"]*Z"/g)];
+    const 삼각형 = [...상의.matchAll(/d="(M[^"]*Z)"/g)].map((m) => m[1]);
     expect(삼각형.length, "삼각형 두 개가 아니다").toBe(2);
 
     // (2) **끈이 보인다** — 목뒤 V와 등뒤로 도는 가로줄. 사용자가 명시적으로
     // 요구한 형태이면서, 얇아도 옷으로 읽히게 하는 장치이기도 하다.
-    const 끈 = [...상의.matchAll(/stroke=\{STRAW_DARK\}/g)];
-    expect(끈.length, "끈이 둘(목뒤 V·등뒤 가로줄)이 아니다").toBeGreaterThanOrEqual(2);
+    //
+    // **`stroke={STRAW_DARK}`를 세면 안 된다** — 삼각형의 테두리도 같은 값이라
+    // 끈 둘을 통째로 지워도 2가 나와 통과한다(실제로 그랬다). 채우기 없이
+    // 선만 있는 도형, 즉 **끈만** 센다.
+    const 끈 = 도형.filter((d) => d.includes("stroke={STRAW_DARK}") && !d.includes("fill={"));
+    expect(끈.length, "끈이 둘(목뒤 V·등뒤 가로줄)이 아니다").toBe(2);
 
     // (3) 도형마다 테두리가 있다 — 경계가 없으면 살로 읽힌다.
-    for (const m of 삼각형) {
-      const 뒤 = 상의.slice(상의.indexOf(m[0]), 상의.indexOf(m[0]) + 260);
-      expect(뒤, `테두리 없는 삼각형이 있다: ${m[0].slice(0, 30)}`).toMatch(/strokeWidth=/);
+    // **문자 수로 잘라 보지 않는다** — 여유가 30자뿐이라 첫 삼각형의 테두리를
+    // 지우면 두 번째 것을 읽어 통과한다.
+    const 채운_도형 = 도형.filter((d) => d.includes("fill={STRAW}"));
+    expect(채운_도형.length, "채워진 삼각형이 둘이 아니다").toBe(2);
+    for (const d of 채운_도형) {
+      expect(d, "테두리 없는 삼각형이 있다").toMatch(/strokeWidth=/);
     }
   });
 
@@ -321,10 +332,15 @@ describe("비치발리볼", () => {
       svg.indexOf('<g className="pg-luau-top">'),
       svg.indexOf("</g>", svg.indexOf('<g className="pg-luau-top">')),
     );
-    const 삼각형 = [...상의.matchAll(/d="M[^"]*Z"/g)].map((m) => m[0]);
+    const 삼각형 = [...상의.matchAll(/d="(M[^"]*Z)"/g)].map((m) => m[1]);
     expect(삼각형.length).toBe(2);
     for (const d of 삼각형) {
-      const ys = [...d.matchAll(/[ML]\s*[\d.]+\s+([\d.]+)/g)].map((m) => Number(m[1]));
+      // **`M`/`L`/`Z`로만 그린다.** 곡선(`C`·`Q`)이나 `H`/`V`를 허용하면 좌표를
+      // 짝으로 읽는 아래 계산이 깨져 **깊이 0이 나오고 그냥 통과한다** — 곡선
+      // 하나로 30 깊이의 덮개를 그려도 못 잡는다.
+      expect(d, `삼각형에 M/L/Z 아닌 명령이 있다: ${d}`).toMatch(/^M[\s\d.LZ]+$/);
+      const nums = [...d.matchAll(/[\d.]+/g)].map((m) => Number(m[0]));
+      const ys = nums.filter((_, i) => i % 2 === 1);
       const 깊이 = Math.max(...ys) - Math.min(...ys);
       expect(깊이, `삼각형이 ${깊이} 로 깊다 — 덮개로 돌아간다`).toBeLessThan(16);
     }
@@ -345,14 +361,12 @@ describe("비치발리볼", () => {
     const snow = 색("SNOW");
     expect(snow, "SNOW를 못 찾았다").not.toBeNull();
     // **상의도 하의도 같은 지푸라기다** — 재질이 하나라 볼 색도 하나다.
-    for (const name of ["STRAW"]) {
-      const c = 색(name);
-      expect(c, `${name}을 못 찾았다`).not.toBeNull();
-      expect(
-        밝기(snow!) - 밝기(c!),
-        `${name}(${c})이 흰 배와 너무 가깝다 — 옷이 아니라 살로 읽힌다`,
-      ).toBeGreaterThan(60);
-    }
+    const straw = 색("STRAW");
+    expect(straw, "STRAW를 못 찾았다").not.toBeNull();
+    expect(
+      밝기(snow!) - 밝기(straw!),
+      `STRAW(${straw})가 흰 배와 너무 가깝다 — 옷이 아니라 살로 읽힌다`,
+    ).toBeGreaterThan(60);
   });
 
   it("중간에_썼던_이름이_안_남아있다", () => {

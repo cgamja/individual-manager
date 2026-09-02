@@ -139,7 +139,14 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
   }
 
   it("네트_높이가_VOLLEY_NET_HEIGHT와_같다", () => {
-    expect(cssVar("vb-net-h")).toBe(rustF64("VOLLEY_NET_HEIGHT"));
+    // **상수가 아니라 식이다** — `VOLLEY_NET_HEIGHT = PET_SIZE - VOLLEY_NET_DROP`.
+    // 그물이 모래에 발을 딛는 관계를 구조로 못 박은 결과라, 여기서도 같은
+    // 관계로 계산해야 CSS가 따라온다.
+    const pet = rustF64("PET_SIZE");
+    const drop = rustF64("VOLLEY_NET_DROP");
+    expect(pet, "PET_SIZE를 못 찾았다").not.toBeNull();
+    expect(drop, "VOLLEY_NET_DROP을 못 찾았다").not.toBeNull();
+    expect(cssVar("vb-net-h")).toBe(pet! - drop!);
   });
 
   it("네트_폭이_VOLLEY_NET_HALF_W의_두_배다", () => {
@@ -161,7 +168,7 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
 
   it("모래_viewBox가_요소_높이와_같다", () => {
     // 세로로 안 늘이므로(높이가 CSS로 고정이다) viewBox 세로와 CSS 높이가 같아야
-    // 물결선이 정확히 해변 표면에 온다.
+    // 물결선이 정확히 모래 표면에 온다.
     const m = courtTs.match(/class="vb-sand" viewBox="0 0 \d+ (\d+)"/);
     expect(m, "모래 viewBox를 못 찾았다").not.toBeNull();
     expect(Number(m![1])).toBe(cssVar("vb-sand-wave")! + cssVar("vb-sand-depth")!);

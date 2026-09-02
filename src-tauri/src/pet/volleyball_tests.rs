@@ -159,7 +159,7 @@ fn 네트를_기준으로_어느_쪽인지_안다() {
 #[test]
 fn 코트_사각형은_네트_꼭대기부터_모래_아래까지다() {
     // 의도는 그대로 — 창 하나가 네트와 모래를 **함께** 덮는다. 판이 올라가면서
-    // 그 사이가 화면 절반만큼 벌어졌을 뿐이다.
+    // 판이 올라가면서 통째로 떠 있는 띠가 됐을 뿐이다.
     let c = 코트();
     let (x, y, w, h) = c.rect();
     assert_eq!(y, c.net_top_y(), "창 윗변은 네트 꼭대기다");
@@ -198,12 +198,22 @@ fn 모래톱은_코트보다_조금_넓다() {
     let b = 넓은_코트();
     let c = Court::new(b).unwrap();
     let (lo, hi) = c.sand_span();
+    // **몸통까지 모래 위여야 한다.** `lo <= s_lo`만 보면 여백이 0이어도 등호로
+    // 통과하는데, 그때 끝에 선 펭귄은 몸의 절반이 모래 밖으로 나간다.
     for side in [Side::Left, Side::Right] {
         let (s_lo, s_hi) = c.span_of(side);
-        assert!(lo <= s_lo && s_hi <= hi, "{side:?} 팀의 자리가 모래 밖이다");
+        assert!(
+            lo <= s_lo - PET_SIZE / 2.0,
+            "{side:?} 팀 왼쪽 끝 마리의 몸이 모래 밖이다"
+        );
+        assert!(
+            s_hi + PET_SIZE / 2.0 <= hi,
+            "{side:?} 팀 오른쪽 끝 마리의 몸이 모래 밖이다"
+        );
     }
-    assert!(lo > b.left - PET_SIZE, "모래가 세계 밖까지 뻗었다");
-    assert!(hi < b.right + 2.0 * PET_SIZE, "모래가 세계 밖까지 뻗었다");
+    // 그렇다고 세계 밖까지 뻗지는 않는다 — 판이 떠 있는 띠 하나다.
+    assert!(lo >= b.left, "모래가 세계 왼쪽 밖으로 나갔다");
+    assert!(hi <= b.right + PET_SIZE, "모래가 세계 오른쪽 밖으로 나갔다");
 }
 
 #[test]
@@ -733,6 +743,40 @@ fn 세워_놓은_화면에서도_공이_화면_안에_떨어진다() {
             );
         }
     }
+}
+
+#[test]
+fn 킬샷은_지금_언제나_가장_짧은_등급이다() {
+    // **낙하 높이가 세계와 무관해졌다** — 모래가 판의 발밑이라 타점에서 모래까지가
+    // 어느 화면에서나 `PET_SIZE - 공반지름 + REACH`로 고정이다. 그래서 `kill_shot`의
+    // 등급 훑기는 지금 **첫 등급에서 항상 끝난다.**
+    //
+    // 루프를 지우지 않고 이 테스트를 두는 이유: 상수(`REACH`·`SAND_DEPTH`·`NET_DROP`)를
+    // 만지면 그 전제가 조용히 깨질 수 있고, 그때 **여기가 빨개져서 알려 준다.**
+    // 판이 화면 세로 중앙이던 시절에는 실제로 세로로 긴 화면에서 긴 등급이 필요했다.
+    for bounds in [넓은_코트(), 좁고_긴_코트()] {
+        let court = Court::new(bounds).expect("코트가 선다");
+        for 방향 in [Side::Left, Side::Right] {
+            let (lo, hi) = court.span_of(방향.other());
+            for k in 0..=10 {
+                let x0 = lo + (hi - lo) * k as f64 / 10.0;
+                let (_, ms) = 킬샷(&court, x0, 방향);
+                assert_eq!(
+                    ms, VOLLEY_FLIGHT_MS[0],
+                    "등급 훑기가 첫 등급을 못 썼다 — 기하 전제가 바뀌었다"
+                );
+            }
+        }
+    }
+}
+
+/// 판 하나를 세워 `kill_shot`만 불러 본다.
+fn 킬샷(court: &Court, x0: f64, to: Side) -> (f64, u64) {
+    let mut players = BTreeMap::new();
+    players.insert(1u32, Side::Left);
+    players.insert(2u32, Side::Right);
+    let board = Volleyball::new(players, *court, 0, 1);
+    board.kill_shot_for_test(x0, court.span_of(to).0, to)
 }
 
 #[test]

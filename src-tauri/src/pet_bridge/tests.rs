@@ -504,3 +504,33 @@ fn 영역이_펭귄보다_좁아도_경계가_뒤집히지_않는다() {
     );
     assert!(b.floor_y >= 0.0);
 }
+
+// ── 틱 반영 결정 ──
+
+#[test]
+fn 경계를_못_읽어_구조된_마리는_자고_있어도_창을_옮긴다() {
+    assert!(
+        should_move(false, true),
+        "안 옮기면 사라진 화면의 좌표에 남아 다시는 안 보인다"
+    );
+}
+
+#[test]
+fn 아무_일도_없으면_창을_옮기지_않는다() {
+    assert!(!should_move(false, false));
+}
+
+#[test]
+fn 움직이는_동작은_구조가_아니어도_창을_옮긴다() {
+    assert!(should_move(true, false));
+}
+
+#[test]
+fn 한_마리라도_움직이면_틱이_빨라진다() {
+    assert_eq!(tick_interval(true), TICK_MS);
+}
+
+#[test]
+fn 전부_멈춰_있으면_틱이_느려진다() {
+    assert_eq!(tick_interval(false), SLEEP_TICK_MS);
+}

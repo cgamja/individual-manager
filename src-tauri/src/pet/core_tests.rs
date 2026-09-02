@@ -322,3 +322,104 @@ fn 희귀는_가끔보다_두_자릿수_드물다() {
         ICE_FISHING_PERMILLE
     );
 }
+
+// ── 여러 마리를 한 자리에서 돌리기 ──
+
+/// 한 번에 돌린 결과와 따로 돌린 결과를 **매 틱** 대조한다. 끝에서 한 번만 보면
+/// 중간에 갈렸다가 우연히 붙은 경우를 놓치고, 갈린 시점도 알 수 없다.
+/// `Snapshot` 전체를 비교한다 — 필드를 골라 비교하면 안 고른 필드가 조용히 갈린다.
+fn 한_번에_돌린_것과_따로_돌린_것을_매_틱_대조한다(
+    together: &mut Pets,
+    apart: &mut Pets,
+    w: &World,
+    until_ms: u64,
+) {
+    let mut t = 0;
+    while t < until_ms {
+        t += 100;
+        let 한_번에 = together.step_all(t, |_| Some(w));
+        let 따로: Vec<(PetId, Snapshot)> = apart
+            .ids()
+            .into_iter()
+            .map(|id| (id, apart.get_mut(id).unwrap().step(t, w)))
+            .collect();
+        assert_eq!(
+            한_번에, 따로,
+            "루프를 옮기는 리팩터링이므로 결과가 달라지면 안 된다 (t={t}ms)"
+        );
+    }
+}
+
+#[test]
+fn 여러_마리를_한_번에_돌려도_따로_돌린_것과_같다() {
+    let w = world();
+    let mut together = Pets::new();
+    let mut apart = Pets::new();
+    for pets in [&mut together, &mut apart] {
+        pets.add(7, 0, &w, BOUNDS.left).unwrap();
+        pets.add(7, 0, &w, BOUNDS.left + 200.0).unwrap();
+        pets.add(7, 0, &w, BOUNDS.left + 400.0).unwrap();
+    }
+    한_번에_돌린_것과_따로_돌린_것을_매_틱_대조한다(&mut together, &mut apart, &w, 1_800_000);
+}
+
+/// 위 테스트는 확률에 기대므로 **국면이 있는 동작이 창 안에 안 나타날 수 있다**
+/// (얼음낚시 7‰, 발작 1/30000). 걸리는 것을 기다리지 않고 직접 걸어서 대조한다.
+#[test]
+fn 국면이_있는_동작이_섞여도_한_번에_돌린_결과가_같다() {
+    let w = world();
+    let mut together = Pets::new();
+    let mut apart = Pets::new();
+    for pets in [&mut together, &mut apart] {
+        let 낚시 = pets.add(7, 0, &w, BOUNDS.left).unwrap();
+        let 발작 = pets.add(7, 0, &w, BOUNDS.left + 150.0).unwrap();
+        let 맞음 = pets.add(7, 0, &w, BOUNDS.left + 300.0).unwrap();
+        let 들림 = pets.add(7, 0, &w, BOUNDS.left + 450.0).unwrap();
+        assert!(pets.get_mut(낚시).unwrap().start_fishing(0));
+        assert!(pets.get_mut(발작).unwrap().start_freakout(0));
+        pets.get_mut(맞음).unwrap().whack(0, &w, 0.0, 1.0);
+        pets.get_mut(들림).unwrap().drag_start(0);
+    }
+    // 얼음낚시 한 판이 30~60초라 90초면 정리까지 다 지나간다.
+    한_번에_돌린_것과_따로_돌린_것을_매_틱_대조한다(&mut together, &mut apart, &w, 90_000);
+}
+
+#[test]
+fn step_all은_id_오름차순으로_돈다() {
+    let w = world();
+    let mut pets = Pets::new();
+    let a = pets.add(7, 0, &w, BOUNDS.left).unwrap();
+    let b = pets.add(7, 0, &w, BOUNDS.left + 100.0).unwrap();
+    let c = pets.add(7, 0, &w, BOUNDS.left + 200.0).unwrap();
+
+    let order: Vec<PetId> = pets
+        .step_all(100, |_| Some(&w))
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+
+    assert_eq!(order, vec![a, b, c], "창 이동 순서가 매 틱 달라지면 안 된다");
+}
+
+#[test]
+fn 펭귄이_없으면_step_all은_빈_결과를_준다() {
+    let w = world();
+    let mut pets = Pets::new();
+    assert!(pets.step_all(100, |_| Some(&w)).is_empty());
+}
+
+#[test]
+fn 세계를_못_읽은_마리는_건너뛴다() {
+    let w = world();
+    let mut pets = Pets::new();
+    let a = pets.add(7, 0, &w, BOUNDS.left).unwrap();
+    let b = pets.add(7, 0, &w, BOUNDS.left + 200.0).unwrap();
+
+    let before = pets.get(b).unwrap().snapshot();
+    let stepped = pets.step_all(100, |id| (id == a).then_some(&w));
+
+    assert_eq!(stepped.len(), 1, "세계가 없으면 그 마리는 이번 틱을 쉰다");
+    assert_eq!(stepped[0].0, a);
+    let after = pets.get(b).unwrap().snapshot();
+    assert_eq!((before.x, before.y), (after.x, after.y));
+}

@@ -182,6 +182,41 @@ impl Pets {
     pub fn clear(&mut self) {
         self.pets.clear();
     }
+
+    /// 한 틱 동안 전 마리를 진행시킨다.
+    ///
+    /// **마리별 `Pet::step`은 자기 자신만 본다.** 여러 마리가 하나의 사건을 공유하는
+    /// 판정(공에 맞았는가, 옆 마리와 부딪혔는가)은 마리 단위로는 답할 수 없으므로,
+    /// 전 마리를 가로지르는 자리가 하나 있어야 한다. 그 자리가 여기다 —
+    /// **`Pet::step`의 시그니처를 건드리지 않고** 그 위에 계층을 얹는다
+    /// (인자로 받으면 모든 모션 함수와 테스트를 고치는 대공사가 된다).
+    ///
+    /// 순회는 `BTreeMap` 순서, 즉 id 오름차순이다. 순서가 틱마다 달라지면
+    /// 창 이동이 적용되는 차례가 흔들린다.
+    ///
+    /// `world_of`가 `None`을 주는 마리는 이번 틱을 쉰다 — 창이 없거나 경계를
+    /// 아직 못 읽은 경우다. 세계 조회가 브릿지 쪽 캐시에 있으므로 맵이 아니라
+    /// 클로저로 받는다.
+    ///
+    /// **`world_of`는 호출자가 `Pets`를 잠근 채로 불린다.** 그 안에서 같은 잠금을
+    /// 다시 잡으면 즉시 자기 데드락이다 — 브릿지처럼 스레드 로컬 캐시만 읽어라.
+    pub fn step_all<'w>(
+        &mut self,
+        now_ms: u64,
+        world_of: impl Fn(PetId) -> Option<&'w World>,
+    ) -> Vec<(PetId, Snapshot)> {
+        let mut stepped = Vec::with_capacity(self.pets.len());
+        for id in self.ids() {
+            let Some(world) = world_of(id) else {
+                continue;
+            };
+            let Some(pet) = self.pets.get_mut(&id) else {
+                continue;
+            };
+            stepped.push((id, pet.step(now_ms, world)));
+        }
+        stepped
+    }
 }
 
 impl Pet {

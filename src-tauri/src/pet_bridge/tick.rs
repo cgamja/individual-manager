@@ -12,16 +12,36 @@ use super::*;
 /// 위치·동작 갱신 주기. 스프라이트 프레임은 CSS가 담당하므로 이 주기는
 /// "얼마나 부드럽게 이동하느냐"만 정한다. set_position은 매 호출이 IPC라
 /// 60Hz로 때리지 않는다 (KTD2).
-const TICK_MS: u64 = 50;
+pub(super) const TICK_MS: u64 = 50;
 
 /// 졸고 있을 때의 틱 간격 — 깨어날 시각만 확인하면 되므로 길게 잡는다 (R10).
-const SLEEP_TICK_MS: u64 = 500;
+pub(super) const SLEEP_TICK_MS: u64 = 500;
+
+/// 쉬는 틱이 더 짧으면 자는 펭귄이 깨어 있는 펭귄보다 더 많은 일을 시킨다.
+const _: () = assert!(SLEEP_TICK_MS > TICK_MS);
 
 /// 모니터 작업 영역을 다시 읽는 주기.
 const BOUNDS_REFRESH_MS: u64 = 2_000;
 
 /// 상태와 창이 어긋난 것을 보고 **정리하기까지 기다리는 시간**.
 const RECONCILE_GRACE_MS: u64 = 1_000;
+
+/// 이번 틱에 창을 실제로 옮길지. 자는 펭귄은 안 옮긴다.
+/// **경계를 못 읽어 주 모니터로 구조된 마리(`rescued`)는 동작과 무관하게 옮긴다** —
+/// 안 옮기면 사라진 화면의 좌표에 남아 다시는 안 보인다.
+pub(super) fn should_move(moves_window: bool, rescued: bool) -> bool {
+    moves_window || rescued
+}
+
+/// 다음 틱까지 잘 시간. **구조는 여기에 넣지 않는다** — 한 번 옮기면 제자리를 찾으므로
+/// 다음 틱까지 빠르게 돌 이유가 없다.
+pub(super) fn tick_interval(any_moves: bool) -> u64 {
+    if any_moves {
+        TICK_MS
+    } else {
+        SLEEP_TICK_MS
+    }
+}
 
 /// 어긋남을 처음 본 시각들 중, 유예를 다 쓴 것들.
 pub(super) fn due_for_cleanup(mismatch_since: &HashMap<PetId, u64>, now_ms: u64) -> Vec<PetId> {
@@ -81,15 +101,15 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 continue;
             }
 
-            let mut any_moves = false;
-
-            for id in ids {
-                let Some(window) = pet_window(&app, id) else {
+            // 1) 창을 찾고 경계를 갱신한다. Tauri를 만지는 일은 코어 밖에 남는다.
+            let mut ready: HashMap<PetId, (WebviewWindow, bool)> = HashMap::new();
+            for id in &ids {
+                let Some(window) = pet_window(&app, *id) else {
                     continue;
                 };
 
                 let stale = worlds
-                    .get(&id)
+                    .get(id)
                     .is_none_or(|(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
                 let mut rescued = false;
                 if stale {
@@ -98,29 +118,45 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     if let Some(world) =
                         world_to_cache(read, || primary_bounds(&window).map(World::single))
                     {
-                        worlds.insert(id, (world, now));
+                        worlds.insert(*id, (world, now));
                     } else {
                         rescued = false;
                     }
                 }
-                let Some((world, _)) = worlds.get(&id) else {
+                if !worlds.contains_key(id) {
+                    continue;
+                }
+                ready.insert(*id, (window, rescued));
+            }
+
+            // 2) 코어를 한 번에 진행시킨다. **락을 마리마다 잡지 않는다** — 틱 하나가
+            //    전 마리에 대해 원자적이어야 서로를 보는 판정을 여기에 얹을 수 있다.
+            let stepped = {
+                let state = app.state::<PetState>();
+                let mut pets = state.pets.lock().unwrap();
+                pets.step_all(now, |id| {
+                    if !ready.contains_key(&id) {
+                        return None;
+                    }
+                    worlds.get(&id).map(|(world, _)| world)
+                })
+            };
+
+            // 3) 창 위치와 웹뷰에 반영한다. **락 밖에서** 한다 — 창 IPC는 이벤트 루프를
+            //    왕복하므로 락을 쥔 채 하면 커맨드가 그만큼 기다린다.
+            //    대가: 반영이 밀리는 동안 커맨드의 `flush`가 쓴 새 스냅샷을 여기 낡은
+            //    스냅샷이 덮을 수 있다. 노출은 앞선 마리들의 IPC 길이만큼이고 다음 틱에
+            //    자가 교정된다. 마리 간 판정이 들어와 `step_all`이 무거워지면 다시 본다.
+            let mut any_moves = false;
+            for (id, snapshot) in stepped {
+                let Some((window, rescued)) = ready.get(&id) else {
                     continue;
                 };
-
-                let snapshot = {
-                    let state = app.state::<PetState>();
-                    let mut pets = state.pets.lock().unwrap();
-                    let Some(pet) = pets.get_mut(id) else {
-                        continue;
-                    };
-                    pet.step(now, world)
-                };
-
-                let moves = snapshot.behavior.moves_window() || rescued;
+                let moves = should_move(snapshot.behavior.moves_window(), *rescued);
                 any_moves |= snapshot.behavior.moves_window();
                 let look = look_of(&snapshot);
                 apply(
-                    &window,
+                    window,
                     snapshot,
                     moves,
                     should_notify(last_look.get(&id).copied(), look),
@@ -128,8 +164,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 last_look.insert(id, look);
             }
 
-            let interval = if any_moves { TICK_MS } else { SLEEP_TICK_MS };
-            std::thread::sleep(Duration::from_millis(interval));
+            std::thread::sleep(Duration::from_millis(tick_interval(any_moves)));
         }
     });
 }

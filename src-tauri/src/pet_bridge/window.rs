@@ -1,6 +1,6 @@
 //! 펭귄 창의 생성·수명·좌표. 창 플래그는 전부 여기서 정한다.
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::pet::PetId;
 use crate::pet::PET_SIZE;
@@ -39,7 +39,25 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
     }
     if pet_pinball(app) {
         if let Err(err) = create_pinball_window(app) {
-            eprintln!("[penguin] 시작 시 핀볼 판을 못 깔았다: {err}");
+            // **모드도 함께 되돌린다.** 로그만 남기면 상태는 "켜짐"인데 판은
+            // 0개가 되어, 클릭이 채가 되는 범위와 화면이 어긋난 채로 시작한다.
+            // `pet_set_pinball`이 실패했을 때 하는 것과 같은 처리다.
+            eprintln!("[penguin] 시작 시 핀볼 판을 못 깔았다 — 모드를 끈다: {err}");
+            let ids = {
+                let state = app.state::<PetState>();
+                let mut pets = state.pets.lock().unwrap();
+                let ids = pets.ids();
+                for id in &ids {
+                    if let Some(pet) = pets.get_mut(*id) {
+                        pet.set_pinball(false);
+                    }
+                }
+                ids
+            };
+            for id in ids {
+                flush(app, id);
+            }
+            let _ = app.emit(EVENT_PET_SETTINGS, serde_json::json!({ "pinball": false }));
         }
     }
     Ok(())

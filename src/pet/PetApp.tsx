@@ -46,7 +46,14 @@ export function PetApp() {
   const pendingRef = useRef({ dx: 0, dy: 0 });
   /** 진행 중인 pet_drag_start 왕복 — 놓기 정산이 이걸 기다린다. */
   const startPromiseRef = useRef<Promise<void> | null>(null);
-  /** 한 번짜리 애니메이션을 되감기 위한 remount 카운터. */
+  /** 한 번짜리 애니메이션을 되감기 위한 remount 카운터.
+   *
+   * **되감기는 SVG를 통째로 다시 만드는 것이라 대가가 있다** — 그 안에서 늘
+   * 돌던 것(눈 깜빡임 5.5초 주기, 숨쉬기)도 함께 0으로 되돌아간다. 빠따가
+   * 한 번짜리 목록에 들어오면서 **클릭할 때마다** 그렇게 되므로, 쉬지 않고
+   * 클릭하는 동안에는 눈을 깜빡이지 않는다. 되감기 없이는 방망이가 아예 다시
+   * 안 휘둘러지므로 지금은 이쪽을 택했다. 거슬리면 대안은 remount 대신
+   * `getAnimations()`로 스윙 애니메이션만 되감는 것이다. */
   const [restartKey, setRestartKey] = useState(0);
   /** 직전 스냅샷의 동작 클래스와 빠따 횟수 — 되감기 판정의 근거
    * (`shouldRestart` 참고). 클래스만으로는 연타한 스윙을 구분할 수 없다. */

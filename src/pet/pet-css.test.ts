@@ -168,13 +168,34 @@ describe("동작 길이 동기화", () => {
 });
 
 describe("움직임 감소", () => {
+  /** `prefers-reduced-motion` 블록의 본문. **주석을 걷어낸다** — 안 그러면
+   * 선택자를 지워도 주석에 남은 이름이 검사를 통과시킨다. */
+  const 감소블록 = () =>
+    css
+      .match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1]
+      .replace(/\/\*[\s\S]*?\*\//g, " ") ?? null;
+
+  it("말풍선까지_선택자에_들어간다", () => {
+    // 말풍선은 `.penguin`의 자손이 아니라 `.pg-stage`의 형제라, `.penguin *`로는
+    // 한 번도 안 걸린다 — 튀어나오기 연출만 그대로 살아남는다.
+    const 본문 = 감소블록();
+    expect(본문, "prefers-reduced-motion 블록을 못 찾았다").not.toBeNull();
+    expect(본문!).toContain(".pg-bubble");
+  });
+
+  it("시선은_완충이_아니라_아예_멈춘다", () => {
+    // 전환만 끄면 눈동자가 커서를 툭툭 튀며 따라간다 — 완충을 없앤 것이지
+    // 움직임을 없앤 게 아니다.
+    expect(감소블록()!).toMatch(/\.pg-gaze\s*\{[^}]*transform:\s*none\s*!important/);
+  });
+
   it("애니메이션과_전환을_함께_끈다", () => {
     // `animation`만 끄면 `.penguin`의 `transform 0.25s` 전환이 그대로 남아
     // 방향 전환이 여전히 회전한다 — 절반만 듣는 접근성 설정은 안 듣는 것보다 나쁘다.
-    const m = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/);
-    expect(m, "prefers-reduced-motion 블록을 못 찾았다").not.toBeNull();
-    expect(m![1]).toMatch(/animation:\s*none\s*!important/);
-    expect(m![1]).toMatch(/transition:\s*none\s*!important/);
+    const 본문 = 감소블록();
+    expect(본문, "prefers-reduced-motion 블록을 못 찾았다").not.toBeNull();
+    expect(본문!).toMatch(/animation:\s*none\s*!important/);
+    expect(본문!).toMatch(/transition:\s*none\s*!important/);
   });
 });
 
@@ -192,6 +213,24 @@ describe("반복 횟수", () => {
       }
     }
     expect(어긋난, `정수가 아닌 반복 횟수: ${어긋난.join(" / ")}`).toEqual([]);
+  });
+});
+
+describe("싸가지 반응 길이 동기화", () => {
+  it("엉덩이_흔들기의_주기_×_횟수가_SASSY_MS와_같다", () => {
+    // 기존 `동작 길이 동기화` 표는 `.pg-all`에 걸린 것만 본다. 싸가지 반응은
+    // 부위별로 걸려서 **한 번도 대조된 적이 없었고**, 그래서 0.7 × 1.3(=910ms)이
+    // 조용히 살아남았다. 정수 반복 검사와 짝이 되는 나머지 절반이다.
+    const total = rustMs("SASSY_MS");
+    expect(total, "Rust에서 SASSY_MS를 못 찾았다").not.toBeNull();
+    const re =
+      /\.pg--sassy-butt-wiggle\s+(\.[\w-]+)\s*\{[^}]*animation:\s*[\w-]+\s+([0-9.]+)s[^;]*?\s(\d+);/g;
+    const 부위 = [...css.matchAll(re)];
+    expect(부위.length, ".pg--sassy-butt-wiggle 부위 애니메이션을 못 찾았다").toBeGreaterThan(1);
+    for (const [, sel, secs, count] of 부위) {
+      const ms = Math.round(Number(secs) * 1000) * Number(count);
+      expect(ms, `${sel} 의 주기 × 횟수가 SASSY_MS와 다르다`).toBe(total);
+    }
   });
 });
 

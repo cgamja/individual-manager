@@ -322,3 +322,76 @@ fn 희귀는_가끔보다_두_자릿수_드물다() {
         ICE_FISHING_PERMILLE
     );
 }
+
+// ── 여러 마리를 한 자리에서 돌리기 ──
+
+#[test]
+fn 여러_마리를_한_번에_돌려도_따로_돌린_것과_같다() {
+    let w = world();
+    let mut together = Pets::new();
+    let mut apart = Pets::new();
+    for pets in [&mut together, &mut apart] {
+        pets.add(7, 0, &w, BOUNDS.left).unwrap();
+        pets.add(7, 0, &w, BOUNDS.left + 200.0).unwrap();
+        pets.add(7, 0, &w, BOUNDS.left + 400.0).unwrap();
+    }
+
+    let mut t = 0;
+    while t < 60_000 {
+        t += 100;
+        together.step_all(t, |_| Some(&w));
+        for id in apart.ids() {
+            apart.get_mut(id).unwrap().step(t, &w);
+        }
+    }
+
+    for id in together.ids() {
+        let a = together.get(id).unwrap().snapshot();
+        let b = apart.get(id).unwrap().snapshot();
+        assert_eq!(
+            (a.x, a.y, a.behavior),
+            (b.x, b.y, b.behavior),
+            "루프를 옮기는 리팩터링이므로 결과가 달라지면 안 된다 (id={id})"
+        );
+    }
+}
+
+#[test]
+fn step_all은_id_오름차순으로_돈다() {
+    let w = world();
+    let mut pets = Pets::new();
+    let a = pets.add(7, 0, &w, BOUNDS.left).unwrap();
+    let b = pets.add(7, 0, &w, BOUNDS.left + 100.0).unwrap();
+    let c = pets.add(7, 0, &w, BOUNDS.left + 200.0).unwrap();
+
+    let order: Vec<PetId> = pets
+        .step_all(100, |_| Some(&w))
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+
+    assert_eq!(order, vec![a, b, c], "창 이동 순서가 매 틱 달라지면 안 된다");
+}
+
+#[test]
+fn 펭귄이_없으면_step_all은_빈_결과를_준다() {
+    let w = world();
+    let mut pets = Pets::new();
+    assert!(pets.step_all(100, |_| Some(&w)).is_empty());
+}
+
+#[test]
+fn 세계를_못_읽은_마리는_건너뛴다() {
+    let w = world();
+    let mut pets = Pets::new();
+    let a = pets.add(7, 0, &w, BOUNDS.left).unwrap();
+    let b = pets.add(7, 0, &w, BOUNDS.left + 200.0).unwrap();
+
+    let before = pets.get(b).unwrap().snapshot();
+    let stepped = pets.step_all(100, |id| (id == a).then_some(&w));
+
+    assert_eq!(stepped.len(), 1, "세계가 없으면 그 마리는 이번 틱을 쉰다");
+    assert_eq!(stepped[0].0, a);
+    let after = pets.get(b).unwrap().snapshot();
+    assert_eq!((before.x, before.y), (after.x, after.y));
+}

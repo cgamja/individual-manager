@@ -81,15 +81,15 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 continue;
             }
 
-            let mut any_moves = false;
-
-            for id in ids {
-                let Some(window) = pet_window(&app, id) else {
+            // 1) 창을 찾고 경계를 갱신한다. Tauri를 만지는 일은 코어 밖에 남는다.
+            let mut ready: HashMap<PetId, (WebviewWindow, bool)> = HashMap::new();
+            for id in &ids {
+                let Some(window) = pet_window(&app, *id) else {
                     continue;
                 };
 
                 let stale = worlds
-                    .get(&id)
+                    .get(id)
                     .is_none_or(|(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
                 let mut rescued = false;
                 if stale {
@@ -98,29 +98,41 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     if let Some(world) =
                         world_to_cache(read, || primary_bounds(&window).map(World::single))
                     {
-                        worlds.insert(id, (world, now));
+                        worlds.insert(*id, (world, now));
                     } else {
                         rescued = false;
                     }
                 }
-                let Some((world, _)) = worlds.get(&id) else {
+                if !worlds.contains_key(id) {
+                    continue;
+                }
+                ready.insert(*id, (window, rescued));
+            }
+
+            // 2) 코어를 한 번에 진행시킨다. **락을 마리마다 잡지 않는다** — 틱 하나가
+            //    전 마리에 대해 원자적이어야 서로를 보는 판정을 여기에 얹을 수 있다.
+            let stepped = {
+                let state = app.state::<PetState>();
+                let mut pets = state.pets.lock().unwrap();
+                pets.step_all(now, |id| {
+                    if !ready.contains_key(&id) {
+                        return None;
+                    }
+                    worlds.get(&id).map(|(world, _)| world)
+                })
+            };
+
+            // 3) 창 위치와 웹뷰에 반영한다.
+            let mut any_moves = false;
+            for (id, snapshot) in stepped {
+                let Some((window, rescued)) = ready.get(&id) else {
                     continue;
                 };
-
-                let snapshot = {
-                    let state = app.state::<PetState>();
-                    let mut pets = state.pets.lock().unwrap();
-                    let Some(pet) = pets.get_mut(id) else {
-                        continue;
-                    };
-                    pet.step(now, world)
-                };
-
-                let moves = snapshot.behavior.moves_window() || rescued;
+                let moves = snapshot.behavior.moves_window() || *rescued;
                 any_moves |= snapshot.behavior.moves_window();
                 let look = look_of(&snapshot);
                 apply(
-                    &window,
+                    window,
                     snapshot,
                     moves,
                     should_notify(last_look.get(&id).copied(), look),

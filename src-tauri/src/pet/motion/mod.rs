@@ -7,4 +7,5 @@
 //! `motion`이라 `pub(super)`로는 정작 부르는 쪽이 못 본다.
 
 mod fishing;
+mod ground;
 mod freakout;

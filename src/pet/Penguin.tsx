@@ -18,6 +18,8 @@ const HOLE = "#2f4a63";
 const FLOAT = "#d94f3d";
 /** 잡은 물고기. */
 const FISH = "#8fb3c9";
+/** 비치발리볼 비키니 — 핑크. 평소에는 `display: none`이다. */
+const BIKINI = "#ff5f9e";
 
 type PenguinProps = React.ComponentPropsWithoutRef<"svg">;
 
@@ -90,6 +92,27 @@ function Shapes() {
         <g className="pg-gaze">
           <circle className="pg-eye" cx="57.5" cy="27.5" r="2.5" fill={INK} />
         </g>
+      </g>
+
+      {/* **`.pg-all` 안이고 몸통 위, 날개 아래다.** 밖에 두면 착지 포즈에서
+          몸만 눌리고 수영복이 허공에 남고, 날개 위에 두면 날개를 저을 때
+          어깨끈이 날개를 덮는다. */}
+      <g className="pg-bikini">
+        <path
+          d="M36 68 C41 63 53 63 58 68 C56 74 51 76 47 76 C43 76 38 74 36 68 Z"
+          fill={BIKINI}
+        />
+        <path
+          d="M37 66 L41 58 M57 66 L52 58"
+          stroke={BIKINI}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <path
+          d="M35 92 C40 88 54 88 59 92 C58 100 52 104 47 104 C42 104 36 100 35 92 Z"
+          fill={BIKINI}
+        />
       </g>
 
       <path

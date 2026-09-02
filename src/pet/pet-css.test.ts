@@ -5,7 +5,7 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 
 /** 동작이 CSS에 실제로 그려져 있는지 확인한다. */
 /** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
-const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout","bowling"]
+const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout","bowling","volleyball"]
   .map((n) => readFileSync(resolve(`src/pet/css/${n}.css`), "utf8"))
   .join("\n");
 const petRs =
@@ -47,6 +47,12 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "bowling", bowling: "gather" },
   { kind: "bowling", bowling: "ready" },
   { kind: "bowling", bowling: "scatter" },
+  { kind: "volleyball", volley: "gather" },
+  { kind: "volleyball", volley: "ready" },
+  { kind: "volleyball", volley: "chase" },
+  { kind: "volleyball", volley: "bump" },
+  { kind: "volleyball", volley: "cheer" },
+  { kind: "volleyball", volley: "sulk" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },
   { kind: "ice_fishing", fishing: "bite" },
@@ -131,6 +137,11 @@ function rustMs(name: string): number | null {
   return m ? Number(m[1].replace(/_/g, "")) : null;
 }
 
+/** `VOLLEY_CHEER_MS`처럼 **다른 상수를 그대로 받는** 경우를 위한 대체 경로. */
+function sassyMs(): number | null {
+  return rustMs("SASSY_MS");
+}
+
 /** `.pg--이름 .pg-all { animation: ... 1.1s ... }` 의 길이를 ms로 꺼낸다. */
 function cssDurationMs(cls: string): number | null {
   const m = css.match(
@@ -158,6 +169,7 @@ describe("동작 길이 동기화", () => {
     ["pg--squawk", "SQUAWK_MS"],
     ["pg--freakout-pant", "FREAKOUT_PANT_MS"],
     ["pg--bowling-scatter", "BOWLING_SCATTER_MS"],
+    ["pg--volley-bump", "VOLLEY_BUMP_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
     const b = rustMs(konst);
@@ -234,8 +246,50 @@ describe("싸가지 반응 길이 동기화", () => {
   });
 });
 
+describe("비치발리볼", () => {
+  it("이긴_쪽과_진_쪽은_싸가지_keyframe을_참조만_한다", () => {
+    // 같은 이름을 두 번 정의하면 앞의 애니메이션이 통째로 죽는다. 재사용은
+    // **참조**로 해야 하고, `volleyball.css`가 새로 정의하면 안 된다.
+    const volley = readFileSync(resolve("src/pet/css/volleyball.css"), "utf8");
+    for (const name of ["pg-butt-wiggle", "pg-turn-away", "pg-tail-wag", "pg-paddle"]) {
+      expect(volley, `${name}을 다시 정의했다`).not.toContain(`@keyframes ${name}`);
+      expect(volley, `${name}을 참조하지 않는다`).toContain(name);
+    }
+  });
+
+  it("축하_길이가_Rust의_VOLLEY_CHEER_MS와_같다", () => {
+    // 재사용한 keyframe이라 주기 × 반복이 상수와 맞아야 자세가 중간에 안 멈춘다.
+    const total = rustMs("VOLLEY_CHEER_MS") ?? sassyMs();
+    expect(total, "길이 상수를 못 찾았다").not.toBeNull();
+    const re = /\.pg--volley-(?:cheer|sulk)\s+(\.[\w-]+)\s*\{[^}]*animation:\s*[\w-]+\s+([0-9.]+)s[^;]*?\s(\d+);/g;
+    const 부위 = [...css.matchAll(re)];
+    expect(부위.length, "축하·약오름 애니메이션을 못 찾았다").toBeGreaterThan(1);
+    for (const [, sel, secs, count] of 부위) {
+      const ms = Math.round(Number(secs) * 1000) * Number(count);
+      expect(ms, `${sel} 의 주기 × 횟수가 다르다`).toBe(total);
+    }
+  });
+
+  it("비키니는_pg_all_안에_있다", () => {
+    // 밖에 두면 착지 포즈에서 몸만 눌리고 수영복이 허공에 남는다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const all = svg.indexOf('className="pg-all"');
+    const bikini = svg.indexOf('className="pg-bikini"');
+    expect(all).toBeGreaterThan(-1);
+    expect(bikini).toBeGreaterThan(all);
+  });
+});
+
 describe("평소 숨기는 도형", () => {
-  const 숨기는_도형 = ["pg-hole", "pg-rod", "pg-line", "pg-float", "pg-fish", "pg-beak-lower"];
+  const 숨기는_도형 = [
+    "pg-hole",
+    "pg-rod",
+    "pg-line",
+    "pg-float",
+    "pg-fish",
+    "pg-beak-lower",
+    "pg-bikini",
+  ];
 
   /** 선택자에 이 클래스가 정확히 등장하는 모든 규칙 블록의 본문. */
   function 규칙들(cls: string): string[] {

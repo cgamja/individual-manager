@@ -1,0 +1,175 @@
+/* ── 비치발리볼 — 코트로 모여 비키니를 입고 한 판 친다 ────────── */
+
+/* 국면 여섯 (`VolleyPhase`). **판이 마리를 몬다** — `Ready`와 `Chase`의 목적지를
+   정하는 것은 코어의 판이고, 여기서 그리는 것은 자세뿐이다.
+
+   `Gather`만 공중이라 `.pg-air`와 기울기가 함께 걸리고, 나머지는 모래 위라
+   지상 자세를 쓴다 (볼링과 정반대다 — 그쪽은 판이 화면 세로 중앙이었다). */
+
+/* ── 비키니 — 판이 도는 동안에만 입는다 ───────────────────────── */
+
+/* **평소에는 `display: none`이다.** `opacity: 0`으로 감추면 후광(`pg-halo`)에
+   분홍 잔상이 남는다 — 얼음낚시 도형들과 같은 규칙이고 `pet-css.test.ts`가
+   대조한다. */
+.pg-bikini {
+  display: none;
+}
+
+/* 여섯 국면 전부에서 보인다. **`Cheer`/`Sulk`까지 포함하는 것이 이 국면들을
+   `Behavior::Sassy`로 넘기지 않은 이유다** — 넘겼으면 축하하는 동안 수영복이
+   한 프레임에 사라진다. */
+.pg--volley-gather .pg-bikini,
+.pg--volley-ready .pg-bikini,
+.pg--volley-chase .pg-bikini,
+.pg--volley-bump .pg-bikini,
+.pg--volley-cheer .pg-bikini,
+.pg--volley-sulk .pg-bikini {
+  display: block;
+}
+
+/* ── 모이는 중 — 자기 자리로 날아간다 ─────────────────────────── */
+
+/* 날개는 헤엄(`pg-paddle`)을 **그대로 쓴다** — 공중을 가는 몸짓은 이미 있고
+   새로 그리면 같은 동작을 두 벌 유지하게 된다 (볼링 모으기와 같다). */
+.pg--volley-gather .pg-wing-near {
+  animation: pg-paddle 0.2s ease-in-out infinite;
+}
+.pg--volley-gather .pg-wing-far {
+  animation: pg-paddle-far 0.2s ease-in-out infinite;
+}
+.pg--volley-gather .pg-foot--near,
+.pg--volley-gather .pg-foot--far {
+  animation: none;
+  transform: rotate(16deg);
+}
+
+/* ── 서서 기다리기 — 무릎을 굽히고 공을 본다 ──────────────────── */
+
+/* 배구의 준비 자세다. **`.pg-all`에 걸지 않는다** — 몸통만 눌러 두면 다음
+   국면(뛰기·때리기)으로 넘어갈 때 `.pg-all` 변형이 사라지며 튀는 일이 없다. */
+@keyframes pg-volley-ready-bob {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    transform: translateY(1.5px) scaleY(0.98);
+  }
+}
+
+.pg--volley-ready .pg-body {
+  animation: pg-volley-ready-bob 1.6s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+
+/* 날개를 앞으로 모아 든다 — 받을 준비다. */
+.pg--volley-ready .pg-wing-near,
+.pg--volley-ready .pg-wing-far {
+  animation: none;
+  transform: rotate(-26deg);
+  transform-origin: 70% 20%;
+}
+
+/* ── 받으러 뛰기 — 랠리 화면의 절반이 이 국면이다 ─────────────── */
+
+@keyframes pg-volley-run {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(3deg);
+  }
+}
+
+@keyframes pg-volley-run-foot {
+  0%,
+  100% {
+    transform: rotate(-30deg);
+  }
+  50% {
+    transform: rotate(30deg);
+  }
+}
+
+.pg--volley-chase .pg-all {
+  animation: pg-volley-run 0.26s ease-in-out infinite;
+}
+.pg--volley-chase .pg-foot--near {
+  animation: pg-volley-run-foot 0.26s ease-in-out infinite;
+  transform-origin: 50% 0%;
+}
+.pg--volley-chase .pg-foot--far {
+  animation: pg-volley-run-foot 0.26s ease-in-out infinite reverse;
+  transform-origin: 50% 0%;
+}
+.pg--volley-chase .pg-wing-near,
+.pg--volley-chase .pg-wing-far {
+  animation: none;
+  transform: rotate(-40deg);
+  transform-origin: 70% 20%;
+}
+
+/* ── 때리기 — 뛰어올라 친다 ───────────────────────────────────── */
+
+/* **좌표는 코어가 안 옮긴다** — 뛰어오르는 것은 전부 여기서 그린다
+   (PRINCIPLE 4). 길이는 코어의 `VOLLEY_BUMP_MS`와 같아야 하고
+   `pet-css.test.ts`가 대조한다. */
+@keyframes pg-volley-bump {
+  0% {
+    transform: translateY(0) scaleY(0.94);
+  }
+  35% {
+    transform: translateY(-26px) scaleY(1.06);
+  }
+  60% {
+    transform: translateY(-20px) scaleY(1);
+  }
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+/* 날개를 위로 뻗어 올린다 — 공을 치는 것은 날개다. */
+@keyframes pg-volley-bump-wing {
+  0% {
+    transform: rotate(-20deg);
+  }
+  35% {
+    transform: rotate(-115deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.pg--volley-bump .pg-all {
+  animation: pg-volley-bump 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pg--volley-bump .pg-wing-near,
+.pg--volley-bump .pg-wing-far {
+  animation: pg-volley-bump-wing 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: 70% 20%;
+}
+
+/* ── 이겼다 / 졌다 — 싸가지 반응의 그림을 재사용한다 ──────────── */
+
+/* **새 `@keyframes`를 정의하지 않는다.** 같은 이름을 두 번 정의하면 앞의
+   애니메이션이 통째로 죽으므로(`docs/solutions/ui-bugs/duplicate-keyframes-silently-kills-animation.md`),
+   `react.css`의 것을 **참조만** 한다.
+
+   길이는 `VOLLEY_CHEER_MS`(= `SASSY_MS`, 900ms)와 같고 **정수 반복**이다 —
+   정수가 아니면 keyframe 중간에서 잘려 자세가 멈춘 채 끝난다. */
+.pg--volley-cheer .pg-all {
+  animation: pg-butt-wiggle 0.45s ease-in-out 2;
+  transform-origin: 50% 100%;
+}
+.pg--volley-cheer .pg-tail {
+  animation: pg-tail-wag 0.45s ease-in-out 2;
+  transform-origin: 100% 50%;
+}
+
+.pg--volley-sulk .pg-all {
+  animation: pg-turn-away 0.9s ease-in-out 1;
+  transform-origin: 50% 100%;
+}

@@ -300,13 +300,33 @@ describe("비치발리볼", () => {
     const 삼각형 = [...상의.matchAll(/d="M[^"]*Z"/g)];
     expect(삼각형.length, "삼각형 두 개가 아니다").toBe(2);
 
-    // (2) 끈이 보인다 — 목뒤 V와 가슴 아래 가로줄.
-    expect(상의, "끈이 없다").toMatch(/stroke=\{BIKINI_DARK\}/);
+    // (2) **끈이 보인다** — 목뒤 V와 등뒤로 도는 가로줄. 사용자가 명시적으로
+    // 요구한 형태이면서, 얇아도 옷으로 읽히게 하는 장치이기도 하다.
+    const 끈 = [...상의.matchAll(/stroke=\{STRAW_DARK\}/g)];
+    expect(끈.length, "끈이 둘(목뒤 V·등뒤 가로줄)이 아니다").toBeGreaterThanOrEqual(2);
 
     // (3) 도형마다 테두리가 있다 — 경계가 없으면 살로 읽힌다.
     for (const m of 삼각형) {
       const 뒤 = 상의.slice(상의.indexOf(m[0]), 상의.indexOf(m[0]) + 260);
       expect(뒤, `테두리 없는 삼각형이 있다: ${m[0].slice(0, 30)}`).toMatch(/strokeWidth=/);
+    }
+  });
+
+  it("상의_삼각형이_얕다", () => {
+    // **"둘 다 얇게"가 지시다.** 깊게 그리면 다시 덮개가 되고, 덮개는 갑바로
+    // 읽혔다. 배(`SNOW` 타원, cy=82 ry=26 → y 56~108)의 위쪽 3분의 1 안에서
+    // 끝나야 한다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const 상의 = svg.slice(
+      svg.indexOf('<g className="pg-luau-top">'),
+      svg.indexOf("</g>", svg.indexOf('<g className="pg-luau-top">')),
+    );
+    const 삼각형 = [...상의.matchAll(/d="M[^"]*Z"/g)].map((m) => m[0]);
+    expect(삼각형.length).toBe(2);
+    for (const d of 삼각형) {
+      const ys = [...d.matchAll(/[ML]\s*[\d.]+\s+([\d.]+)/g)].map((m) => Number(m[1]));
+      const 깊이 = Math.max(...ys) - Math.min(...ys);
+      expect(깊이, `삼각형이 ${깊이} 로 깊다 — 덮개로 돌아간다`).toBeLessThan(16);
     }
   });
 
@@ -324,7 +344,8 @@ describe("비치발리볼", () => {
       3;
     const snow = 색("SNOW");
     expect(snow, "SNOW를 못 찾았다").not.toBeNull();
-    for (const name of ["BIKINI", "STRAW"]) {
+    // **상의도 하의도 같은 지푸라기다** — 재질이 하나라 볼 색도 하나다.
+    for (const name of ["STRAW"]) {
       const c = 색(name);
       expect(c, `${name}을 못 찾았다`).not.toBeNull();
       expect(

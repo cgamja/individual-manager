@@ -787,7 +787,17 @@ impl Pets {
         // 된 핀은 `board.knock`을 거치지 않고 판에서 빠져 **볼링 연쇄가 조용히
         // 끊기고**, 판이 튕긴 핀은 여기서 던지기 상한으로 도로 깎인다. 판이 도는 동안
         // 핀은 판이 몬다 (`step_bowling`의 KTD8과 같은 규칙).
-        if before.len() >= 2 && self.bowling.is_none() && self.pets.values().any(Pet::pinball) {
+        //
+        // **비치발리볼도 같다.** 충돌 반경(104px)이 여덟 마리 코트의 이웃
+        // 간격(117px)보다 좁고 받을 마리가 그 사이를 뛰어 지나가므로, 안 쉬면
+        // `bumped`가 `Thrown`으로 넘겨 **랠리가 0.4초 만에 찢어진다**(측정값).
+        // 핀볼은 모드라 KTD9의 상호 배제로는 못 풀고 이 가드로 푼다 — 켜 둔 채
+        // 판을 열 수 있어야 하고, 판이 끝나면 저절로 돌아온다.
+        if before.len() >= 2
+            && self.bowling.is_none()
+            && self.volleyball.is_none()
+            && self.pets.values().any(Pet::pinball)
+        {
             let bumped = self.collide_pinball(now_ms, &before);
             for (id, snapshot) in stepped.iter_mut() {
                 if !bumped.contains(id) {

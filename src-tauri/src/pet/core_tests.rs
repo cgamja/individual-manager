@@ -763,3 +763,41 @@ fn 펭귄을_지워서_판이_접혀도_남은_마리가_안_갇힌다() {
         "판이 사라졌는데 남은 마리가 랠리 국면에 갇혔다: {남은:?}"
     );
 }
+
+#[test]
+fn 핀볼_충돌은_비치발리볼_판이_도는_동안_쉰다() {
+    // **판이 도는 동안 마리는 판이 몬다** (`step_bowling`의 KTD8과 같은 규칙).
+    // 핀볼 충돌 반경(104px)이 코트 이웃 간격보다 좁고 받을 마리는 그 사이를
+    // 가로질러 뛰므로, 쉬지 않으면 `bumped`가 `Thrown`으로 넘겨 **랠리가
+    // 몇 초 만에 찢어진다.** 볼링이 같은 이유로 같은 가드를 갖는다.
+    let w = World::single(넓은_경계);
+    // **여덟 마리라야 드러난다** — 넷이면 코트 간격이 350px라 반경 104px에
+    // 한 번도 안 걸린다. 최대 마릿수에서 간격이 117px로 좁아지고, 받을 마리가
+    // 그 사이를 뛰어 지나간다.
+    let mut pets = 여러_마리(8);
+    for id in pets.ids() {
+        pets.get_mut(id).unwrap().set_pinball(true);
+    }
+    assert_eq!(pets.start_volleyball(0, 넓은_경계, 3), Ok(()));
+
+    let mut now = 0u64;
+    while now < 25_000 && pets.volleyball().is_some() {
+        now += 50;
+        pets.step_all(now, |_| Some(&w));
+        if let Some(board) = pets.volleyball() {
+            // **한 마리도 안 빠져야 한다.** `>= 2`로 두면 여덟이 둘로 줄어도
+            // 통과해 찢어진 것을 놓친다. 여기서 마리를 뺄 다른 경로는 없다.
+            //
+            // 득점(`Point`)은 예외다 — 그때는 전원이 축하·약오름으로 넘어가면서
+            // 참여 목록이 비는 것이 **정상 동작**이다.
+            if board.phase() != CourtPhase::Point {
+                assert_eq!(
+                    board.participants().len(),
+                    8,
+                    "{now}ms: 핀볼 충돌이 랠리를 찢었다"
+                );
+            }
+        }
+    }
+    assert!(now < 25_000, "판이 안 끝났다");
+}

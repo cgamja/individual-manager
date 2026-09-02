@@ -177,10 +177,11 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             //    자가 교정된다.
             //
             //    **회수 조건은 확인했고 발동하지 않았다** (2026-09-02). 마리 간 판정
-            //    (핀볼 부딪히기, `Pets::collide_pinball`)이 들어왔지만 상한 8마리에서
-            //    쌍이 28개이고 쌍마다 부동소수 산술 몇십 번뿐이라, 8마리 1,000틱을 재면
-            //    틱당 0.4µs → 0.9µs다 (release). 50ms 틱의 0.001%라 락 보유 시간도
-            //    `apply` 지연도 달라지지 않는다. 판정에 IPC나 할당이 붙으면 다시 본다.
+            //    (핀볼 부딪히기, `Pets::collide_pinball`)이 들어왔지만 **구조상 붙을
+            //    자리가 없다**: 상한 8마리라 쌍이 28개뿐이고, 쌍마다 드는 것은 부동소수
+            //    산술 수십 번이다 — IPC도 할당도 시스템 호출도 없다. 8마리 1,000틱을
+            //    재 보면 틱당 0.5µs → 1.1µs로 50ms 틱의 0.002%다(release, 1회 측정).
+            //    판정에 IPC나 마릿수를 넘는 순회가 붙으면 그때 다시 본다.
             let mut any_moves = false;
             for (id, snapshot) in stepped {
                 let Some((window, rescued)) = ready.get(&id) else {

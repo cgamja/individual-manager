@@ -1,13 +1,9 @@
-//! 펭귄이 노는 세계의 좌표계 — [`Bounds`] · [`Screen`] · [`World`].
+//! 좌표계 — [`Bounds`] · [`Screen`] · [`World`].
 //!
-//! 브릿지가 화면의 기하를 재서 만들고, 코어는 여기 담긴 사각형만 보고 판정한다.
-//! 창 크기 보정(펭귄 좌상단 ↔ 발밑 기준점)은 이 모듈이 소유한다.
+//! 창 크기 보정(펭귄 좌상단 ↔ 발밑 기준점)을 이 모듈이 소유한다.
 //!
-//! **프로덕션은 화면 하나만 담는다.** 브릿지가 `World::single`만 만들고
-//! `available_monitors()`를 한 번도 부르지 않는다 — 모니터 경계 넘기가
-//! 2026-08-31에 범위 밖으로 빠졌기 때문이다(PRINCIPLE 개정 이력 v3.2).
-//! `screen_at`·`nearest`·`screen_for_x`의 여러 화면 경로는 아래 테스트만
-//! 붙들고 있고, 걷어낼지는 `TODO.md`에 열린 항목으로 남아 있다.
+//! **프로덕션은 화면 하나만 담는다.** 여러 화면 경로(`screen_at`·`nearest`·
+//! `screen_for_x`)는 테스트만 붙들고 있고, 걷어낼지는 `TODO.md`에 열려 있다.
 
 use super::tuning::PET_SIZE;
 
@@ -157,94 +153,7 @@ impl World {
         (right - left).max(0.0)
     }
 }
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::pet::test_support::*;
-
-    #[test]
-    fn 빈_화면_목록으로는_세계를_만들_수_없다() {
-        assert!(World::new(vec![]).is_none(), "펭귄이 있을 자리가 없다");
-    }
-
-    #[test]
-    fn 발밑이_속한_화면을_찾는다() {
-        let w = 두_화면();
-        // 왼쪽 화면 한복판에 선 펭귄
-        let left = (500.0 + PET_SIZE / 2.0, 800.0 + PET_SIZE);
-        assert_eq!(w.screen_at(left.0, left.1).map(|s| s.id), Some(1));
-        // 오른쪽 화면 한복판에 선 펭귄
-        let right = (2_500.0 + PET_SIZE / 2.0, 900.0 + PET_SIZE);
-        assert_eq!(w.screen_at(right.0, right.1).map(|s| s.id), Some(2));
-    }
-
-    #[test]
-    fn 화면_사이_빈_공간에는_화면이_없다() {
-        let w = 두_화면();
-        let gap = (1_500.0 + PET_SIZE / 2.0, 800.0 + PET_SIZE);
-        assert!(w.screen_at(gap.0, gap.1).is_none());
-    }
-
-    #[test]
-    fn 발밑이_어느_화면에도_없으면_가장_가까운_화면을_준다() {
-        let w = 두_화면();
-        // 왼쪽 화면 바로 오른쪽 — 1번이 가깝다
-        let near_left = (1_100.0 + PET_SIZE / 2.0, 800.0 + PET_SIZE);
-        assert_eq!(w.nearest(near_left.0, near_left.1).id, 1);
-        // 오른쪽 화면 바로 왼쪽 — 2번이 가깝다
-        let near_right = (1_900.0 + PET_SIZE / 2.0, 800.0 + PET_SIZE);
-        assert_eq!(w.nearest(near_right.0, near_right.1).id, 2);
-    }
-
-    #[test]
-    fn 세계_폭은_화면_전체를_덮는다() {
-        assert_eq!(두_화면().width(), 3_000.0);
-        assert_eq!(
-            World::single(BOUNDS).width(),
-            BOUNDS.right - BOUNDS.left,
-            "화면이 하나면 그 화면의 이동 폭과 같다"
-        );
-    }
-
-    #[test]
-    fn 화면_판정_범위는_기준점만큼_밀려_있다() {
-        let w = world();
-        // 좌상단이 left에 있는 펭귄의 **발밑**은 left + PET_SIZE/2, floor_y + PET_SIZE에 있다
-        assert!(w
-            .screen_at(BOUNDS.left + PET_SIZE / 2.0, BOUNDS.floor_y + PET_SIZE)
-            .is_some());
-        // 보정하지 않고 좌상단 좌표로 물으면 화면 위가 아니다.
-        // 기준점 보정이 빠지면 이 단언이 먼저 깨진다.
-        assert!(w.screen_at(BOUNDS.left, BOUNDS.top).is_none());
-    }
-
-    #[test]
-    fn 정확히_같은_거리면_앞_화면이_이긴다() {
-        let w = 두_화면();
-        // 두 화면의 기준점 가로 범위는 [70,1070]과 [2070,3070] — 그 한가운데
-        let mid = (1_070.0 + 2_070.0) / 2.0;
-        assert_eq!(w.nearest(mid, 800.0 + PET_SIZE).id, 1, "동거리면 목록 앞이 이긴다");
-    }
-
-    #[test]
-    fn 틈에_놓인_x는_가까운_화면으로_간다() {
-        let w = 두_화면();
-        assert_eq!(w.screen_for_x(1_100.0).id, 1, "왼쪽 화면에 더 가깝다");
-        assert_eq!(w.screen_for_x(1_950.0).id, 2, "오른쪽 화면에 더 가깝다");
-    }
-
-    #[test]
-    fn 폭이_0인_화면이_섞여도_세계_폭은_전체를_덮는다() {
-        let w = World::new(vec![
-            Screen {
-                id: 1,
-                bounds: Bounds { left: 0.0, right: 0.0, top: 0.0, floor_y: 800.0 },
-            },
-            Screen {
-                id: 2,
-                bounds: Bounds { left: 2_000.0, right: 3_000.0, top: 0.0, floor_y: 800.0 },
-            },
-        ])
-        .expect("화면이 둘이면 세계가 만들어진다");
-        assert_eq!(w.width(), 3_000.0);
-    }}
+#[path = "world_tests.rs"]
+mod tests;

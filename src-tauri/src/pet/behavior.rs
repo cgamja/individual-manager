@@ -1,32 +1,19 @@
-//! 모션 카탈로그 — [`Behavior`]와 그 안에서 갈리는 국면 enum들.
+//! 모션 카탈로그 — [`Behavior`]와 국면 enum들.
 //!
-//! "이 앱에 어떤 동작이 있나"의 답이 여기 하나다. 각 배리언트의 문서 주석이
-//! **왜 그 동작이 있는지**를 적는다 (`MOTIONS.md`가 더 긴 판이다).
+//! 모션 하나는 일곱 자리에 흩어져 있다. 이 파일은 첫 자리다 (`Slide` 기준):
 //!
-//! # 모션 하나는 일곱 자리에 흩어져 있다
+//! | # | 자리 |
+//! |---|---|
+//! | 1 | 여기 — `Behavior::Slide` |
+//! | 2 | `motion/ground.rs` — 매 틱 물리 |
+//! | 3 | `pick_next` — 진입 확률 |
+//! | 4 | `hit_wall` → `enter_idle` — 퇴장 |
+//! | 5 | `tuning.rs` — `SLIDE_MS`·`SLIDE_SPEED`·`SLIDE_AFTER_WALK_PERCENT` |
+//! | 6 | `src/lib/pet.ts` → `pet.css`의 `pg--slide` |
+//! | 7 | `src/pet/pet-css.test.ts`의 `ALL_BEHAVIORS` |
 //!
-//! 이 파일은 그중 **첫 자리**일 뿐이다. 새 모션을 얹거나 있는 모션을 고칠 때
-//! 빠뜨리기 쉬운 나머지를 여기 적어 둔다 — `Slide`(슬라이딩)를 예로 들면:
-//!
-//! | # | 자리 | `Slide`의 경우 |
-//! |---|---|---|
-//! | 1 | 이 파일의 [`Behavior`] 배리언트 | `Behavior::Slide` |
-//! | 2 | `step.rs`의 `match` 팔 — 매 틱 물리 | 남은 시간 비율로 감속 |
-//! | 3 | 진입 규칙 | `pick_next`에서 걷기 뒤 `SLIDE_AFTER_WALK_PERCENT` |
-//! | 4 | 퇴장 규칙 | `hit_wall` 공유 → `enter_idle` |
-//! | 5 | `tuning.rs`의 상수 | `SLIDE_MS`·`SLIDE_SPEED`·`SLIDE_AFTER_WALK_PERCENT` |
-//! | 6 | 웹뷰 — `src/lib/pet.ts`의 `behaviorClass` → `pet.css` | `pg--slide` + `@keyframes` |
-//! | 7 | `src/pet/pet-css.test.ts`의 `ALL_BEHAVIORS` | 대조 목록에 한 줄 |
-//!
-//! 여섯째와 일곱째를 빠뜨려도 **Rust는 아무 말도 하지 않는다** — 펭귄이 그
-//! 동작 동안 반응 없이 서 있을 뿐이라 눈으로만 잡힌다. 코어와 CSS의 길이가
-//! 어긋나는 것도 마찬가지다(자세가 튀거나, 이미 일어나 걷는데 아직 누워 있다).
-//! `pet-css.test.ts`가 그 조용한 실패를 막으려고 소스를 문자열로 대조한다.
-//!
-//! 사용자가 모션을 직접 만들게 하려면 **이 일곱을 전부 데이터로 바꿔야 한다.**
-//! 지금은 Rust 제어 흐름이라 그럴 수 없고, 그래서 확장점을 미리 파 두지
-//! 않았다 — 모양이 미결 질문(서술자냐 코드냐, CSS는 누가 소유하나,
-//! PRINCIPLE 3의 결정성이 사용자 저작물에서 어떻게 살아남나)에 달려 있다.
+//! 6·7을 빠뜨려도 Rust는 아무 말도 안 한다 — 눈으로만 잡힌다.
+//! 사용자가 모션을 만들게 하려면 이 일곱을 전부 데이터로 바꿔야 한다.
 
 use serde::Serialize;
 

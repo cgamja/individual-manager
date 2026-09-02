@@ -282,6 +282,63 @@ impl Pets {
         }
     }
 
+    /// 빠따 — 맞은 마리를 때리고, **그 마리가 보는 방향의 사거리 안에 있는 다른
+    /// 마리도 함께 날린다.** 겉모습이 바뀐 마리의 id를 전부 돌려주므로 브릿지가
+    /// 그 창들을 한꺼번에 옮길 수 있다.
+    ///
+    /// **여기가 자리인 이유** — `Pet::whack`은 자기 자신만 본다(#44의 이음매
+    /// 규칙). 그렇다고 틱(`step_all`)에 얹을 일도 아니다: 넉백은 클릭 한 번의
+    /// 결과라 그 순간 한 번만 판정하면 되고, 20Hz로 전 마리를 훑을 이유가 없다.
+    ///
+    /// **넉백이 나는 조건은 "스윙이 실제로 나왔는가" 하나다.** 빠따는 상황에 따라
+    /// 셋으로 갈린다 — 스윙, 연타 빽빽거리기, 핀볼 채(`flip`). 방망이를 휘두르지
+    /// 않은 갈래는 이웃도 건드리지 않아야 하는데, 갈래마다 조건을 따로 쓰면 네
+    /// 번째가 생겼을 때 조용히 틀린다. 진입 뒤 동작을 한 번 보면 한 줄로 갈린다.
+    ///
+    /// **연쇄는 없다** — 날아간 이웃은 다시 훑지 않는다. 마리끼리 부딪히는 판정은
+    /// 핀볼 쪽에서 양방향으로 따로 설계한다.
+    pub fn whack(&mut self, id: PetId, now_ms: u64, world: &World, nx: f64, ny: f64) -> Vec<PetId> {
+        let Some(pet) = self.pets.get_mut(&id) else {
+            return Vec::new();
+        };
+        pet.whack(now_ms, world, nx, ny);
+        let mut hit = vec![id];
+        if pet.behavior != Behavior::Swing {
+            return hit;
+        }
+        // 휘두른 마리의 자리와 방향은 **루프 전에 한 번** 읽는다.
+        let (ox, oy) = (pet.center_x(), pet.center_y());
+        let forward = match pet.facing {
+            Facing::Right => 1.0,
+            Facing::Left => -1.0,
+        };
+        let width = world.width();
+
+        for other in self.ids() {
+            if other == id {
+                continue;
+            }
+            let Some(target) = self.pets.get_mut(&other) else {
+                continue;
+            };
+            // 손이 잡고 있는 마리는 손이 이기고, 볼링 판에 선 마리는 판이 갖는다 —
+            // 방망이로 핀을 넘어뜨리면 공이 할 일이 없어진다.
+            if target.behavior == Behavior::Dragged || target.is_bowling() {
+                continue;
+            }
+            let 앞으로 = (target.center_x() - ox) * forward;
+            if !(0.0..=SWING_REACH).contains(&앞으로) {
+                continue;
+            }
+            if (target.center_y() - oy).abs() > SWING_REACH_V {
+                continue;
+            }
+            target.swing_knocked(now_ms, forward, width);
+            hit.push(other);
+        }
+        hit
+    }
+
     /// 판을 지금 접는다. **코어 밖의 이유로 판을 이어갈 수 없을 때** 쓴다 —
     /// 브릿지가 공 창을 못 만든 경우가 그렇다. 참여 마리는 전부 흩어져
     /// 평소로 돌아간다.

@@ -18,12 +18,7 @@ interface SettingsCardProps {
   onPinballEnabledChange: (enabled: boolean) => void;
 }
 
-/**
- * 설정 카드.
- *
- * v3.0에서 타이머 시간 설정을 걷어내고 **펭귄 on/off와 소리 on/off**만 남았다가,
- * 핀볼 모드가 셋째로 붙었다. 앱이 소유하는 화면은 펭귄과 이 창뿐이다 (PRD §5.5).
- */
+/** 설정 카드. */
 export function SettingsCard({
   petEnabled,
   onPetEnabledChange,
@@ -58,8 +53,6 @@ export function SettingsCard({
           onChange={(e) => onSoundEnabledChange(e.target.checked)}
         />
       </div>
-      {/* **얼마나 시끄러워지나**를 적는다 — 상주 앱의 소리는 그게 전부다.
-          저절로는 조용하다는 마지막 절을 빼지 않는다 (KTD3) */}
       <p className="settings-hint">
         때리거나 던지면 소리가 나요. 빽빽거리기·발작·물고기 잡는 순간에도요.
         그 밖에는 조용해요.
@@ -67,8 +60,6 @@ export function SettingsCard({
 
       <div className="settings-row">
         <label htmlFor="sound-volume">음량</label>
-        {/* 연속값이 아니라 다섯 단계다 — 단계마다 두 배(6dB)라 차이가 귀에
-            들리고, 값이 이산이라 테스트로 못 박힌다. 가운데가 기본 크기다 */}
         <input
           id="sound-volume"
           type="range"
@@ -82,8 +73,6 @@ export function SettingsCard({
 
       <div className="settings-row">
         <label htmlFor="app-theme">테마</label>
-        {/* 이 창의 겉모습을 정한다. 트레이 아이콘은 여기 안 걸린다 — 메뉴바
-            색은 OS만 정하므로 고정하면 안 보이는 경우가 생긴다 (lib.rs 참고) */}
         <select
           id="app-theme"
           value={theme}
@@ -104,8 +93,6 @@ export function SettingsCard({
           onChange={(e) => onPinballEnabledChange(e.target.checked)}
         />
       </div>
-      {/* **무엇이 달라지는지**를 적는다 — 이름만 보고는 클릭이 바뀌는 걸 모른다.
-          "끄면 돌아온다"도 함께 적는다: 착지를 지우는 모드로 읽히면 켜기가 무섭다 */}
       <p className="settings-hint">
         안 널브러지고 계속 튕겨요. 클릭하면 방망이 대신 펭귄이 날아가고, 커서가 채로
         바뀌어요. 끄면 원래대로 돌아와요.

@@ -27,7 +27,6 @@ describe("behaviorClass", () => {
   });
 
   it("모든_동작이_서로_다른_클래스를_받는다", () => {
-    // 매핑이 겹치면 두 동작이 같은 애니메이션으로 보인다
     const all: Behavior[] = [
       { kind: "walk" },
       { kind: "turn" },
@@ -63,7 +62,6 @@ describe("behaviorClass", () => {
   });
 
   it("얼음낚시도_국면까지_내려간다", () => {
-    // 국면을 클래스에 안 실으면 30초 내내 한 그림으로 굳는다
     expect(behaviorClass({ kind: "ice_fishing", fishing: "dig" })).toBe("pg--fishing-dig");
     expect(behaviorClass({ kind: "ice_fishing", fishing: "catch" })).toBe("pg--fishing-catch");
   });
@@ -74,8 +72,6 @@ describe("behaviorClass", () => {
   });
 
   it("모든_클래스명이_CSS_선택자로_쓸_수_있는_형태다", () => {
-    // 밑줄이 남아 있으면 pet.css의 하이픈 선택자와 어긋난다.
-    // 유휴만 검사하면 wind_up 같은 최상위 동작의 밑줄을 놓친다
     const all: Behavior[] = [
       { kind: "swing" },
       { kind: "swim" },
@@ -99,25 +95,18 @@ describe("shouldRestart", () => {
   });
 
   it("말풍선_때문에_온_스냅샷은_애니메이션을_건드리지_않는다", () => {
-    // 스냅샷은 동작이 그대로여도 날아온다(말풍선이 뜨고 진다). 매번 되감으면
-    // 1.8초짜리 잡기가 중간에 처음으로 돌아갔다가 다음 동작으로 넘어가며 잘린다
     expect(shouldRestart("pg--fishing-catch", "pg--fishing-catch")).toBe(false);
   });
 
   it("슬라이딩은_한_번짜리다", () => {
-    // 되감지 않으면 두 번 연달아 미끄러질 때 두 번째가 누운 채로 시작한다
     expect(isOneShot("pg--slide")).toBe(true);
   });
 
   it("빽빽거리기는_한_번짜리다", () => {
-    // 코어가 연타 중의 클릭을 흡수하므로 연달아 오지는 않지만, 한 판이
-    // 재생되고 끝나는 동작이라 되감기 대상이다
     expect(isOneShot("pg--squawk")).toBe(true);
   });
 
   it("숨_고르기는_한_번짜리고_광란은_아니다", () => {
-    // 돌진은 판 길이가 난수라 무한 반복이다 — 되감으면 매 스냅샷마다 끊긴다.
-    // 드리우기(pg--fishing-wait)를 뺀 것과 같은 이유다
     expect(isOneShot("pg--freakout-pant")).toBe(true);
     expect(isOneShot("pg--freakout-dash")).toBe(false);
   });
@@ -151,7 +140,6 @@ describe("verticalClass", () => {
 
 describe("throwVelocity", () => {
   it("궤적에서_초당_속도를_낸다", () => {
-    // 100ms 동안 x로 60px 움직였다 = 600px/s
     const v = throwVelocity([
       { x: 0, y: 0, t: 0 },
       { x: 60, y: -30, t: 100 },
@@ -166,8 +154,6 @@ describe("throwVelocity", () => {
   });
 
   it("창_안에_마지막_샘플뿐이어도_직전_샘플로_속도를_낸다", () => {
-    // 포인터 보고가 드물면 최근 120ms 안에 마지막 샘플만 남는다.
-    // 기준점을 마지막 샘플로 잡으면 dt가 0이 되어 던지기가 통째로 죽는다
     const v = throwVelocity([
       { x: 0, y: 0, t: 0 },
       { x: 200, y: 0, t: 200 },
@@ -176,7 +162,6 @@ describe("throwVelocity", () => {
   });
 
   it("같은_시각_샘플만_있으면_영으로_수렴한다", () => {
-    // 0으로 나누면 Infinity가 나와 펭귄이 화면 밖으로 날아간다
     const v = throwVelocity([
       { x: 0, y: 0, t: 5 },
       { x: 100, y: 0, t: 5 },
@@ -185,21 +170,16 @@ describe("throwVelocity", () => {
   });
 
   it("최근_구간만_보므로_초반의_느린_구간에_희석되지_않는다", () => {
-    // 앞에서 오래 머뭇대다 마지막에 확 뿌린 궤적
     const samples = [
       { x: 0, y: 0, t: 0 },
       { x: 2, y: 0, t: 400 },
       { x: 4, y: 0, t: 800 },
       { x: 104, y: 0, t: 900 },
     ];
-    // 전체 평균이면 약 115px/s, 최근 100ms만 보면 1000px/s
     expect(throwVelocity(samples).vx).toBeCloseTo(1000, 5);
   });
 
   it("세게_뿌린_뒤_멈춘_채_떼면_던져지지_않는다", () => {
-    // 생산자(PetApp)는 움직임이 없는 pointermove에는 샘플을 남기지 않고,
-    // 놓는 시점에만 한 번 더 남긴다. 정지 구간이 "같은 좌표의 연속 샘플"로
-    // 나타난다고 가정하면 실제로 만들 수 없는 입력을 검사하게 된다.
     const samples = [
       { x: 0, y: 0, t: 0 },
       { x: 200, y: 0, t: 200 }, // 마지막 움직임
@@ -209,8 +189,6 @@ describe("throwVelocity", () => {
   });
 
   it("놓는_시점_샘플이_없으면_옛_속도가_그대로_잡힌다", () => {
-    // 위 테스트가 무엇을 지키는지 반대편에서 고정한다 — 놓는 샘플을 빠뜨리면
-    // 2초를 멈춰 있었어도 그때의 속도로 던져진다
     const withRelease = [
       { x: 0, y: 0, t: 0 },
       { x: 200, y: 0, t: 200 },
@@ -224,7 +202,6 @@ describe("throwVelocity", () => {
 
 describe("isOneShot", () => {
   it("한_번짜리_동작을_가려낸다", () => {
-    // 이걸 놓치면 연타했을 때 애니메이션이 되감기지 않아 첫 번만 반응한 것처럼 보인다
     expect(isOneShot("pg--turn")).toBe(true);
     expect(isOneShot("pg--land")).toBe(true);
     expect(isOneShot("pg--sassy-eye-roll")).toBe(true);
@@ -234,7 +211,6 @@ describe("isOneShot", () => {
   });
 
   it("드리우기만_반복이고_나머지_낚시_국면은_한_번짜리다", () => {
-    // 드리우기는 입질이 올 때까지 찌가 계속 까딱거린다 — 되감으면 끊긴다
     expect(isOneShot("pg--fishing-wait")).toBe(false);
     for (const fishing of ["dig", "bite", "catch", "miss", "pack"] as const) {
       expect(isOneShot(behaviorClass({ kind: "ice_fishing", fishing }))).toBe(true);
@@ -266,7 +242,6 @@ describe("킹받는 대사", () => {
   });
 
   it("아주_큰_값이나_음수에도_대사를_돌려준다", () => {
-    // 코어는 u64를 준다 — JS로 오면서 큰 수가 되거나 부호가 꼬여도 터지면 안 된다
     for (const roll of [Number.MAX_SAFE_INTEGER, -7, 0, 1e15]) {
       expect(DEFAULT_TAUNTS).toContain(tauntFor(roll, DEFAULT_TAUNTS));
     }

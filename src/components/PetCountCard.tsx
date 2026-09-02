@@ -9,16 +9,10 @@ interface PetCountCardProps {
   onRemove: () => void;
 }
 
-/**
- * 펭귄을 부르고 지우는 카드.
- *
- * **누를 수 없는 버튼은 비활성으로 보여야 한다** — 눌리는데 아무 일도 없으면
- * 고장으로 읽힌다. 왜 못 누르는지도 옆에 적는다.
- */
+/** 펭귄을 부르고 지우는 카드. */
 export function PetCountCard({ count, max, focused, onAdd, onRemove }: PetCountCardProps) {
   const atMax = count >= max;
   const isLast = count <= 1;
-  // 트레이로 팝오버를 열면 우클릭 대상이 없다 — 그때는 지울 펭귄을 특정할 수 없다
   const noTarget = focused === null;
   const cannotRemove = isLast || noTarget;
 

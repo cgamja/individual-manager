@@ -29,7 +29,6 @@ describe("MotionCard", () => {
   });
 
   it("동작마다_다른_설명을_보여준다", async () => {
-    // 끝나는 조건이 서로 다르다 — 한 문장으로 뭉뚱그리면 하나는 거짓말이 된다
     render(<MotionCard focused={1} motions={동작들()} />);
     expect(screen.getByText("30~60초 앉아 있어요")).toBeInTheDocument();
 
@@ -55,7 +54,6 @@ describe("MotionCard", () => {
   });
 
   it("늦게_도착한_거절_사유는_버린다", async () => {
-    // 빠르게 두 번 누르면 먼저 누른 쪽의 사유가 나중 동작의 설명 옆에 붙는다
     let 낚시_거절: (reason: string) => void = () => {};
     const 낚시 = vi.fn(
       () => new Promise<void>((_, reject) => { 낚시_거절 = reject; }),

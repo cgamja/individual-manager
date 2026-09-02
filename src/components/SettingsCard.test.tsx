@@ -32,7 +32,6 @@ describe("SettingsCard", () => {
   });
 
   it("소리는_기본이_꺼짐으로_보인다", () => {
-    // 상주 앱이 예고 없이 소리를 내면 사고가 난다 (PRD Q6)
     render(<SettingsCard {...props} />);
     expect(screen.getByLabelText("효과음")).not.toBeChecked();
   });
@@ -64,7 +63,6 @@ describe("SettingsCard", () => {
   });
 
   it("핀볼은_기본이_꺼짐으로_보인다", () => {
-    // 착지 4단계를 가리는 모드다 — 사용자가 켜기 전에는 아무것도 바뀌지 않아야 한다
     render(<SettingsCard {...props} />);
     expect(screen.getByLabelText("핀볼 모드")).not.toBeChecked();
   });
@@ -77,16 +75,12 @@ describe("SettingsCard", () => {
   });
 
   it("핀볼이_무엇을_바꾸는지_적어_둔다", () => {
-    // 이름만 보고는 **클릭이 바뀌는 것**을 알 수 없고, 끄면 돌아온다는 것도
-    // 모르면 켜기가 무섭다
     render(<SettingsCard {...props} />);
     expect(screen.getByText(/방망이 대신 펭귄이 날아가고/)).toBeInTheDocument();
     expect(screen.getByText(/끄면 원래대로 돌아와요/)).toBeInTheDocument();
   });
 
   it("무엇이_들리는지_적어_둔다", () => {
-    // 켜는 사람이 가장 알고 싶은 것은 "얼마나 시끄러워지나"다 — 저절로는
-    // 조용하다는 마지막 절을 빼지 않는다 (KTD3)
     render(<SettingsCard {...props} />);
     expect(screen.getByText(/때리거나 던지면 소리가 나요/)).toBeInTheDocument();
     expect(screen.getByText(/그 밖에는 조용해요/)).toBeInTheDocument();

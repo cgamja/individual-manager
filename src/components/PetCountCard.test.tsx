@@ -33,7 +33,6 @@ describe("PetCountCard", () => {
   });
 
   it("우클릭_대상이_없으면_삭제_버튼이_비활성된다", () => {
-    // 트레이로 열면 어느 펭귄 이야기인지 알 수 없다
     render(<PetCountCard {...props} focused={null} />);
     expect(screen.getByRole("button", { name: "이 펭귄 삭제" })).toBeDisabled();
     expect(screen.getByText(/우클릭해서 열어 주세요/)).toBeInTheDocument();

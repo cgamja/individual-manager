@@ -29,15 +29,8 @@ import {
 } from "./lib/settings";
 import "./App.css";
 
-/**
- * 설정 창 — 펭귄을 우클릭하면 그 옆에서 열린다 (PRD §5.5).
- *
- * v3.0에서 타이머·알림·런처를 전부 걷어내, 앱이 소유하는 화면은 **펭귄과 이 창**뿐이다.
- * 여기 있는 것은 마릿수·대사·on/off 셋과, 동작을 지금 시켜보는 버튼이다 —
- * 얼음낚시처럼 십 분에 한 번 나오는 동작은 기다려서는 확인할 수 없다.
- */
-/** 시켜볼 수 있는 동작들. 설명은 **끝나는 조건**을 적는다 — 모르고 건드리면
- * 버튼이 안 먹은 것처럼 보인다. */
+/** 설정 창 — 펭귄을 우클릭하면 그 옆에서 열린다 (PRD §5.5). */
+/** 시켜볼 수 있는 동작들. 설명은 **끝나는 조건**을 적는다 — 모르고 건드리면 */
 const MOTIONS: readonly Motion[] = [
   {
     name: "얼음낚시",
@@ -90,18 +83,8 @@ function App() {
       if (!cancelled && summary) setPetSummary(summary);
     })();
 
-    // 창이 다시 보일 때 재동기화 (주기 폴링 없음). **우클릭 대상**도 함께 읽는다 —
-    // 다른 펭귄을 우클릭해서 열 때마다 삭제 대상이 바뀌므로, 여기서 안 읽으면
-    // 엉뚱한 펭귄이 지워진 것처럼 보인다.
-    //
-    // **펭귄 설정도 다시 읽는다.** 이 창 밖에서 바뀔 수 있다 — 핀볼 판에서 Esc를
-    // 누르면 저장소가 바뀌는데, 여기서 안 읽으면 설정 창은 켜진 것으로 보여
-    // 체크를 껐다 켜야 실제로 켜지는 꼴이 된다.
     const onVisibility = () => {
       if (!document.hidden) {
-        // **맨 위로 되돌린다.** 이 창은 닫을 때 파괴되지 않고 숨겨질 뿐이라
-        // 스크롤 위치가 그대로 남는다. 대사를 편집하러 한 번 내려가면 그다음부터
-        // 계속 내려간 채로 열려서, 맨 위 카드(펭귄 추가·삭제)가 사라진 것처럼 보인다.
         window.scrollTo(0, 0);
         getPetSummary()
           .then(setPetSummary)
@@ -119,13 +102,9 @@ function App() {
     };
     document.addEventListener("visibilitychange", onVisibility);
 
-    // **창이 열려 있는 채로도 바뀔 수 있다.** 핀볼 판에서 Esc를 누르면 저장소가
-    // 바뀌는데 그때는 `visibilitychange`가 안 뜬다 — 체크가 켜진 채로 남아
-    // 껐다 켜야 실제로 켜지는 꼴이 된다.
     let unlisten: UnlistenFn | undefined;
     void onPetSettings(({ pinball }) => {
       setPinballEnabledState(pinball);
-      // 설정이 밖에서 바뀌었으면 마릿수·우클릭 대상도 같이 어긋났을 수 있다
       getPetSummary()
         .then(setPetSummary)
         .catch(() => {});
@@ -143,8 +122,7 @@ function App() {
     };
   }, []);
 
-  /** 펭귄 on/off — Rust가 창을 만들거나 닫고, 저장은 여기서 한다.
-   * 커맨드가 실패하면 화면 표시를 되돌린다 — 켜지지 않았는데 켜진 것처럼 보이지 않게. */
+  /** 펭귄 on/off — Rust가 창을 만들거나 닫고, 저장은 여기서 한다. */
   const handlePetEnabledChange = useCallback(async (next: boolean) => {
     setPetEnabledState(next);
     try {
@@ -157,8 +135,6 @@ function App() {
     try {
       await savePetSettings({ enabled: next });
     } catch (err) {
-      // 창은 바뀌었는데 저장만 실패했다. 표시만 되돌리면 "꺼짐인데 떠 있는"
-      // 상태가 되므로 창도 함께 원복해 화면과 실제를 맞춘다
       console.error("펭귄 설정 저장 실패:", err);
       await setPetEnabled(!next).catch(() => {});
       setPetEnabledState(!next);
@@ -168,9 +144,7 @@ function App() {
       .catch(() => {});
   }, []);
 
-  /** 소리 on/off — 저장하고, 성공하면 떠 있는 펭귄 전부에 방송한다 (R2).
-   * 저장에 실패하면 표시를 되돌리고 방송도 안 한다 — "저장은 실패했는데
-   * 소리는 켜진" 상태를 만들지 않게. */
+  /** 소리 on/off — 저장하고, 성공하면 떠 있는 펭귄 전부에 방송한다 (R2). */
   const handleSoundEnabledChange = useCallback(
     async (next: boolean) => {
       setSoundEnabledState(next);
@@ -181,7 +155,6 @@ function App() {
         setSoundEnabledState(!next);
         return;
       }
-      // 방송 실패는 표시를 되돌리지 않는다 — 저장은 이미 됐고, 다음 실행이 맞춘다
       await emitPetSound(next, volume).catch((err) =>
         console.error("소리 설정 방송 실패:", err),
       );
@@ -208,10 +181,7 @@ function App() {
     [soundEnabled, volume],
   );
 
-  /** 핀볼 on/off — **거는 것과 저장하는 것 둘 다 한다.** 거는 쪽은 지금 떠 있는
-   * 펭귄들에게, 저장은 다음에 태어날 펭귄을 위해. 어느 한쪽이 실패하면 표시를
-   * 되돌린다 — 켜졌다고 보이는데 안 튀는 상태를 만들지 않게 (`handlePetEnabledChange`와
-   * 같은 규칙이다). */
+  /** 핀볼 on/off — **거는 것과 저장하는 것 둘 다 한다.** 거는 쪽은 지금 떠 있는 */
   const handlePinballEnabledChange = useCallback(async (next: boolean) => {
     setPinballEnabledState(next);
     try {
@@ -230,8 +200,7 @@ function App() {
     }
   }, []);
 
-  /** 테마 — 거는 것(지금 떠 있는 창·트레이)과 저장(다음 실행) 둘 다.
-   * 핀볼과 같은 규칙: 어느 한쪽이 실패하면 표시와 실제를 함께 되돌린다. */
+  /** 테마 — 거는 것(지금 떠 있는 창·트레이)과 저장(다음 실행) 둘 다. */
   const handleThemeChange = useCallback(
     async (next: AppTheme) => {
       const prev = theme;
@@ -254,8 +223,7 @@ function App() {
     [theme],
   );
 
-  /** 펭귄 추가·삭제 — 결과를 낙관적으로 그리지 않고 **다시 읽는다.** 상한이나
-   * 마지막 한 마리에 걸려 거부될 수 있고, 그때 화면만 늘어나면 거짓말이 된다. */
+  /** 펭귄 추가·삭제 — 결과를 낙관적으로 그리지 않고 **다시 읽는다.** 상한이나 */
   const refreshPets = useCallback(async () => {
     const summary = await getPetSummary().catch(() => null);
     if (summary) setPetSummary(summary);

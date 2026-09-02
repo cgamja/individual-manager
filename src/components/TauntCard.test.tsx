@@ -65,7 +65,6 @@ describe("대사 수정", () => {
     await userEvent.clear(input);
     await userEvent.type(input, "일은 언제 해요?{Enter}");
 
-    // 순서를 지킨 채 그 줄만 바뀐다
     expect(onChange).toHaveBeenCalledWith([
       "일은 언제 해요?",
       "아 진짜 왜요",

@@ -29,10 +29,6 @@ pub fn now_ms() -> u64 {
 /// 웹뷰가 구독하는 상태 이벤트.
 pub const EVENT_PET_STATE: &str = "pet://state";
 /// 설정이 **이 창 밖에서** 바뀌었음을 설정 창에 알린다.
-///
-/// 핀볼 판에서 Esc를 누르면 저장소가 바뀌는데, 설정 창이 **열려 있는 채로**
-/// 그 일이 벌어지면 `visibilitychange`가 안 뜬다 — 체크는 켜진 채로 남고
-/// 사용자는 껐다 켜야 실제로 켜지는 꼴을 본다.
 pub const EVENT_PET_SETTINGS: &str = "pet://settings";
 
 /// 위치·동작 갱신 주기. 스프라이트 프레임은 CSS가 담당하므로 이 주기는
@@ -44,17 +40,9 @@ const SLEEP_TICK_MS: u64 = 500;
 /// 모니터 작업 영역을 다시 읽는 주기.
 const BOUNDS_REFRESH_MS: u64 = 2_000;
 /// 상태와 창이 어긋난 것을 보고 **정리하기까지 기다리는 시간**.
-///
-/// 펭귄을 추가할 때는 (1) 상태에 넣고 (2) 창을 만든다. 그 사이 몇 ms 동안은
-/// "상태엔 있는데 창이 없는" 정상적인 어긋남이 생긴다. 한 번 보고 바로 지우면
-/// **방금 부른 펭귄을 곧바로 지워 버린다** — 추가가 아무 일도 안 하는 것처럼 보인다.
-/// 삭제도 (1) 상태에서 빼고 (2) 창을 닫는 순서라 같은 창이 열린다.
 const RECONCILE_GRACE_MS: u64 = 1_000;
 
 /// 어긋남을 처음 본 시각들 중, 유예를 다 쓴 것들.
-///
-/// 순수 함수로 떼어 낸 이유는 이 판단이 틀리면 **정상 동작이 조용히 취소되기** 때문이다.
-/// 틱 스레드 안에 두면 눈으로만 잡힌다.
 fn due_for_cleanup(mismatch_since: &HashMap<PetId, u64>, now_ms: u64) -> Vec<PetId> {
     mismatch_since
         .iter()
@@ -99,11 +87,8 @@ pub fn look_of(snapshot: &Snapshot) -> Look {
         snapshot.facing,
         snapshot.vertical,
         snapshot.air,
-        // 말풍선과 빠따는 동작을 바꾸지 않고도 화면을 바꾼다 — 빠뜨리면
-        // 말이 안 뜨거나 방망이가 한 번만 보인다
         snapshot.speech.map(|s| s.seq),
         snapshot.whack_seq,
-        // 커서 모양이 여기 달렸다 — 빠뜨리면 토글이 웹뷰에 영영 도달하지 않는다
         snapshot.pinball,
     )
 }
@@ -130,10 +115,6 @@ pub fn pet_enabled(app: &AppHandle) -> bool {
 
 /// 저장된 값에서 핀볼 여부를 꺼낸다. **없으면 꺼짐이다** — `enabled`가 켜짐으로
 /// 떨어지는 것과 반대다. 새 모드는 사용자가 켜기 전에는 아무것도 바꾸지 않아야 한다.
-///
-/// 저장소를 받지 않고 값을 받는 이유는 **테스트 때문**이다. 기본값이 반대로
-/// 뒤집히는 것은 조용한 사고라 가드가 있어야 하는데, `AppHandle`을 받으면
-/// Tauri 앱 없이는 부를 수 없다.
 pub fn pinball_from(stored: Option<&serde_json::Value>) -> bool {
     stored
         .and_then(|value| value.get("pinball"))
@@ -185,9 +166,6 @@ pub fn pet_pinball(app: &AppHandle) -> bool {
 }
 
 /// 새로 만든 펭귄에 저장된 설정을 건다.
-///
-/// **추가 경로가 둘(시작 시·우클릭)이라 한 곳에 모은다.** 한쪽만 고쳐지면
-/// 나중에 부른 펭귄만 안 튀는데, 그건 눈으로만 잡힌다.
 fn apply_saved_settings(app: &AppHandle, id: PetId) {
     let pinball = pet_pinball(app);
     if let Some(pet) = app.state::<PetState>().pets.lock().unwrap().get_mut(id) {
@@ -228,8 +206,6 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
     let world = world_or_flat_any(app);
     let bounds = world.first().bounds;
     while app.state::<PetState>().pets.lock().unwrap().len() < wanted {
-        // 첫 마리는 왼쪽 끝, 그다음부터는 앞 마리 옆에 세운다 — 전부 같은 자리에
-        // 겹쳐 뜨면 한 마리로 보인다
         let start_x = {
             let state = app.state::<PetState>();
             let pets = state.pets.lock().unwrap();
@@ -253,9 +229,6 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
             return Err(err);
         }
     }
-    // **저장된 핀볼이 켜짐이면 판도 깐다.** 플래그만 걸고 판을 안 만들면 다시
-    // 켠 앱은 "모드는 켜져 있는데 커서가 안 바뀌는" 상태가 된다 — 사용자가
-    // 보기에 그냥 고장이다.
     if pet_pinball(app) {
         if let Err(err) = create_field_window(app) {
             eprintln!("[penguin] 시작 시 핀볼 판을 못 깔았다: {err}");
@@ -265,10 +238,6 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
 }
 
 /// 펫 창 라벨 접두어. 마리마다 `pet-<id>`가 된다.
-///
-/// `capabilities/default.json`의 `windows`에 **`pet-*` 글롭**이 들어 있어야 이벤트와
-/// 커맨드가 전달된다 — 빠뜨리면 컴파일·테스트는 전부 통과하고 런타임에서만 조용히
-/// reject된다 (KTD8, `docs/solutions/best-practices/tauri-command-registration-silent-failure.md`).
 pub const PET_LABEL_PREFIX: &str = "pet-";
 
 /// 펭귄 id → 창 라벨.
@@ -277,9 +246,6 @@ pub fn pet_label(id: PetId) -> String {
 }
 
 /// 창 라벨 → 펭귄 id. 펫 창이 아니면 `None`.
-///
-/// 커맨드가 "누가 불렀는가"를 이걸로 정한다 — 웹뷰가 id를 인자로 보내면 틀린 id를
-/// 보낼 수도, 남의 펭귄을 조작할 수도 있다. 라벨은 위조할 수 없다 (KTD1).
 pub fn pet_id_from_label(label: &str) -> Option<PetId> {
     label.strip_prefix(PET_LABEL_PREFIX)?.parse().ok()
 }
@@ -293,11 +259,6 @@ pub const PET_PAD_X: f64 = 52.0;
 pub const PET_PAD_TOP: f64 = 80.0;
 
 /// 창은 펭귄보다 크다. 창을 펭귄 크기에 딱 맞추면 말풍선과 방망이가 잘린다.
-///
-/// **여백도 클릭을 먹는다.** 투명하다고 통과되지 않는다 — macOS에서는 투명한
-/// 창 영역도 그 창이 히트 테스트를 가져가고, CSS `pointer-events`로는 다른 앱에
-/// 넘길 수 없다(KTD3에서 클릭 통과를 안 쓰기로 했다). 그래서 여백은 말풍선과
-/// 방망이에 꼭 필요한 만큼만 둔다.
 pub const PET_WINDOW_W: f64 = PET_SIZE + PET_PAD_X * 2.0;
 pub const PET_WINDOW_H: f64 = PET_SIZE + PET_PAD_TOP;
 
@@ -327,32 +288,20 @@ pub fn create_pet_window(app: &AppHandle, id: PetId, at: (f64, f64)) -> tauri::R
         .title("Penguin Pet")
         .inner_size(PET_WINDOW_W, PET_WINDOW_H)
         .position(at.0, at.1)
-        // 투명 창 — app.macOSPrivateApi(이미 true) + pet.css의 배경 투명이 함께 필요하다
         .transparent(true)
         .decorations(false)
         .shadow(false)
         .resizable(false)
-        // 모든 앱 창 위에 보인다 (A1). Tauri의 alwaysOnBottom은 NSWindow 레벨 -1이라
-        // 데스크톱 레벨이 아니므로 "창 뒤"를 원하면 ns_window()를 직접 만져야 한다
         .always_on_top(true)
         .skip_taskbar(true)
         .visible_on_all_workspaces(true)
-        // 첫 클릭이 앱 활성화에 먹히지 않게 한다 — 없으면 펭귄을 두 번 눌러야 반응한다
         .accept_first_mouse(true)
-        // 키보드 포커스를 뺏지 않는다 (R9). `focused(false)`는 **만들 때만**
-        // 유효해서, 클릭하면 키 포커스가 넘어와 작업하던 앱의 포커스를 뺏고
-        // 열려 있던 설정 창의 컨트롤이 비활성(회색)으로 그려졌다 —
-        // `focusable(false)`여야 클릭해도 마우스 이벤트만 받고 키 창이 안 된다
         .focused(false)
         .focusable(false)
         .visible(true)
-        // 다른 Space로 가리거나 가려져도 CSS 애니메이션이 스로틀되지 않게 한다
-        // (솔루션 문서 함정 1의 보조 대응. macOS 14+)
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .build()
         .inspect(|window| {
-            // Accessory 정책 아래에서는 빌더의 visible만으로 화면에 나오지 않는 경우가 있다
-            // (tauri#5122 계열) — 명시적으로 한 번 더 띄운다. 포커스는 주지 않는다.
             let _ = window.show();
         })
 }
@@ -368,18 +317,11 @@ pub fn field_label(index: usize) -> String {
 }
 
 /// 화면 하나를 재서 넘기는 값 — (좌상단 물리 좌표, 물리 크기, 배율).
-///
-/// `tauri::Monitor`를 테스트에서 만들 수 없어서 판정에 필요한 셋만 떼어 낸다.
 pub type ScreenSpec = ((i32, i32), (u32, u32), f64);
 
 /// 화면 하나가 논리 좌표로 차지하는 사각형. 크기가 0이면 `None`이다 —
 /// `primary_monitor()`는 화면이 하나도 없어도 `Some`을 주면서 크기 0인 핸들을
 /// 내놓는다 ([`bounds_of_work_area`]와 같은 이유).
-///
-/// **작업 영역이 아니라 화면 전체다.** 작업 영역을 쓰면 메뉴바 높이만큼 띠가
-/// 남아 거기서만 커서가 화살표로 돌아온다. 메뉴바는 창 레벨이 더 높아
-/// (`NSMainMenuWindowLevel` 24 > `NSFloatingWindowLevel` 3) 덮개에 가려지지
-/// 않으므로, 전체를 덮어도 **트레이 아이콘은 그대로 눌린다** — 그게 나가는 문이다.
 fn screen_rect(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<(f64, f64, f64, f64)> {
     if size.0 == 0 || size.1 == 0 || scale <= 0.0 {
         return None;
@@ -393,19 +335,6 @@ fn screen_rect(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<(f64, f6
 }
 
 /// 덮개가 덮을 사각형들 — **화면 하나에 하나씩**이다.
-///
-/// **펭귄의 세계는 화면 하나지만**(PRD §5.2) **커서는 화면을 넘나든다.** 판을
-/// 한 화면만 덮게 만들었더니 다른 화면에서는 방망이가 아예 안 나왔다.
-///
-/// **창 하나로 전부 덮으려던 것도 실패했다.** 화면마다 배율이 다르면 논리
-/// 좌표의 단위가 화면마다 달라서, 합집합을 하나의 창에 넘기면 Tauri가 그 창이
-/// 놓인 화면의 배율 하나로 전부 환산해 크기가 어긋난다. **화면마다 창을 따로
-/// 만들면 각 창이 자기 화면의 배율만 쓰므로 이 문제가 사라진다.**
-///
-/// 크기가 0인 화면은 건너뛴다 — `primary_monitor()`는 화면이 하나도 없어도
-/// `Some`을 주면서 크기 0인 핸들을 내놓는다.
-///
-/// 순수 함수로 뺀 이유는 `tauri::Monitor`를 테스트에서 만들 수 없기 때문이다.
 pub fn field_rects_of(screens: &[ScreenSpec]) -> Vec<(f64, f64, f64, f64)> {
     screens
         .iter()
@@ -414,13 +343,7 @@ pub fn field_rects_of(screens: &[ScreenSpec]) -> Vec<(f64, f64, f64, f64)> {
 }
 
 /// 핀볼 덮개 창을 만든다. 이미 있으면 그대로 둔다.
-///
-/// **펭귄 창과 같은 레벨이므로 순서를 명시적으로 정한다** — 만든 직후에 살아 있는
-/// 펭귄 창을 다시 앞으로 올린다. 덮개가 펭귄 위로 가면 클릭·드래그가 전부 덮개로
-/// 빨려 들어가 **펭귄을 만질 수 없다.**
 fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
-    // **연결된 화면을 전부 모은다.** 한 화면만 덮으면 다른 화면에서 방망이가
-    // 아예 안 나온다 — 커서는 펭귄과 달리 화면 경계를 넘어 다닌다.
     let screens: Vec<ScreenSpec> = app
         .available_monitors()
         .unwrap_or_default()
@@ -443,8 +366,6 @@ fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
         if app.get_webview_window(&label).is_some() {
             continue;
         }
-        // 설정은 펭귄 창을 그대로 따른다 — 투명·무장식·항상 위·첫 클릭 수용.
-        // **다른 점은 크기(화면 하나 전체)와, 그리는 게 없다는 것뿐이다.**
         WebviewWindowBuilder::new(app, &label, WebviewUrl::App("field.html".into()))
             .title("Pinball Field")
             .inner_size(w, h)
@@ -453,15 +374,10 @@ fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
             .decorations(false)
             .shadow(false)
             .resizable(false)
-            // 여기서 켜는 것은 **창 종류**(떠 있는 창)이고, 정확한 레벨은 바로
-            // 아래 `sink_field_below_pets`가 다시 정한다 — 그쪽이 최종 값이다
             .always_on_top(true)
             .skip_taskbar(true)
             .visible_on_all_workspaces(true)
             .accept_first_mouse(true)
-            // 펭귄 창과 달리 `focusable(false)`를 **걸지 않는다** — 판의 Esc
-            // 탈출문이 웹뷰 keydown이라 키 창이 될 수 있어야 받는다. 판이
-            // 포커스를 먹는 것은 핀볼 모드의 성격이고, 나가는 문이 둘인 이유다
             .focused(false)
             .visible(true)
             .build()?
@@ -473,15 +389,6 @@ fn create_field_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 /// 판을 펭귄보다 **한 레벨 아래**로 내린다.
-///
-/// **순서가 아니라 레벨이어야 한다.** 같은 레벨 안에서 창 순서는 클릭할 때마다
-/// 바뀐다 — Esc를 누르려고 판을 한 번 클릭하는 순간 판이 다시 펭귄 위로 올라온다.
-/// 그래서 만들 때 한 번 올려 두는 방식(`orderFrontRegardless`, `set_always_on_top`
-/// 껐다 켜기)은 **둘 다 실패했다.** 레벨은 클릭으로 안 바뀌므로 한 번 정하면 유지된다.
-///
-/// 값은 `NSFloatingWindowLevel`(3) **바로 아래**인 2다. 펭귄(3)보다는 아래여서
-/// 클릭이 펭귄에게 가고, 보통 창(0)보다는 위여서 다른 앱 위에서도 방망이가 보인다.
-/// 메뉴바(24)는 여전히 훨씬 위라 트레이 아이콘은 그대로 눌린다 — 나가는 문이다.
 #[cfg(target_os = "macos")]
 fn sink_field_below_pets(app: &AppHandle) {
     use objc2_app_kit::NSWindow;
@@ -499,15 +406,10 @@ fn sink_field_below_pets(app: &AppHandle) {
         let ptr = match window.ns_window() {
             Ok(ptr) if !ptr.is_null() => ptr,
             _ => {
-                // **조용히 넘기면 안 된다.** 레벨을 못 내리면 판이 펭귄 위에
-                // 남아 클릭을 전부 먹는데, 증상은 "펭귄이 안 날아간다" 하나뿐이라
-                // 사용자가 원인을 찾을 방법이 없다 (그 버그를 실제로 겪었다).
                 eprintln!("[penguin] 판({label})의 창 레벨을 못 내렸다 — 펭귄이 안 만져질 수 있다");
                 continue;
             }
         };
-        // SAFETY: `ns_window()`가 준 포인터는 살아 있는 NSWindow다. 방금
-        // 찾은 창이라 이 스코프 동안 닫히지 않는다.
         unsafe {
             let ns = &*(ptr as *const NSWindow);
             ns.setLevel(FIELD_WINDOW_LEVEL);
@@ -523,9 +425,6 @@ const FIELD_WINDOW_LEVEL: isize = 2;
 fn sink_field_below_pets(_app: &AppHandle) {}
 
 /// 핀볼 덮개 창을 닫는다.
-///
-/// **숨기지 않고 닫는다.** 화면 전체의 클릭을 먹는 창이 숨겨진 채로 남아 있을
-/// 이유가 없다 (펭귄 on/off가 창을 닫는 것과 같은 판단이다).
 fn close_field_window(app: &AppHandle) {
     let labels: Vec<String> = app
         .webview_windows()
@@ -556,10 +455,6 @@ pub fn close_all_pet_windows(app: &AppHandle) {
 }
 
 /// 모니터의 작업 영역(물리 px)을 펭귄이 걸어다닐 논리 좌표 영역으로 바꾼다.
-///
-/// 창 위치는 좌상단 기준이라 오른쪽·아래 한계에서 창 크기를 빼야 화면 밖으로
-/// 나가지 않는다. 이 계산을 순수 함수로 떼어 낸 이유는 배율 2.0(Retina)에서
-/// 어긋나기 쉬운 부분이라 테스트로 고정하기 위해서다.
 pub fn bounds_from_work_area(
     origin: (i32, i32),
     size: (u32, u32),
@@ -570,16 +465,12 @@ pub fn bounds_from_work_area(
     let top = f64::from(origin.1) / scale;
     let width = f64::from(size.0) / scale;
     let height = f64::from(size.1) / scale;
-    // 경계는 **창 전체**가 화면 안에 들어오도록 잡는다. 펭귄 크기만 빼면
-    // 창의 여백(말풍선·방망이)이 화면 밖으로 나가, 정작 벽에 붙었을 때
-    // 방망이가 안 보이고 위쪽에서는 말풍선이 메뉴바 뒤로 숨는다.
     let min_x = left + PET_PAD_X;
     let max_x = left + width - pet_size - PET_PAD_X;
     let min_y = top + PET_PAD_TOP;
     let max_y = top + height - pet_size;
     Bounds {
         left: min_x,
-        // 영역이 창보다 좁은 극단적 경우에도 right < left가 되지 않게 한다
         right: max_x.max(min_x),
         top: min_y.min(max_y),
         floor_y: max_y.max(min_y),
@@ -607,9 +498,6 @@ fn primary_bounds(window: &WebviewWindow) -> Option<Bounds> {
 }
 
 /// 모니터 하나에서 펭귄이 다닐 수 있는 범위를 낸다.
-///
-/// `current_bounds`와 `primary_bounds`가 **이 한 곳을 공유한다** — 배율 나눗셈을
-/// 두 벌로 만들면 한쪽만 고쳐지고 조용히 갈라진다.
 fn monitor_bounds(monitor: &tauri::Monitor) -> Option<Bounds> {
     let area = monitor.work_area();
     bounds_of_work_area(
@@ -620,14 +508,6 @@ fn monitor_bounds(monitor: &tauri::Monitor) -> Option<Bounds> {
 }
 
 /// 작업 영역 하나를 경계로. **크기가 0이면 `None`이다.**
-///
-/// macOS의 `primary_monitor()`는 화면이 하나도 없어도 항상 `Some`을 준다 — tao가
-/// `CGDisplay::main()`을 그대로 감싸기 때문이다. 그 핸들은 크기가 0이고 배율도
-/// 1.0으로 떨어져, 그대로 쓰면 경계가 한 점으로 무너져 **펭귄이 원점에 붙고 있던
-/// 자리를 잃는다.** 잃어버리지 않으려던 수정이 잃어버리는 꼴이 된다.
-///
-/// 순수 함수로 빼 둔 이유는 테스트가 닿게 하기 위해서다 — `tauri::Monitor`는
-/// 테스트에서 만들 수 없어서, 안에 두면 이 판정이 영영 검증되지 않는다.
 fn bounds_of_work_area(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<Bounds> {
     if size.0 == 0 || size.1 == 0 {
         return None;
@@ -636,29 +516,14 @@ fn bounds_of_work_area(pos: (i32, i32), size: (u32, u32), scale: f64) -> Option<
 }
 
 /// 캐시에 넣을 세계를 고른다 — 못 읽었으면 **주 모니터로 떨어진다.**
-///
-/// **읽기 실패를 무시하고 낡은 값을 붙들면 안 된다.** 모니터를 뽑으면 창이 어떤
-/// 화면에도 안 걸쳐 `current_monitor()`가 `None`을 준다. 그때 캐시를 그대로 두면
-/// 펭귄이 **사라진 화면의 좌표로 매 틱 clamp되어 다시는 안 보인다** — 상태에도
-/// 있고 창도 살아 있는데 갈 방법이 없다. 실제로 겪은 사고다.
-///
-/// 주 모니터로 떨어뜨리면 `Pet::clamp`가 다음 틱에 펭귄을 화면 안으로 데려온다.
-/// 둘 다 못 읽는 경우(모니터가 하나도 없다)에만 낡은 값을 그대로 둔다.
 fn world_to_cache(
     current: Option<World>,
     primary: impl FnOnce() -> Option<World>,
 ) -> Option<World> {
-    // **`or`가 아니라 `or_else`다.** `primary_monitor()`도 `current_monitor()`와
-    // 똑같이 이벤트 루프를 왕복하는 블로킹 호출이라(CLAUDE.md의 함정 항목),
-    // 미리 계산해 넘기면 성공하는 경로에서도 왕복을 두 번 한다.
     current.or_else(primary)
 }
 
 /// 창이 선 화면의 세계. 못 읽으면 주 모니터로 떨어진다 ([`world_to_cache`]).
-///
-/// **세계를 만드는 곳은 여기 하나다.** 틱도 커맨드도 이걸 쓴다 — `World::single`을
-/// 딴 데서 또 부르면 폴백이 한쪽에만 붙어 조용히 갈라진다.
-/// 아직 **화면 하나짜리다**: 연결된 화면을 전부 담는 것은 F2에서 범위 밖으로 뺐다.
 fn current_world_or_primary(window: &WebviewWindow) -> Option<World> {
     world_to_cache(current_bounds(window).map(World::single), || {
         primary_bounds(window).map(World::single)
@@ -671,20 +536,13 @@ fn current_world_or_primary(window: &WebviewWindow) -> Option<World> {
 /// 그러니 여기서는 `run_on_main_thread`로 감싸지 않는다.
 pub fn spawn_pet_tick_thread(app: AppHandle) {
     std::thread::spawn(move || {
-        // 경계와 겉모습은 **마리별**이다. 두 펭귄이 다른 모니터에 있을 수 있고,
-        // 한 마리가 자는 동안 다른 마리는 걷는다.
         let mut worlds: HashMap<PetId, (World, u64)> = HashMap::new();
         let mut last_look: HashMap<PetId, Look> = HashMap::new();
-        // 상태와 창이 어긋난 것을 **처음 본** 시각. 곧바로 정리하지 않는 이유는
-        // 추가·삭제가 두 단계라 정상적으로도 잠깐 어긋나기 때문이다.
         let mut mismatch_since: HashMap<PetId, u64> = HashMap::new();
         loop {
             let ids = app.state::<PetState>().pets.lock().unwrap().ids();
             let now = now_ms();
 
-            // 상태에 없는데 창만 남은 펭귄 — 삭제할 때 `close()`가 실패하면 아무도
-            // 움직이지 않는 **얼어붙은 펭귄**이 화면에 영영 남고, 상태에 없으니 다시
-            // 지울 수도 없다. 사용자가 겪은 "펭귄이 두 마리" 그 모양이다.
             let mut orphan_windows: HashMap<PetId, WebviewWindow> = HashMap::new();
             for (label, window) in app.webview_windows() {
                 if let Some(orphan) = pet_id_from_label(&label) {
@@ -694,7 +552,6 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 }
             }
 
-            // 이번 틱에 어긋난 것들을 표시하고, 맞는 것들은 표시를 지운다
             let mut mismatched: Vec<PetId> = orphan_windows.keys().copied().collect();
             for id in &ids {
                 if pet_window(&app, *id).is_none() {
@@ -706,13 +563,10 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 mismatch_since.entry(*id).or_insert(now);
             }
 
-            // 유예를 다 쓴 것만 정리한다
             for id in due_for_cleanup(&mismatch_since, now) {
                 if let Some(window) = orphan_windows.get(&id) {
                     let _ = window.close();
                 } else {
-                    // 창이 사라졌다 — 사용자의 선택이 아니라 이미 없어진 것이므로
-                    // 마지막 한 마리 보호를 받지 않고 정리한다
                     app.state::<PetState>().pets.lock().unwrap().forget(id);
                 }
                 mismatch_since.remove(&id);
@@ -721,34 +575,22 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             }
 
             if ids.is_empty() {
-                // 설정에서 껐거나 아직 만들기 전 — 생길 때까지 느리게 돈다
                 std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
                 continue;
             }
 
-            // 한 마리라도 움직이면 빠른 주기를 유지한다. 자는 마리 때문에 걷는
-            // 마리가 느려지면 안 된다.
             let mut any_moves = false;
 
             for id in ids {
                 let Some(window) = pet_window(&app, id) else {
-                    // 아직 만들어지는 중일 수 있다 — 위의 유예가 판단한다
                     continue;
                 };
 
-                // current_monitor()는 이벤트 루프를 왕복하는 블로킹 호출이라 20Hz로
-                // 부르면 상주 비용이 아깝다. 모니터·해상도는 자주 바뀌지 않으므로
-                // 2초에 한 번만 다시 읽는다 — 마리가 늘수록 이 캐시가 더 중요해진다.
                 let stale = worlds
                     .get(&id)
                     .is_none_or(|(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
-                // 경계를 못 읽어 주 모니터로 떨어진 틱인가. **자는 펭귄 때문에
-                // 필요하다** — 아래에서 창을 옮길지 정하는 데 쓴다.
                 let mut rescued = false;
                 if stale {
-                    // **실패했다고 넘어가면 안 된다** — 모니터를 뽑았을 때가
-                    // 정확히 그 경우이고, 낡은 경계를 붙들면 펭귄이 사라진 좌표에
-                    // 갇힌다. `world_to_cache`가 주 모니터로 떨어뜨린다.
                     let read = current_bounds(&window).map(World::single);
                     rescued = read.is_none();
                     if let Some(world) =
@@ -756,7 +598,6 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     {
                         worlds.insert(id, (world, now));
                     } else {
-                        // 떨어질 곳도 없다 — 낡은 경계라도 붙들고 있는 게 낫다
                         rescued = false;
                     }
                 }
@@ -773,20 +614,13 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     pet.step(now, world)
                 };
 
-                // **구조된 틱에는 자고 있어도 창을 옮긴다.** `moves_window()`는
-                // 졸기에 거짓이라, 이게 없으면 자는 동안 상태의 x·y만 화면 안으로
-                // 돌아오고 창은 사라진 모니터 좌표에 그대로 남는다 — 깰 때까지
-                // (최대 25초) 계속 안 보인다. 틱 주기는 원래대로 둔다.
                 let moves = snapshot.behavior.moves_window() || rescued;
                 any_moves |= snapshot.behavior.moves_window();
                 let look = look_of(&snapshot);
-                // 졸기로 "전이하는" 그 스냅샷은 반드시 알려야 한다. 움직임 여부로만
-                // 거르면 자는 모습이 웹뷰에 영영 도달하지 않아 직전 동작이 그대로 남는다.
                 apply(&window, snapshot, moves, should_notify(last_look.get(&id).copied(), look));
                 last_look.insert(id, look);
             }
 
-            // 자는 동안에는 창을 옮기지 않고 틱도 느려진다 (R10)
             let interval = if any_moves { TICK_MS } else { SLEEP_TICK_MS };
             std::thread::sleep(Duration::from_millis(interval));
         }
@@ -801,11 +635,6 @@ fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, notify: 
         let _ = window.set_position(LogicalPosition::new(wx, wy));
     }
     if notify {
-        // **`emit`이 아니라 `emit_to`다.** `Emitter::emit`은 창에서 불러도 "모든
-        // 대상"에 보낸다 — 창 하나에 보내는 게 아니다. 한 마리였을 때는 차이가
-        // 없었지만 여러 마리가 되면 **모든 펭귄이 모든 펭귄의 스냅샷을 받는다**:
-        // 다 같이 동시에 떠들고, 남의 동작을 대신 재생하고, 틱마다 N배로 이벤트가
-        // 쏟아져 애니메이션이 미친 듯이 빨라진다.
         let _ = window.emit_to(
             EventTarget::webview_window(window.label()),
             EVENT_PET_STATE,
@@ -838,10 +667,6 @@ fn target_pet(window: &WebviewWindow, state: &PetState) -> Option<PetId> {
 
 /// 빠따 — 왼쪽 클릭 한 번에 펭귄이 한 번 날아간다 (R14).
 /// 왼쪽 클릭. `nx`/`ny`는 **맞은 지점**을 펭귄 기준으로 정규화한 값(-0.5~0.5)이다.
-///
-/// 모드와 무관하게 프론트는 늘 같은 값을 보내고, **빠따냐 채냐는 코어가 정한다** —
-/// 커맨드를 둘로 나누면 프론트가 핀볼 설정을 알아야 하고 그러면 설정이 웹뷰로
-/// 새어 나간다 (PRINCIPLE 4).
 #[tauri::command]
 pub fn pet_whack(
     nx: f64,
@@ -866,8 +691,6 @@ pub fn pet_open_popover(window: WebviewWindow, state: State<'_, PetState>, app: 
     let Some(snapshot) = state.pets.lock().unwrap().get(id).map(|p| p.snapshot()) else {
         return;
     };
-    // 팝오버가 열리기 **전에** 대상을 남긴다 — 팝오버는 자기가 어느 펭귄 때문에
-    // 열렸는지 알 방법이 없고, "이 펭귄 삭제"는 그 답을 필요로 한다 (KTD6).
     *state.focused.lock().unwrap() = Some(id);
     let at = popover_anchor(&app, id, snapshot.x, snapshot.y);
     crate::toggle_popover_at(&app, at);
@@ -883,9 +706,6 @@ const FLAT_BOUNDS: Bounds = Bounds {
 };
 
 /// 현재 세계. 모니터를 못 읽으면 납작한 경계 하나짜리를 쓴다.
-///
-/// **세계를 만드는 곳은 [`current_world`] 하나여야 한다.** 여기서 `World::single`을
-/// 따로 부르면, 화면 목록을 실제로 여러 개로 넓힐 때 한쪽만 넓어져 조용히 갈라진다.
 fn world_or_flat(app: &AppHandle, id: PetId) -> World {
     pet_window(app, id)
         .and_then(|w| current_world_or_primary(&w))
@@ -903,7 +723,6 @@ fn world_or_flat_any(app: &AppHandle) -> World {
         .unwrap_or_else(|| World::single(FLAT_BOUNDS))
 }
 
-
 /// 펭귄 위치에서 팝오버를 놓을 자리를 구한다. 모니터를 못 읽으면 `None`을
 /// 돌려 트레이 밑(기존 동작)으로 떨어진다.
 fn popover_anchor(app: &AppHandle, id: PetId, pet_x: f64, pet_y: f64) -> Option<(f64, f64)> {
@@ -911,8 +730,6 @@ fn popover_anchor(app: &AppHandle, id: PetId, pet_x: f64, pet_y: f64) -> Option<
     let monitor = pet_window(app, id)?.current_monitor().ok().flatten()?;
     let scale = monitor.scale_factor();
     let area = monitor.work_area();
-    // 팝오버 크기는 **팝오버가 있는 화면**의 배율로 나눠야 한다. 펭귄 쪽 배율을
-    // 쓰면 배율이 다른 모니터가 섞였을 때 크기를 절반으로 오인해 화면 밖으로 나간다
     let popover_scale = popover.scale_factor().unwrap_or(scale);
     let size = popover.inner_size().ok()?;
     Some(popover_position_near(
@@ -936,9 +753,6 @@ const POPOVER_GAP: f64 = 8.0;
 
 /// 펭귄 옆에 팝오버를 놓을 좌표. 오른쪽을 우선하되 넘치면 왼쪽으로 접고,
 /// 그래도 안 되면 영역 안으로 자른다. 세로는 펭귄 높이에 맞추되 화면을 넘지 않는다.
-///
-/// 순수 함수로 떼어 낸 이유는 화면 밖으로 나가는 실수가 눈으로만 잡히기 때문이다.
-/// `area`는 (left, top, width, height).
 pub fn popover_position_near(
     pet: (f64, f64),
     pet_size: f64,
@@ -954,10 +768,8 @@ pub fn popover_position_near(
     let x = if to_right + pop_w <= right_edge {
         to_right
     } else {
-        // 오른쪽이 모자라면 펭귄 왼쪽에 붙인다
         pet_x - pop_w - POPOVER_GAP
     };
-    // 영역보다 팝오버가 크면 max가 min보다 작아져 clamp가 패닉한다
     let x = x.clamp(area_x, (right_edge - pop_w).max(area_x));
     let y = pet_y.clamp(area_y, (bottom_edge - pop_h).max(area_y));
     (x, y)
@@ -986,9 +798,6 @@ pub fn pet_drag_by(dx: f64, dy: f64, window: WebviewWindow, state: State<'_, Pet
 
 /// 드래그 놓기 (R6, R12). 웹뷰가 잰 놓는 순간의 속도(논리 px/초)를 그대로 넘긴다 —
 /// 세게 던졌으면 포물선을 그리고, 살짝 놓았으면 제자리에서 떨어진다.
-///
-/// 경계를 함께 넘기는 이유는 코어의 **속도 상한이 세계 폭에 비례**하기 때문이다.
-/// `pet_whack`과 같은 방식이다.
 #[tauri::command]
 pub fn pet_drag_end(vx: f64, vy: f64, window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) {
     let Some(id) = caller_pet(&window) else { return };
@@ -1014,10 +823,6 @@ pub fn pet_set_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
 }
 
 /// 핀볼 모드를 켜고 끈다 (R8).
-///
-/// **살아 있는 전 마리에 즉시 건다.** 앱 전역 설정이라 마리마다 다를 이유가 없고,
-/// 다시 띄워야 반영되면 설정이 고장 난 것으로 읽힌다. 저장은 웹뷰가 담당한다
-/// (`pet_set_enabled`와 같은 방식) — 다음에 태어나는 펭귄은 저장된 값을 읽는다.
 #[tauri::command]
 pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
     let apply = |on: bool| -> Vec<PetId> {
@@ -1032,8 +837,6 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
     };
     let ids = apply(on);
 
-    // 판을 깐다/걷는다. **켜기가 실패하면 플래그를 되돌린다** — 판 없이 모드만
-    // 켜진 상태는 사용자가 고칠 수 없다(꺼 봐야 이미 꺼진 것처럼 동작한다).
     if on {
         if let Err(err) = create_field_window(&app) {
             for id in apply(false) {
@@ -1045,19 +848,9 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
         close_field_window(&app);
     }
 
-    // 겉모습(커서)이 달라졌으니 곧바로 알린다 — 다음 틱을 기다리면 졸고 있는
-    // 펭귄은 최대 0.5초 뒤에야 바뀐다
     for id in ids {
         flush(&app, id);
     }
-    // 설정 창이 **열려 있는 채로** 판에서 Esc를 누를 수 있다. 그때는
-    // `visibilitychange`가 안 뜨므로 여기서 직접 알린다.
-    //
-    // **여기서는 `emit_to`가 아니라 `emit`이다.** 창별 이벤트인 `pet://state`와
-    // 달리 이건 설정 창 하나만 듣는 이벤트라, 대상을 좁혀 봐야 얻는 게 없고
-    // 라벨이 어긋나면 조용히 아무 데도 안 간다. 받는 쪽은 여전히 창에 묶인
-    // 리스너다 (전역 `listen`은 대상과 무관하게 전부 받는다 —
-    // `docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`).
     let _ = app.emit(EVENT_PET_SETTINGS, serde_json::json!({ "pinball": on }));
     Ok(())
 }
@@ -1083,9 +876,6 @@ pub fn pet_summary(state: State<'_, PetState>) -> PetSummary {
 }
 
 /// 펭귄 한 마리를 **부른 펭귄 옆에** 추가한다.
-///
-/// 전부 같은 자리에서 시작하면 겹쳐서 한 마리로 보이고, 무작위로 흩뿌리면 어디서
-/// 생겼는지 모른다. "얘가 하나 더 불렀다"가 눈에 보이는 편이 낫다 (KTD5).
 #[tauri::command]
 pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<PetId, String> {
     let origin = target_pet(&window, &state);
@@ -1109,7 +899,6 @@ pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle
     apply_saved_settings(&app, id);
     let at = window_origin(start_x, bounds.floor_y);
     if let Err(err) = create_pet_window(&app, id, at) {
-        // 창을 못 만들면 상태에만 남은 유령이 된다 — 되돌린다
         state.pets.lock().unwrap().forget(id);
         return Err(err.to_string());
     }
@@ -1118,12 +907,6 @@ pub fn pet_add(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle
 }
 
 /// 설정 창의 "얼음낚시" — 십 분에 한 번짜리 동작을 지금 보게 한다.
-///
-/// **대상은 우클릭해서 연 그 펭귄이다** (`pet_remove`와 같은 규칙). 여러 마리를
-/// 한꺼번에 시키면 "이 펭귄"을 고른 사용자의 의도와 어긋나고, 어느 놈을 보라는
-/// 건지도 알 수 없다.
-///
-/// 거절 사유는 문자열로 돌려준다 — 눌리는데 아무 일도 없으면 고장으로 읽힌다.
 #[tauri::command]
 pub fn pet_fish(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
     let id = target_pet(&window, &state).ok_or("낚시할 펭귄을 우클릭해서 열어 주세요")?;
@@ -1136,8 +919,6 @@ pub fn pet_fish(window: WebviewWindow, state: State<'_, PetState>, app: AppHandl
     if !started {
         return Err("이미 낚시하는 중이거나 들고 계세요".into());
     }
-    // 낚시는 창을 옮기지 않지만 **국면이 바로 보여야** 한다 — 다음 틱까지
-    // 기다리면 누르고 나서 한 박자 뒤에 앉는다
     flush(&app, id);
     Ok(())
 }
@@ -1160,9 +941,6 @@ pub fn pet_slide(window: WebviewWindow, state: State<'_, PetState>, app: AppHand
 }
 
 /// 설정 창의 "빽빽거리기". 대상 규칙은 [`pet_fish`]와 같다.
-///
-/// **공중을 거절하지 않는다** — 고도를 물려받는 반응이라 헤엄치다 빽빽대도
-/// 성립한다. 미끄러지기와 갈리는 지점이다.
 #[tauri::command]
 pub fn pet_squawk(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
     let id = target_pet(&window, &state).ok_or("화나게 할 펭귄을 우클릭해서 열어 주세요")?;
@@ -1180,8 +958,6 @@ pub fn pet_squawk(window: WebviewWindow, state: State<'_, PetState>, app: AppHan
 }
 
 /// 설정 창의 "발작". 대상 규칙은 [`pet_fish`]와 같다.
-///
-/// **공중을 거절하지 않는다** — 돌진이 어차피 공중 동작이다.
 #[tauri::command]
 pub fn pet_freakout(window: WebviewWindow, state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
     let id = target_pet(&window, &state).ok_or("발작시킬 펭귄을 우클릭해서 열어 주세요")?;
@@ -1221,7 +997,6 @@ fn next_to(x: f64, bounds: Bounds) -> f64 {
     candidate.clamp(bounds.left, bounds.right.max(bounds.left))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1232,9 +1007,6 @@ mod tests {
 
     #[test]
     fn 경계를_못_읽으면_주_모니터로_떨어진다() {
-        // **모니터를 뽑으면 `current_monitor()`가 None을 준다.** 그때 낡은 캐시를
-        // 그대로 두면 펭귄이 사라진 화면의 좌표로 영원히 clamp되어 다시는 안 보인다.
-        // 실제로 겪은 사고다 — 확장 모니터 선을 뽑았더니 두 마리가 사라졌다.
         let 주 = World::single(경계(1_440.0));
         let got = world_to_cache(None, || Some(주.clone()));
         assert_eq!(
@@ -1254,15 +1026,11 @@ mod tests {
 
     #[test]
     fn 둘_다_못_읽으면_캐시를_건드리지_않는다() {
-        // 모니터가 하나도 없는 상황 — 낡은 값이라도 붙들고 있는 편이 낫다
         assert!(world_to_cache(None, || None).is_none());
     }
 
     #[test]
     fn 크기가_0인_작업_영역은_모니터로_치지_않는다() {
-        // macOS의 `primary_monitor()`는 화면이 하나도 없어도 항상 Some을 준다.
-        // 걸러내지 않으면 경계가 한 점으로 무너져 **펭귄이 원점에 붙고 자리를 잃는다.**
-        // 이 갈래가 없으면 위의 "둘 다 못 읽으면"이 도달할 수 없는 갈래가 된다.
         assert!(bounds_of_work_area((0, 0), (0, 0), 1.0).is_none());
         assert!(bounds_of_work_area((0, 0), (1_440, 0), 2.0).is_none());
         assert!(bounds_of_work_area((0, 0), (0, 900), 2.0).is_none());
@@ -1274,20 +1042,12 @@ mod tests {
 
     #[test]
     fn 덮개는_화면_전체를_배율로_나눈다() {
-        // **작업 영역이 아니라 전체다.** 작업 영역을 쓰면 메뉴바 높이만큼 띠가
-        // 남아 거기서만 커서가 화살표로 돌아온다.
         let rects = field_rects_of(&[((0, 0), (2_880, 1_800), 2.0)]);
         assert_eq!(rects, vec![(0.0, 0.0, 1_440.0, 900.0)]);
     }
 
     #[test]
     fn 화면마다_판을_하나씩_깐다() {
-        // **실제로 겪은 버그 둘이 여기 걸려 있다.**
-        // (1) 펭귄이 있는 화면만 덮었더니 다른 화면에서 방망이가 안 나왔다 —
-        //     커서는 펭귄과 달리 화면을 넘어 다닌다.
-        // (2) 그래서 합집합 하나로 덮으려 했더니 **배율이 다른 화면에서 어긋났다.**
-        //     논리 좌표의 단위가 화면마다 다른데 창 하나는 배율 하나만 쓴다.
-        //     화면마다 창을 따로 만들면 각 창이 자기 배율만 쓴다.
         let rects = field_rects_of(&[
             ((0, 0), (2_880, 1_800), 2.0),
             ((1_800, -333), (3_008, 1_692), 1.0),
@@ -1303,9 +1063,6 @@ mod tests {
 
     #[test]
     fn 크기가_0인_화면은_건너뛴다() {
-        // `primary_monitor()`는 화면이 하나도 없어도 Some을 주면서 크기 0인
-        // 핸들을 내놓는다 (`bounds_of_work_area`와 같은 이유). 그대로 만들면
-        // **클릭을 먹으면서 아무것도 안 덮는 창**이 생긴다
         assert!(field_rects_of(&[]).is_empty());
         assert!(field_rects_of(&[((0, 0), (0, 900), 2.0)]).is_empty());
         assert!(field_rects_of(&[((0, 0), (1_440, 900), 0.0)]).is_empty());
@@ -1322,8 +1079,6 @@ mod tests {
     #[test]
     fn 덮개_라벨이_capabilities에_등록되어_있다() {
         let capabilities = include_str!("../capabilities/default.json");
-        // 화면마다 하나씩이라 글롭으로 등록해야 한다 — 접두어만 적으면
-        // `pinball-field-1`이 안 걸린다
         assert!(
             capabilities.contains(&format!("{FIELD_LABEL_PREFIX}*")),
             "`{FIELD_LABEL_PREFIX}*` 글롭이 capabilities의 windows 목록에 없다"
@@ -1365,9 +1120,6 @@ mod tests {
 
     #[test]
     fn 방금_어긋난_것은_정리하지_않는다() {
-        // 펭귄 추가는 (1) 상태에 넣고 (2) 창을 만드는 두 단계다. 그 사이를 보고
-        // 바로 지우면 **방금 부른 펭귄이 조용히 사라진다** — 추가가 아무 일도
-        // 안 하는 것처럼 보인다. 실제로 한 번 이렇게 깨졌다.
         let mut seen = HashMap::new();
         seen.insert(2, 10_000);
         assert!(due_for_cleanup(&seen, 10_050).is_empty(), "50ms만에 지우면 안 된다");
@@ -1398,8 +1150,6 @@ mod tests {
 
     #[test]
     fn 펫이_아닌_라벨은_id가_없다() {
-        // 커맨드가 "누가 불렀는가"를 라벨로 정하므로, 여기서 새면 팝오버가
-        // 남의 펭귄을 조작하게 된다 (KTD1)
         for label in ["main", "pet", "pet-", "pet-x", "pets-1", "", "PET-1"] {
             assert_eq!(pet_id_from_label(label), None, "`{label}`은 펫 창이 아니다");
         }
@@ -1408,11 +1158,8 @@ mod tests {
     #[test]
     fn 옆자리는_영역_안에_들어온다() {
         let b = Bounds { left: 0.0, right: 1_000.0, top: 0.0, floor_y: 800.0 };
-        // 오른쪽에 자리가 있으면 오른쪽
         assert!(next_to(100.0, b) > 100.0);
-        // 오른쪽 끝이면 왼쪽으로 접는다
         assert!(next_to(b.right, b) < b.right);
-        // 어느 쪽이든 영역 밖으로 나가지 않는다
         for x in [b.left, 500.0, b.right] {
             let n = next_to(x, b);
             assert!(n >= b.left && n <= b.right, "{n}이 영역을 벗어났다");
@@ -1433,7 +1180,6 @@ mod tests {
 
     #[test]
     fn 팝오버는_펭귄_오른쪽에_붙는다() {
-        // 세로로 여유가 있는 높이에서 — 펭귄 높이에 그대로 맞춘다
         let (x, y) = popover_position_near((200.0, 120.0), PET_SIZE, POP, AREA);
         assert_eq!(x, 200.0 + PET_SIZE + POPOVER_GAP);
         assert_eq!(y, 120.0);
@@ -1441,8 +1187,6 @@ mod tests {
 
     #[test]
     fn 아래쪽_펭귄에서는_팝오버가_화면_안으로_올라온다() {
-        // 팝오버(540)가 작업 영역(875)에서 차지하는 몫이 커, 아래쪽에서는
-        // 펭귄 높이에 맞출 수 없다. 잘리는 대신 위로 올라와야 한다
         let (_, y) = popover_position_near((200.0, 760.0), PET_SIZE, POP, AREA);
         assert_eq!(y, AREA.1 + AREA.3 - POP.1);
         assert!(y < 760.0, "펭귄보다 위로 올라와야 한다");
@@ -1450,7 +1194,6 @@ mod tests {
 
     #[test]
     fn 오른쪽이_모자라면_펭귄_왼쪽에_붙는다() {
-        // 오른쪽 끝 근처 — 오른쪽에 붙이면 화면을 넘는다
         let (x, _) = popover_position_near((1200.0, 400.0), PET_SIZE, POP, AREA);
         assert_eq!(x, 1200.0 - POP.0 - POPOVER_GAP);
     }
@@ -1470,7 +1213,6 @@ mod tests {
 
     #[test]
     fn 팝오버가_영역보다_커도_패닉하지_않는다() {
-        // clamp는 max < min이면 패닉한다
         let tiny = (0.0, 0.0, 200.0, 200.0);
         let (x, y) = popover_position_near((10.0, 10.0), PET_SIZE, POP, tiny);
         assert_eq!((x, y), (0.0, 0.0));
@@ -1485,9 +1227,6 @@ mod tests {
 
     #[test]
     fn 겉모습_비교에_핀볼이_들어간다() {
-        // 핀볼 토글은 **동작을 하나도 바꾸지 않는다** — 커서 모양만 달라진다.
-        // `Look`에서 빠뜨리면 그 전이가 웹뷰에 영영 도달하지 않아, 켜도 커서가
-        // 그대로다(조용한 실패).
         let 꺼짐 = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, false);
         let 켜짐 = (Behavior::Walk, Facing::Right, Vertical::Level, false, None, 0, true);
         assert!(should_notify(Some(꺼짐), 켜짐));
@@ -1495,9 +1234,6 @@ mod tests {
 
     #[test]
     fn 핀볼_설정이_없으면_꺼짐이다() {
-        // **`enabled`와 반대 방향의 기본값이다.** 새 모드는 사용자가 켜기
-        // 전에는 아무것도 바꾸지 않아야 한다 — 뒤집히면 착지 4단계가 통째로
-        // 사라진 채로 배포된다.
         assert!(!pinball_from(None));
         assert!(!pinball_from(Some(&serde_json::json!({}))));
         assert!(!pinball_from(Some(&serde_json::json!({ "enabled": true, "count": 3 }))));
@@ -1510,7 +1246,6 @@ mod tests {
 
     #[test]
     fn 테마_설정이_없으면_시스템이다() {
-        // 기본은 "OS를 따른다" — 사용자가 고르기 전에는 아무것도 강제하지 않는다
         assert_eq!(theme_from(None), Theme::System);
         assert_eq!(theme_from(Some(&serde_json::json!({}))), Theme::System);
     }
@@ -1533,7 +1268,6 @@ mod tests {
 
     #[test]
     fn 깨진_테마는_시스템으로_수렴한다() {
-        // 손으로 고친 settings.json이 이상해도 트레이가 안 보이게 되면 안 된다
         assert_eq!(
             theme_from(Some(&serde_json::json!({ "theme": "어둡게" }))),
             Theme::System
@@ -1543,8 +1277,6 @@ mod tests {
 
     #[test]
     fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
-        // 헤엄 중 오름→내림은 동작도 좌우 방향도 그대로다. 이걸 놓치면
-        // 몸 기울기가 영영 갱신되지 않는다
         let up = (Behavior::Swim, Facing::Right, Vertical::Up, true, None, 0, false);
         let down = (Behavior::Swim, Facing::Right, Vertical::Down, true, None, 0, false);
         assert!(should_notify(Some(up), down));
@@ -1559,8 +1291,6 @@ mod tests {
 
     #[test]
     fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
-        // 공중에서 클릭하면 동작·방향은 그대로인 채 air만 달라지는 순간이 있다.
-        // 놓치면 그림자가 공중에 떠 있는 채로 남는다
         let ground = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, false, None, 0, false);
         let air = (Behavior::Sassy { sassy: SassyKind::EyeRoll }, Facing::Right, Vertical::Level, true, None, 0, false);
         assert!(should_notify(Some(ground), air));
@@ -1591,8 +1321,6 @@ mod tests {
 
     #[test]
     fn 경계는_창_여백까지_화면_안에_들어오게_잡는다() {
-        // 배율 1.0, 메뉴바 25px를 뺀 1440x875 영역.
-        // 펭귄만이 아니라 말풍선·방망이 자리까지 화면 안이어야 한다
         let b = bounds_from_work_area((0, 25), (1440, 875), 1.0, 140.0);
         assert_eq!(b.left, PET_PAD_X, "왼쪽 여백만큼 안으로 들어와야 한다");
         assert_eq!(b.right, 1440.0 - 140.0 - PET_PAD_X);
@@ -1620,7 +1348,6 @@ mod tests {
 
     #[test]
     fn 레티나_배율에서도_논리_좌표로_환산한다() {
-        // 물리 2880x1750 = 논리 1440x875 (배율 2.0)
         let b = bounds_from_work_area((0, 50), (2880, 1750), 2.0, 140.0);
         assert_eq!(b.left, PET_PAD_X);
         assert_eq!(b.right, 1440.0 - 140.0 - PET_PAD_X);

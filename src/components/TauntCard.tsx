@@ -7,12 +7,7 @@ interface TauntCardProps {
   onChange: (lines: string[]) => void;
 }
 
-/**
- * 펭귄이 할 말 목록 편집.
- *
- * 펭귄을 우클릭하면 이 카드가 있는 창이 열린다. 추가·수정·삭제만 있고
- * 순서 바꾸기는 없다 — 대사는 무작위로 뽑히므로 순서가 의미를 갖지 않는다.
- */
+/** 펭귄이 할 말 목록 편집. */
 export function TauntCard({ lines, onChange }: TauntCardProps) {
   const [draft, setDraft] = useState("");
   /** 편집 중인 줄의 인덱스. 하나씩만 연다. */
@@ -20,7 +15,6 @@ export function TauntCard({ lines, onChange }: TauntCardProps) {
   const [editDraft, setEditDraft] = useState("");
 
   useEffect(() => {
-    // 목록이 밖에서 바뀌면(다른 창에서 저장 등) 편집을 접는다
     setEditing(null);
   }, [lines]);
 
@@ -34,7 +28,6 @@ export function TauntCard({ lines, onChange }: TauntCardProps) {
   const commitEdit = (index: number) => {
     const line = editDraft.trim();
     setEditing(null);
-    // 비우면 지우는 것과 같다 — 확인을 한 번 더 묻지 않는다
     const next = lines.filter((_, i) => i !== index);
     if (line.length > 0) next.splice(index, 0, line);
     onChange(next);

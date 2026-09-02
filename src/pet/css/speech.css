@@ -1,6 +1,4 @@
-/* ── 킹받는 한마디 ────────────────────────────────────────────────
- * 창 위쪽 여백에 뜬다. 클릭을 가로채면 펭귄을 때리려는 손을 막으므로
- * pointer-events를 끈다. */
+/* ── 킹받는 한마디 ──────────────────────────────────────────────── */
 
 @keyframes pg-bubble-in {
   0% {
@@ -21,8 +19,7 @@
   position: absolute;
   left: 50%;
   top: 4px;
-  /* 애니메이션이 transform을 잡고 있으므로 기본 위치도 keyframe 안에서 잡는다 —
-   * 여기서 translateX만 걸면 애니메이션이 이겨서 어긋난다 */
+  /* 애니메이션이 transform을 잡고 있으므로 기본 위치도 keyframe 안에서 잡는다 — */
   transform: translate(-50%, 0);
   max-width: 212px;
   padding: 9px 13px;

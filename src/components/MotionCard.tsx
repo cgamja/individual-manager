@@ -16,23 +16,12 @@ interface MotionCardProps {
   motions: readonly Motion[];
 }
 
-/**
- * 동작을 지금 시켜보는 카드.
- *
- * 얼음낚시는 십 분에 한 번, 슬라이딩은 삼십 초에 한 번쯤 저절로 나온다.
- * 확인할 방법이 "가만히 기다리기"뿐이면 고쳐 볼 수가 없다.
- *
- * **누를 수 없는 버튼은 비활성으로 보이고 이유를 옆에 적는다** — `PetCountCard`와
- * 같은 규칙이다. 설명은 **동작마다 다르다**: 끝나는 조건이 서로 달라서
- * (낚시는 30~60초를 앉아 있고, 슬라이딩은 2.4초에 끝난다) 한 문장으로 뭉뚱그리면
- * 둘 중 하나는 거짓말이 된다.
- */
+/** 동작을 지금 시켜보는 카드. */
 export function MotionCard({ focused, motions }: MotionCardProps) {
   const [error, setError] = useState<string | null>(null);
   /** 방금 누른 동작 — 설명을 그것만 보여준다. 넷을 한꺼번에 늘어놓으면 안 읽힌다. */
   const [shown, setShown] = useState(0);
-  /** 마지막으로 누른 번째. **늦게 도착한 결과는 버린다** — 빠르게 두 번 누르면
-   * 먼저 누른 쪽의 거절 사유가 나중 동작의 설명 옆에 붙어 엉뚱한 짝이 된다. */
+  /** 마지막으로 누른 번째. **늦게 도착한 결과는 버린다** — 빠르게 두 번 누르면 */
   const pressSeq = useRef(0);
   const noTarget = focused === null;
 

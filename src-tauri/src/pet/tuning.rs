@@ -43,7 +43,17 @@ pub(super) const MAX_STEP_MS: u64 = 250;
 /// 던진 것으로 볼 최소 속도. 이보다 느리면 떨어뜨린 것이다.
 pub(super) const THROW_MIN_SPEED: f64 = 260.0;
 /// 던지기 속도 상한 — 초당 세계를 몇 번 가로지르는가.
-pub(super) const THROW_MAX_WORLDS_PER_SEC: f64 = 0.9;
+///
+/// **두 번의 실패 사이에 있다.** 옛 고정값 2600px/s는 1440px 화면을 0.55초에
+/// 가로질러 눈이 못 따라갔고, 그걸 고치며 넣은 0.9는 1.11초라 이번엔 던진 것
+/// 같지가 않았다(2026-09-02 사용자). 아래 두 `assert!`가 그 두 지점을 벽으로
+/// 세운다 — 값을 만지는 다음 사람이 같은 자리로 되돌아가지 않게 한다.
+pub(super) const THROW_MAX_WORLDS_PER_SEC: f64 = 1.4;
+/// 상한 속도로 세계를 가로지르는 데 걸리는 시간(초)은 비율의 역수다 — 세계
+/// 폭과 무관하다. 그게 이 상수를 비율로 둔 이유이기도 하다.
+const THROW_CROSS_SEC: f64 = 1.0 / THROW_MAX_WORLDS_PER_SEC;
+const _: () = assert!(THROW_CROSS_SEC > 0.6, "너무 빠르다 — 2600px/s 시절로 돌아간다");
+const _: () = assert!(THROW_CROSS_SEC < 0.9, "너무 느리다 — 던진 것 같지 않다");
 /// 세계 폭을 못 구했을 때 쓸 기준 폭.
 pub(super) const FALLBACK_WORLD_WIDTH: f64 = 1_440.0;
 
@@ -196,7 +206,11 @@ const _: () = assert!(BOWLING_GATHER_SPEED < FREAKOUT_SPEED);
 
 /// 맞은 핀이 튕겨 나가는 속도 — 초당 세계를 몇 번 가로지르는가. 던지기보다
 /// 세다: 볼링공에 맞은 핀이 살살 밀려나면 맞은 것으로 안 보인다.
-pub(super) const BOWLING_KNOCK_WORLDS_PER_SEC: f64 = 0.95;
+///
+/// **던지기 상한을 올리면 이 값이 따라 올라간다** — 아래 `assert!`가 그 순서를
+/// 붙들고 있다. 던지기만 올리면 손으로 던진 펭귄이 볼링공에 맞은 핀보다 빨라져
+/// "맞았다"는 그림이 뒤집힌다.
+pub(super) const BOWLING_KNOCK_WORLDS_PER_SEC: f64 = 1.5;
 const _: () = assert!(BOWLING_KNOCK_WORLDS_PER_SEC > THROW_MAX_WORLDS_PER_SEC);
 
 /// 튕겨 나간 핀이 아직 선 핀을 치는 거리. **연쇄가 이 값으로 산다.**

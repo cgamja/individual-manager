@@ -411,6 +411,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             apply_volley(&app, volley, &mut volley_view, scale);
             apply_yacha(&app, yacha, &mut yacha_view, scale);
 
+
             std::thread::sleep(Duration::from_millis(tick_interval(
                 any_moves,
                 any_click_through,

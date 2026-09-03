@@ -1,0 +1,199 @@
+/* 미녀 펭귄 창 — 걸어 들어와 벨트를 채우고 박수를 치고 걸어 나간다.
+   자리는 Rust 틱이 창을 옮겨 정하고, 여기서 그리는 것은 자세뿐이다. */
+
+/* 창 크기·여백·배율은 `base.css`의 `#pet-root`가 쥔다 — 미녀 창은 펫 창과
+   같은 모양이라 같은 규칙을 그대로 탄다. 여기서는 커서만 덮어쓴다:
+   이 창은 클릭을 통과시키므로 잡는 손 모양이 뜰 이유가 없다. */
+.penguin {
+  cursor: default;
+}
+
+/* 걷기 — 다른 마리들이 날아온 것과 대비되어야 "다른 자리에서 온 배우"로
+   읽힌다. 그래서 발을 번갈아 딛는 그림이다. */
+.pg--queen-walk-in .pg-all,
+.pg--queen-walk-out .pg-all {
+  animation: pg-queen-step 0.42s ease-in-out infinite;
+}
+
+/* 든 벨트는 가까운 날개에 매달린 것처럼 같이 흔들린다. **옮긴 자리를 유지한
+   채로** 흔들어야 하므로 keyframes가 `translate`를 함께 들고 있다. */
+.pg--queen-walk-in .pg-wing-near,
+.pg--queen-walk-out .pg-wing-near {
+  animation: pg-queen-carry 0.42s ease-in-out infinite;
+  transform-origin: 66px 52px;
+}
+
+.pg-belt--held.pg--queen-walk-in .pg-belt,
+.pg-belt--held.pg--queen-walk-out .pg-belt {
+  animation: pg-queen-carry-belt 0.42s ease-in-out infinite;
+}
+
+@keyframes pg-queen-carry-belt {
+  0%,
+  100% {
+    transform: translate(33px, 1px) rotate(-7deg);
+  }
+  50% {
+    transform: translate(33px, 1px) rotate(-13deg);
+  }
+}
+
+@keyframes pg-queen-carry {
+  0%,
+  100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(-13deg);
+  }
+}
+
+@keyframes pg-queen-step {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(1.5deg);
+  }
+}
+
+.pg--queen-walk-in .pg-foot--near,
+.pg--queen-walk-out .pg-foot--near {
+  animation: pg-queen-foot 0.42s ease-in-out infinite;
+  transform-origin: 56px 104px;
+}
+
+.pg--queen-walk-in .pg-foot--far,
+.pg--queen-walk-out .pg-foot--far {
+  animation: pg-queen-foot 0.42s ease-in-out infinite reverse;
+  transform-origin: 46px 104px;
+}
+
+@keyframes pg-queen-foot {
+  0%,
+  100% {
+    transform: translateX(-3px);
+  }
+  50% {
+    transform: translateX(3px);
+  }
+}
+
+/* 벨트 채우기 — 몸을 앞으로 기울이고 벨트를 든 날개를 뻗는다. */
+.pg--queen-belting .pg-all {
+  animation: pg-queen-offer 1.2s ease-in-out 1 forwards;
+}
+
+@keyframes pg-queen-offer {
+  0% {
+    transform: rotate(0deg) translateX(0);
+  }
+  45% {
+    transform: rotate(9deg) translateX(-10px);
+  }
+  100% {
+    transform: rotate(4deg) translateX(-6px);
+  }
+}
+
+/* **벨트가 날개와 같은 변환을 받는다** — 팔로 든 것이라야 "들고 온다"로 읽힌다.
+   걸을 때 함께 흔들리고 채울 때 함께 뻗는다. */
+.pg--queen-belting .pg-wing-near {
+  animation: pg-queen-reach 1.2s ease-in-out 1 forwards;
+  transform-origin: 66px 52px;
+}
+
+.pg-belt--held.pg--queen-belting .pg-belt {
+  animation: pg-queen-reach-belt 1.2s ease-in-out 1 forwards;
+}
+
+@keyframes pg-queen-reach-belt {
+  0% {
+    transform: translate(33px, 1px) rotate(0deg);
+  }
+  100% {
+    transform: translate(33px, 1px) rotate(-34deg);
+  }
+}
+
+@keyframes pg-queen-reach {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(-34deg);
+  }
+}
+
+/* 박수 — 세레모니 동안 옆에서 날개를 마주친다. */
+.pg--queen-clap .pg-wing-near {
+  animation: pg-queen-clap-near 0.28s ease-in-out infinite;
+  transform-origin: 66px 52px;
+}
+
+.pg--queen-clap .pg-wing-far {
+  animation: pg-queen-clap-far 0.28s ease-in-out infinite;
+  transform-origin: 38px 52px;
+}
+
+@keyframes pg-queen-clap-near {
+  0%,
+  100% {
+    transform: rotate(-40deg);
+  }
+  50% {
+    transform: rotate(-16deg);
+  }
+}
+
+@keyframes pg-queen-clap-far {
+  0%,
+  100% {
+    transform: rotate(40deg);
+  }
+  50% {
+    transform: rotate(16deg);
+  }
+}
+
+.pg--queen-clap .pg-all {
+  animation: pg-queen-bounce 0.56s ease-in-out infinite;
+}
+
+@keyframes pg-queen-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg--queen-walk-in .pg-all,
+  .pg--queen-walk-out .pg-all,
+  .pg--queen-walk-in .pg-foot--near,
+  .pg--queen-walk-out .pg-foot--near,
+  .pg--queen-walk-in .pg-foot--far,
+  .pg--queen-walk-out .pg-foot--far,
+  .pg--queen-belting .pg-all,
+  .pg--queen-belting .pg-wing-near,
+  .pg-belt--held .pg-belt,
+  .pg--queen-clap .pg-all,
+  .pg--queen-clap .pg-wing-near,
+  .pg--queen-clap .pg-wing-far,
+  .pg--queen-walk-in .pg-wing-near,
+  .pg--queen-walk-out .pg-wing-near,
+  .pg-belt--held .pg-belt {
+    animation: none;
+    transition: none;
+  }
+
+  /* 벨트는 **자리를 잃으면 안 된다** — 애니메이션만 끄고 옮긴 자리는 남긴다.
+     안 그러면 벨트가 허리로 돌아가 미녀가 빈손으로 걸어온다. */
+  .pg-belt--held .pg-belt {
+    transform: translate(33px, 1px);
+  }
+}

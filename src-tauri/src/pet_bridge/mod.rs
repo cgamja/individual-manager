@@ -32,6 +32,12 @@ pub const EVENT_BALL_STATE: &str = "bowling://ball";
 /// 비치볼 창이 구독하는 상태 이벤트. 공 창이 따로라 이벤트도 따로다.
 pub const EVENT_VOLLEY_STATE: &str = "volley://ball";
 
+/// 미녀 펭귄 창이 구독하는 상태 이벤트. 창이 따로라 이벤트도 따로다.
+pub const EVENT_YACHA_QUEEN: &str = "yacha://queen";
+
+/// 야차 판이 **끝났음**을 설정 창에 알린다 (볼링·발리볼과 같은 자리).
+pub const EVENT_YACHA_OVER: &str = "yacha://over";
+
 /// 비치발리볼 판이 **끝났음**을 설정 창에 알린다. 판을 끝내는 것은 예산이지
 /// 사용자가 아니라서, 이게 없으면 버튼이 비활성인 채로 남는다 (볼링과 같다).
 pub const EVENT_VOLLEY_OVER: &str = "volley://over";
@@ -104,15 +110,21 @@ pub struct PetSummary {
     pub focused: Option<PetId>,
     /// 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로(A3) 버튼을 끈다.
     pub bowling: bool,
-    /// 비치발리볼 판이 도는 중인가. **두 판은 서로를 배제하므로** 어느 쪽이든
-    /// 도는 동안 버튼 둘이 함께 비활성된다.
+    /// 비치발리볼 판이 도는 중인가. **세 판은 서로를 배제하므로** 어느 하나든
+    /// 도는 동안 버튼 셋이 함께 비활성된다.
     pub volleyball: bool,
+    /// 단체 야차 판이 도는 중인가. 위와 같은 규칙이다.
+    pub yacha: bool,
 }
 
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
 /// **CSS 클래스에 영향을 주는 값은 빠짐없이 들어가야 한다.** 하나라도 빠지면
 /// 그 값만 바뀌는 전이가 웹뷰에 영영 도달하지 않는다(조용한 실패).
-pub type Look = (Behavior, Facing, Vertical, bool, Option<u64>, u64, bool);
+/// **`punch_seq`가 들어 있는 이유는 `whack_seq`가 들어 있는 이유와 같다.**
+/// 난투 중에는 연타가 흔한데(스윙 뒤 또 스윙이 64%) 그때 국면은 `Punch` 그대로고,
+/// 막힌 주먹은 맞은 쪽을 `Guard` 그대로 둔다. 번호를 안 보면 **그 스냅샷이
+/// 아예 안 나가** 퍽이 유실되고 그림도 안 다시 뜬다.
+pub type Look = (Behavior, Facing, Vertical, bool, Option<u64>, u64, bool, u64);
 
 pub fn look_of(snapshot: &Snapshot) -> Look {
     (
@@ -123,6 +135,7 @@ pub fn look_of(snapshot: &Snapshot) -> Look {
         snapshot.speech.map(|s| s.seq),
         snapshot.whack_seq,
         snapshot.pinball,
+        snapshot.punch_seq,
     )
 }
 
@@ -153,7 +166,9 @@ mod bounds;
 pub mod commands;
 mod hit;
 mod pinball;
+mod depth;
 mod volleyball;
+mod yacha;
 mod popover;
 mod scale;
 mod settings;
@@ -165,7 +180,9 @@ pub use bounds::*;
 pub use commands::*;
 pub use hit::*;
 pub use pinball::*;
+pub use depth::*;
 pub use volleyball::*;
+pub use yacha::*;
 pub use popover::*;
 pub use scale::*;
 pub use settings::*;

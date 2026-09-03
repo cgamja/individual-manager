@@ -27,6 +27,19 @@ export type BowlingPhase = "gather" | "ready" | "scatter";
  *
  * `cheer`/`sulk`는 **싸가지 반응의 그림을 CSS에서 재사용한다.** 국면을
  * `Volleyball` 안에 남긴 이유는 그래야 축하하는 동안에도 옷이 남기 때문이다. */
+/** 단체 야차의 마리 국면. 판 국면은 Rust가 갖고 웹뷰는 이것만 본다. */
+export type YachaPhase =
+  | "gather"
+  | "hunt"
+  | "circle"
+  | "back"
+  | "guard"
+  | "punch"
+  | "hurt"
+  | "down"
+  | "win"
+  | "champ";
+
 export type VolleyPhase =
   | "gather"
   | "ready"
@@ -63,7 +76,8 @@ export type Behavior =
   | { kind: "slide" }
   | { kind: "ice_fishing"; fishing: FishingPhase }
   | { kind: "bowling"; bowling: BowlingPhase }
-  | { kind: "volleyball"; volley: VolleyPhase };
+  | { kind: "volleyball"; volley: VolleyPhase }
+  | { kind: "yacha"; yacha: YachaPhase };
 
 /** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
 export interface Speech {
@@ -85,6 +99,15 @@ export interface PetSnapshot {
   whack_seq: number;
   /** 핀볼 모드인가. 커서를 채로 바꾸는 데 쓴다. */
   pinball: boolean;
+  /** 야차에서 **이 마리가 이번 라운드의 대표 타격**으로 뽑힌 누적 횟수.
+   * 늘어날 때마다 "퍽"이 한 발 난다 — 라운드마다 딱 한 마리만 오른다. */
+  punch_seq: number;
+  /** 그 한 발이 쓰러뜨린 한 방인가. 반음을 낮춰 더 낮고 길게 낸다. */
+  punch_down: boolean;
+  /** 그 한 발이 막혔는가. 화남 표시가 회색으로 뜨고 소리도 둔탁하다.
+   *
+   * **국면으로는 알 수 없다** — 막히면 맞은 쪽이 `Guard` 그대로다. */
+  punch_blocked: boolean;
   behavior: Behavior;
 }
 
@@ -139,6 +162,8 @@ export const EVENT_BALL_STATE = "bowling://ball";
 export const EVENT_BOWLING_OVER = "bowling://over";
 
 /** 비치볼 창이 구독하는 상태 이벤트. 공 창이 따로라 이벤트도 따로다. */
+export const EVENT_YACHA_QUEEN = "yacha://queen";
+export const EVENT_YACHA_OVER = "yacha://over";
 export const EVENT_VOLLEY_STATE = "volley://ball";
 
 /** 비치발리볼 판이 **끝났을 때** 온다. 판을 끝내는 것은 예산이지 사용자가
@@ -225,6 +250,7 @@ export const behaviorClass = (behavior: Behavior): string => {
   if (behavior.kind === "freakout") return `pg--freakout-${kebab(behavior.freakout)}`;
   if (behavior.kind === "bowling") return `pg--bowling-${kebab(behavior.bowling)}`;
   if (behavior.kind === "volleyball") return `pg--volley-${kebab(behavior.volley)}`;
+  if (behavior.kind === "yacha") return `pg--yacha-${kebab(behavior.yacha)}`;
   return `pg--${kebab(behavior.kind)}`;
 };
 
@@ -242,6 +268,9 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--volley-bump" ||
   cls === "pg--volley-cheer" ||
   cls === "pg--volley-sulk" ||
+  cls === "pg--yacha-punch" ||
+  cls === "pg--yacha-hurt" ||
+  cls === "pg--yacha-win" ||
   cls === "pg--swing" ||
   cls.startsWith("pg--sassy-") ||
   (cls.startsWith("pg--fishing-") && cls !== "pg--fishing-wait");
@@ -250,6 +279,8 @@ export const isOneShot = (cls: string): boolean =>
 export interface RestartKey {
   cls: string;
   whackSeq: number;
+  /** 야차의 대표 타격 번호. **연타를 구분하는 유일한 값이다.** */
+  punchSeq: number;
 }
 
 /** 한 번짜리 애니메이션을 처음부터 다시 재생해야 하는가.
@@ -268,8 +299,15 @@ export interface RestartKey {
  * 100ms만 반복하며 **영원히 부풀기만 한다.** 그건 이 항목이 고치려는 것과
  * 정확히 반대다. */
 export const shouldRestart = (prev: RestartKey | null, next: RestartKey): boolean => {
+  if (prev === null) return isOneShot(next.cls);
+  // **야차의 연타는 클래스가 안 바뀐다.** 스윙 뒤 또 스윙이 64%라 국면이
+  // `Punch` 그대로고, 막힌 주먹은 맞은 쪽을 `Guard` 그대로 둔다. 그래서
+  // 번호로만 구분된다 — `pg--swing`이 `whackSeq`로 구분되는 것과 같은 자리다.
+  // **일회성 클래스인지 안 따진다**: 막힌 주먹은 `Guard`(반복 자세)인 채로
+  // 화남 표시만 다시 떠야 하기 때문이다.
+  if (next.punchSeq > prev.punchSeq) return true;
   if (!isOneShot(next.cls)) return false;
-  if (prev === null || prev.cls !== next.cls) return true;
+  if (prev.cls !== next.cls) return true;
   return next.cls === "pg--swing" && next.whackSeq > prev.whackSeq;
 };
 
@@ -294,6 +332,7 @@ export interface PetSummary {
   /** 비치발리볼 판이 도는 중인가. **두 판은 서로를 배제하므로** 어느 쪽이든
    * 도는 동안 버튼 둘이 함께 비활성된다. */
   volleyball: boolean;
+  yacha: boolean;
 }
 
 /** 볼링 공의 상태. **위치는 여기 없다** — 창이 옮기므로, 넣으면 굴러가는
@@ -342,6 +381,33 @@ export const startBowling = (): Promise<void> => invoke("bowling_start");
  * 누르면 20초쯤 알아서 놀고 끝난다. 볼링과 마찬가지로 화면의 펭귄 전부가
  * 참여하므로 대상을 안 고른다. 두 마리부터 열린다. */
 export const startVolleyball = (): Promise<void> => invoke("volleyball_start");
+
+/** 단체 야차 한 판. 볼링·발리볼과 셋이 서로를 배제한다. */
+export const startYacha = (): Promise<void> => invoke("yacha_start");
+
+/** 미녀 펭귄의 자세. 자리는 Rust가 창을 옮겨 정한다. */
+export type QueenPose = "walk_in" | "belting" | "clap" | "walk_out";
+
+export interface QueenSnapshot {
+  x: number;
+  y: number;
+  facing: Facing;
+  pose: QueenPose;
+}
+
+/** 미녀 창이 **처음 뜰 때** 한 번 받아 간다 — 구독만으로는 첫 국면을 놓친다. */
+export const getQueenState = (): Promise<QueenSnapshot | null> =>
+  invoke("yacha_get_queen");
+
+export const onQueenState = (
+  cb: (queen: QueenSnapshot) => void,
+): Promise<UnlistenFn> =>
+  getCurrentWebviewWindow().listen<QueenSnapshot>(EVENT_YACHA_QUEEN, (event) =>
+    cb(event.payload),
+  );
+
+export const onYachaOver = (cb: () => void): Promise<UnlistenFn> =>
+  getCurrentWebviewWindow().listen(EVENT_YACHA_OVER, () => cb());
 
 /** 공을 집는다. 굴러가는 중이면 `false` — 한 판에 한 번 굴린다. */
 export const startBallDrag = (): Promise<boolean> => invoke("ball_drag_start");

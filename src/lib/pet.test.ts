@@ -95,7 +95,7 @@ describe("behaviorClass", () => {
 
 describe("shouldRestart", () => {
   /** 빠따 횟수가 그대로인 평범한 전이. */
-  const k = (cls: string, whackSeq = 0) => ({ cls, whackSeq });
+  const k = (cls: string, whackSeq = 0, punchSeq = 0) => ({ cls, whackSeq, punchSeq });
 
   it("동작이_바뀌면_되감는다", () => {
     expect(shouldRestart(k("pg--fishing-bite"), k("pg--fishing-catch"))).toBe(true);
@@ -121,6 +121,20 @@ describe("shouldRestart", () => {
   it("숨_고르기는_한_번짜리고_광란은_아니다", () => {
     expect(isOneShot("pg--freakout-pant")).toBe(true);
     expect(isOneShot("pg--freakout-dash")).toBe(false);
+  });
+
+  it("야차_연타는_punchSeq로_되감는다", () => {
+    // 스윙 뒤 또 스윙이 64%라 **국면이 안 바뀐다.** 번호 말고는 달라지는 게 없다.
+    expect(shouldRestart(k("pg--yacha-punch", 0, 3), k("pg--yacha-punch", 0, 4))).toBe(true);
+  });
+
+  it("막힌_주먹도_되감는다", () => {
+    // 막히면 맞은 쪽이 `Guard` 그대로다 — 반복 자세라도 화남 표시는 다시 떠야 한다.
+    expect(shouldRestart(k("pg--yacha-guard", 0, 7), k("pg--yacha-guard", 0, 8))).toBe(true);
+  });
+
+  it("punchSeq가_그대로면_안_되감는다", () => {
+    expect(shouldRestart(k("pg--yacha-guard", 0, 8), k("pg--yacha-guard", 0, 8))).toBe(false);
   });
 
   it("반복_애니메이션은_되감지_않는다", () => {

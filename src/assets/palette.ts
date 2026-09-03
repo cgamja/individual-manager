@@ -81,3 +81,24 @@ export const SAND_FOAM = "#fff3d4";
 export const NET_POST = "#a9743c";
 /** 그물. */
 export const NET_MESH = "#f4f1e8";
+
+// ── 단체 야차 ──────────────────────────────────────────────
+
+/** 복싱 장갑. */
+export const GLOVE = "#c8242e";
+export const GLOVE_DARK = "#8d1520";
+/** 장갑 손목 끈. */
+export const GLOVE_LACE = "#f2e4d0";
+
+/** 챔피언 벨트의 가죽 띠. */
+export const BELT_LEATHER = "#3a2a1a";
+/** 벨트 가운데 금빛 원판. */
+export const BELT_GOLD = "#e8c15a";
+export const BELT_GOLD_DARK = "#a8842c";
+
+/** 화장한 미녀 펭귄 — 입술과 볼터치. 속눈썹은 `INK`를 쓴다. */
+export const LIP = "#e0466b";
+export const BLUSH = "#f7a8bb";
+
+/** 타격의 화남 표시(💢). */
+export const ANGER = "#e03131";

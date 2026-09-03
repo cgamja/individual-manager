@@ -22,6 +22,8 @@ import {
   startBowling,
   startVolleyball,
   onVolleyOver,
+  startYacha,
+  onYachaOver,
   freakoutPet,
   type PetSummary,
 } from "./lib/pet";
@@ -81,6 +83,7 @@ function App() {
     focused: null,
     bowling: false,
     volleyball: false,
+    yacha: false,
   });
 
   useEffect(() => {
@@ -149,6 +152,19 @@ function App() {
       })
       .catch(() => {});
 
+    // 야차도 같다 — 세레모니가 끝나면 판이 스스로 접힌다.
+    let unlistenYacha: UnlistenFn | undefined;
+    void onYachaOver(() => {
+      getPetSummary()
+        .then(setPetSummary)
+        .catch(() => {});
+    })
+      .then((off) => {
+        if (cancelled) off();
+        else unlistenYacha = off;
+      })
+      .catch(() => {});
+
     let unlisten: UnlistenFn | undefined;
     void onPetSettings(({ pinball }) => {
       setPinballEnabledState(pinball);
@@ -168,6 +184,7 @@ function App() {
       unlisten?.();
       unlistenBowling?.();
       unlistenVolley?.();
+      unlistenYacha?.();
     };
   }, []);
 
@@ -357,6 +374,18 @@ function App() {
     await refreshPets();
   }, [refreshPets]);
 
+  const handleYacha = useCallback(async () => {
+    try {
+      await startYacha();
+      setBoardNotice(null);
+    } catch (err) {
+      // 코어가 이유를 셋으로 갈라 준다 (두 마리부터 / 이미 판이 돈다 / 자리가
+      // 없다). 콘솔에만 찍으면 사용자에게는 "안 눌린다"로 보인다.
+      setBoardNotice(typeof err === "string" ? err : "단체 야차를 못 열었어요");
+    }
+    await refreshPets();
+  }, [refreshPets]);
+
   /** 대사 편집 — 화면을 먼저 바꾸고 저장한다. 실패하면 되돌린다. */
   const handleTauntsChange = useCallback(
     async (next: string[]) => {
@@ -401,6 +430,8 @@ function App() {
         bowlingRunning={petSummary.bowling}
         onBowling={() => void handleBowling()}
         volleyballRunning={petSummary.volleyball}
+        yachaRunning={petSummary.yacha}
+        onYacha={() => void handleYacha()}
         onVolleyball={() => void handleVolleyball()}
       />
       {boardNotice && (

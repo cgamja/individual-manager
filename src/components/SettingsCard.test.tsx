@@ -22,6 +22,8 @@ const props = {
   onBowling: () => {},
   volleyballRunning: false,
   onVolleyball: () => {},
+  yachaRunning: false,
+  onYacha: () => {},
 };
 
 describe("SettingsCard", () => {
@@ -163,5 +165,50 @@ describe("SettingsCard", () => {
     render(<SettingsCard {...props} />);
     expect(screen.getByText(/구경만 하면 돼요/)).toBeInTheDocument();
     expect(screen.getByText(/두 마리부터/)).toBeInTheDocument();
+  });
+});
+
+describe("판 셋은 서로를 배제한다", () => {
+  const 판_버튼 = () =>
+    screen
+      .getAllByRole("button")
+      .filter((b) =>
+        ["볼링 한 판", "비치발리볼 한 판", "단체 야차 한 판"].some((t) =>
+          (b.textContent ?? "").includes(t),
+        ),
+      );
+
+  it("야차가_도는_동안_버튼_셋이_모두_비활성이다", () => {
+    render(<SettingsCard {...props} yachaRunning />);
+    const 버튼 = screen.getAllByRole("button");
+    const 볼링 = 버튼.find((b) => b.textContent?.includes("볼링 한 판"));
+    const 발리볼 = 버튼.find((b) => b.textContent?.includes("비치발리볼 한 판"));
+    const 야차 = 버튼.find((b) => b.textContent?.includes("치고받는 중"));
+    expect(볼링).toBeDisabled();
+    expect(발리볼).toBeDisabled();
+    expect(야차).toBeDisabled();
+  });
+
+  it("볼링이_도는_동안_야차도_비활성이다", () => {
+    render(<SettingsCard {...props} bowlingRunning />);
+    const 야차 = screen
+      .getAllByRole("button")
+      .find((b) => b.textContent?.includes("단체 야차 한 판"));
+    expect(야차).toBeDisabled();
+  });
+
+  it("아무_판도_안_돌면_셋_다_눌린다", () => {
+    render(<SettingsCard {...props} />);
+    for (const b of 판_버튼()) expect(b).not.toBeDisabled();
+  });
+
+  it("야차_버튼이_핸들러를_부른다", () => {
+    const onYacha = vi.fn();
+    render(<SettingsCard {...props} onYacha={onYacha} />);
+    const 야차 = screen
+      .getAllByRole("button")
+      .find((b) => b.textContent?.includes("단체 야차 한 판"));
+    fireEvent.click(야차!);
+    expect(onYacha).toHaveBeenCalledOnce();
   });
 });

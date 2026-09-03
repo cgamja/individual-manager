@@ -62,6 +62,16 @@ export function BodyBack() {
         <g className="pg-gaze">
           <circle className="pg-eye" cx="57.5" cy="27.5" r="2.5" fill={INK} />
         </g>
+        {/* 야차에서 쓰러졌을 때의 X자 눈. 평소에는 숨고, 뜰 때는 위의
+            `pg-eye`가 대신 숨는다 — 둘이 겹치면 X 위에 점이 남는다. */}
+        <path
+          className="pg-eye-x"
+          d="M54.6 24.6 L60.4 30.4 M60.4 24.6 L54.6 30.4"
+          stroke={INK}
+          strokeWidth="1.9"
+          strokeLinecap="round"
+          fill="none"
+        />
       </g>
     </>
   );

@@ -101,6 +101,16 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "volleyball", volley: "bump" },
   { kind: "volleyball", volley: "cheer" },
   { kind: "volleyball", volley: "sulk" },
+  { kind: "yacha", yacha: "gather" },
+  { kind: "yacha", yacha: "hunt" },
+  { kind: "yacha", yacha: "circle" },
+  { kind: "yacha", yacha: "back" },
+  { kind: "yacha", yacha: "guard" },
+  { kind: "yacha", yacha: "punch" },
+  { kind: "yacha", yacha: "hurt" },
+  { kind: "yacha", yacha: "down" },
+  { kind: "yacha", yacha: "win" },
+  { kind: "yacha", yacha: "champ" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },
   { kind: "ice_fishing", fishing: "bite" },
@@ -332,6 +342,8 @@ describe("동작 길이 동기화", () => {
     ["pg--freakout-pant", "FREAKOUT_PANT_MS"],
     ["pg--bowling-scatter", "BOWLING_SCATTER_MS"],
     ["pg--volley-bump", "VOLLEY_BUMP_MS"],
+    ["pg--yacha-punch", "YACHA_SWING_MS"],
+    ["pg--yacha-hurt", "YACHA_HURT_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
     const b = rustMs(konst);
@@ -647,6 +659,14 @@ describe("평소 숨기는 도형", () => {
     "pg-fish",
     "pg-beak-lower",
     "pg-luau",
+    // 야차의 새 도형들. **후광(`pg-halo`)이 같은 도형을 한 번 더 그리므로**
+    // `opacity: 0`으로 감추면 후광에만 잔상이 남는다 — 어두운 바탕에서 검은
+    // 몸이 묻히는 것을 후광이 막고 있어서, 한쪽만 숨으면 그 방어가 깨진다.
+    "pg-gloves",
+    "pg-belt",
+    "pg-anger",
+    "pg-eye-x",
+    "pg-glam",
   ];
 
   /** 선택자에 이 클래스가 정확히 등장하는 모든 규칙 블록의 본문. */
@@ -704,5 +724,23 @@ describe("PetApp이 쓰는 클래스에 스타일이 있다", () => {
 
   it.each([...used].map((c) => [c] as const))("%s 에 규칙이 있다", (cls) => {
     expect(hasRule(css, cls), `.${cls} 규칙이 없다`).toBe(true);
+  });
+});
+
+describe("야차의 막힘 표시", () => {
+  /** 주석을 걷어낸 CSS — 설명에 적힌 선택자에 걸리지 않게 한다. */
+  const 코드만 = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+
+  it("국면이_아니라_신호에_걸린다", () => {
+    // `.pg--yacha-guard .pg-anger`에 걸면 **정반대가 된다**: 가드 자세는 링에
+    // 도착할 때도, 12%로 고를 때도, 혼자 남은 챔피언도 밟으므로 주먹과 무관하게
+    // 번쩍이고, 정작 막았을 때는 맞은 쪽이 `Guard` 그대로라 아무것도 안 뜬다.
+    expect(코드만).not.toMatch(/\.pg--yacha-guard\s+\.pg-anger/);
+    expect(코드만).toMatch(/\.pg--punch-blocked\s+\.pg-anger/);
+  });
+
+  it("화남_표시는_후광에서_빠진다", () => {
+    // 후광이 같은 도형을 밝게 한 벌 더 그려 붉은 표시를 회색 X로 덮는다.
+    expect(코드만).toMatch(/\.pg-halo\s+\.pg-anger/);
   });
 });

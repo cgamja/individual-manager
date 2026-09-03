@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 
-use crate::pet::{BallSnapshot, PetId, Snapshot, VolleySnapshot, World};
+use crate::pet::{BallSnapshot, PetId, Snapshot, VolleySnapshot, World, YachaSnapshot};
 
 use super::*;
 
@@ -182,6 +182,8 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
         let mut ball_view = BallView::default();
         // 비치발리볼의 창 둘(코트·공). 본문은 `pet_bridge/volleyball.rs`에 있다.
         let mut volley_view = VolleyView::default();
+        // 단체 야차의 창 하나(미녀 펭귄). 본문은 `pet_bridge/yacha.rs`에 있다.
+        let mut yacha_view = YachaView::default();
         let mut mismatch_since: HashMap<PetId, u64> = HashMap::new();
         let mut click_view: HashMap<PetId, ClickThroughView> = HashMap::new();
         // **배율이 둘이다.** `dpi`는 화면의 물리→논리 배율(커서를 논리 좌표로
@@ -263,6 +265,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 // 굴릴 핀이 없는 공이 바탕화면에 영원히 놓여 있다 (R11).
                 apply_ball(&app, false, None, &mut ball_view, scale);
                 apply_volley(&app, None, &mut volley_view, scale);
+                apply_yacha(&app, None, &mut yacha_view, scale);
                 std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
                 continue;
             }
@@ -318,7 +321,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
 
             // 2) 코어를 한 번에 진행시킨다. **락을 마리마다 잡지 않는다** — 틱 하나가
             //    전 마리에 대해 원자적이어야 서로를 보는 판정을 여기에 얹을 수 있다.
-            let (stepped, ball, board_alive, volley) = {
+            let (stepped, ball, board_alive, volley, yacha) = {
                 let state = app.state::<PetState>();
                 let mut pets = 잠금(&state.pets);
                 let stepped = pets.step_all(now, |id| {
@@ -332,7 +335,8 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 let ball = pets.bowling().and_then(|b| b.ball());
                 let board_alive = pets.bowling().is_some();
                 let volley: Option<VolleySnapshot> = pets.volleyball().map(|v| v.snapshot());
-                (stepped, ball, board_alive, volley)
+                let yacha: Option<YachaSnapshot> = pets.yacha().map(|y| y.snapshot());
+                (stepped, ball, board_alive, volley, yacha)
             };
 
             // 3) 창 위치와 웹뷰에 반영한다. **락 밖에서** 한다 — 창 IPC는 이벤트 루프를
@@ -402,8 +406,11 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
 
             any_moves |= ball.is_some_and(|b| b.rolling);
             any_moves |= volley.is_some();
+            any_moves |= yacha.is_some();
             apply_ball(&app, board_alive, ball, &mut ball_view, scale);
             apply_volley(&app, volley, &mut volley_view, scale);
+            apply_yacha(&app, yacha, &mut yacha_view, scale);
+
 
             std::thread::sleep(Duration::from_millis(tick_interval(
                 any_moves,

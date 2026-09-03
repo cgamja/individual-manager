@@ -123,6 +123,7 @@ pub fn run() {
                 hidden_at: Mutex::new(None),
             });
 
+
             let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit])?;
 
@@ -193,6 +194,8 @@ pub fn run() {
             pet_bridge::commands::bowling_start,
             pet_bridge::commands::volleyball_start,
             pet_bridge::commands::volley_get_state,
+            pet_bridge::commands::yacha_start,
+            pet_bridge::commands::yacha_get_queen,
             pet_bridge::commands::ball_drag_start,
             pet_bridge::commands::ball_drag_by,
             pet_bridge::commands::ball_drag_end,

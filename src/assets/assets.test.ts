@@ -49,6 +49,19 @@ describe("펭귄 그림", () => {
     expect(그린다(true)).toMatchSnapshot();
   });
 
+  it("화장한_미녀_펭귄_그림이_그대로다", () => {
+    const { container } = render(createElement(Penguin, { female: true, glam: true }));
+    expect(태그마다_줄바꿈(container.innerHTML)).toMatchSnapshot();
+  });
+
+  it("화장은_켠_펭귄만_다르다", () => {
+    expect(그린다(true)).not.toBe(
+      태그마다_줄바꿈(
+        render(createElement(Penguin, { female: true, glam: true })).container.innerHTML,
+      ),
+    );
+  });
+
   it("암수가_서로_다른_그림이다", () => {
     // 둘이 같은 스냅샷으로 굳으면 `female` 분기가 죽어도 통과한다.
     // 마크업 차이는 `.pg-female` 클래스 하나뿐이다.

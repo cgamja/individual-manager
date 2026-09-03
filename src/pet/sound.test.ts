@@ -21,6 +21,9 @@ const snap = (over: Partial<PetSnapshot> = {}): PetSnapshot => ({
   speech: null,
   whack_seq: 0,
   pinball: false,
+  punch_seq: 0,
+  punch_down: false,
+  punch_blocked: false,
   behavior: { kind: "walk" },
   ...over,
 });
@@ -351,5 +354,44 @@ describe("voiceOffsetFor — 마리별 목소리", () => {
     expect(voiceOffsetFor("main")).toBe(0);
     expect(voiceOffsetFor("")).toBe(0);
     expect(voiceOffsetFor("pet-")).toBe(0);
+  });
+});
+
+describe("야차의 퍽", () => {
+  it("punch_seq가_늘면_퍽이_난다", () => {
+    const prev = snap({ punch_seq: 3 });
+    const next = snap({ punch_seq: 4 });
+    expect(soundsFor(prev, next)).toContain("punch");
+  });
+
+  it("대표가_아니면_소리를_안_낸다", () => {
+    // 맞기만 한 마리는 `punch_seq`가 안 오른다 — 라운드마다 딱 한 마리다.
+    const prev = snap({ punch_seq: 3, behavior: { kind: "yacha", yacha: "guard" } });
+    const next = snap({ punch_seq: 3, behavior: { kind: "yacha", yacha: "hurt" } });
+    expect(soundsFor(prev, next)).toEqual([]);
+  });
+
+  it("같은_seq가_두_번_오면_한_번만_난다", () => {
+    const a = snap({ punch_seq: 5 });
+    expect(soundsFor(a, snap({ punch_seq: 5 }))).toEqual([]);
+  });
+
+  it("쓰러뜨린_한_방은_다른_소리다", () => {
+    const prev = snap({ punch_seq: 1 });
+    const next = snap({ punch_seq: 2, punch_down: true });
+    expect(soundsFor(prev, next)).toContain("punch-down");
+    expect(soundsFor(prev, next)).not.toContain("punch");
+  });
+
+  it("퍽과_쓰러뜨린_한_방은_서로를_안_거른다", () => {
+    // 쿨다운은 **이름별**로 걸린다. 둘이 다른 이름이라 쓰러뜨린 라운드에
+    // 평소 퍽이 방금 났어도 마무리 한 방이 안 걸러진다.
+    expect(passesCooldown("punch", 0, 10)).toBe(false);
+    expect(passesCooldown("punch-down", undefined, 10)).toBe(true);
+  });
+
+  it("퍽에도_쿨다운이_있다", () => {
+    expect(SOUND_COOLDOWN_MS.punch).toBeGreaterThan(0);
+    expect(SOUND_COOLDOWN_MS["punch-down"]).toBeGreaterThan(0);
   });
 });

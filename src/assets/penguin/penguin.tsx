@@ -1,35 +1,23 @@
 /** 레이어드 SVG 펭귄 — `assets/penguin-icon.png`의 아델리 펭귄을 옮겨 그렸다 (KTD7). */
 
-/** 몸통·머리·날개의 검정. 순검정보다 살짝 풀어야 투명 배경에서 덜 딱딱하다. */
-const INK = "#1b1f24";
-/** 배·눈테의 흰색. */
-const SNOW = "#f7f9fb";
-/** 부리 — 아델리 펭귄은 벽돌빛이 도는 검정이다. */
-const BEAK = "#4a2f2f";
-/** 발 — 분홍빛 살색. */
-const FOOT = "#e3a892";
-/** 방망이 나무결. */
-const BAT_WOOD = "#a1712f";
-/** 방망이 손잡이. */
-const BAT_GRIP = "#26262b";
-/** 얼음 구멍 속 — 물빛. */
-const HOLE = "#2f4a63";
-/** 찌 — 눈에 띄어야 "지금 저기를 보고 있다"가 읽힌다. */
-const FLOAT = "#d94f3d";
-/** 잡은 물고기. */
-const FISH = "#8fb3c9";
-/** 지푸라기(라피아) — **상의도 하의도 같은 재질이다.** 평소에는 `display: none`.
- *
- * **몸보다 확실히 진하다.** 배가 흰색(`SNOW`)이라 옅은 살구·크림 계열을 쓰면
- * 옷이 아니라 살로 읽힌다 — 덮개형 상의가 "갑바"로 읽혔던 것이 정확히 그
- * 실패였다. **얇게 그리는 것과 옷으로 읽히는 것은 충돌하지 않는다**: 두께가
- * 아니라 **대비와 경계**로 푼다. 두께로 존재감을 만들려 한 것이 갑바였다. */
-const STRAW = "#c8912e";
-/** 라피아의 테두리·끈·결. **경계가 보여야 천으로 읽힌다.** */
-const STRAW_DARK = "#8f6414";
-/** 목에 거는 레이(꽃목걸이) — 여름 느낌을 내는 포인트. */
-const LEI = "#e8543f";
-const LEI_ALT = "#f2c14e";
+/** 색은 `../palette`에 있다 — 이름 import를 유지한다(`fill={INK}` 형태).
+ * `import * as palette`로 바꾸면 `pet-css.test.ts`가 `fill={STRAW}`를 문자열로
+ * 세는 검사가 통째로 죽는다. */
+import {
+  BAT_GRIP,
+  BAT_WOOD,
+  BEAK,
+  FISH,
+  FLOAT,
+  FOOT,
+  HOLE,
+  INK,
+  LEI,
+  LEI_ALT,
+  SNOW,
+  STRAW,
+  STRAW_DARK,
+} from "../palette";
 
 interface PenguinOwnProps {
   /** 암컷인가 — 훌라 상의를 입힐지 정한다. 창 라벨에서 결정적으로 파생한다. */

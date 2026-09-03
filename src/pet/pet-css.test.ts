@@ -8,6 +8,8 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 /** 펭귄 그림의 소스. **아래에서 여러 번 읽으므로 한 곳에 둔다** — 그림이 옮겨질 때
  * 여기 하나만 고치면 된다. */
 const PENGUIN_SRC = "src/assets/penguin/penguin.tsx";
+/** 모든 색이 사는 곳. */
+const PALETTE_SRC = "src/assets/palette.ts";
 
 /** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
 const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout","bowling","volleyball"]
@@ -353,9 +355,10 @@ describe("비치발리볼", () => {
 
   it("옷_색이_몸_색과_대비된다", () => {
     // 배가 흰색이라 옅은 살구·크림 계열을 쓰면 옷이 아니라 살로 읽힌다.
-    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
+    // **색은 이제 팔레트에 산다** — 그림이 아니라 색을 읽는 유일한 검사다.
+    const palette = readFileSync(resolve(PALETTE_SRC), "utf8");
     const 색 = (name: string) => {
-      const m = svg.match(new RegExp(`const ${name} = "(#[0-9a-fA-F]{6})"`));
+      const m = palette.match(new RegExp(`const ${name} = "(#[0-9a-fA-F]{6})"`));
       return m ? m[1] : null;
     };
     const 밝기 = (hex: string) =>

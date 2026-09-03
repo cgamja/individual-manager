@@ -27,13 +27,25 @@ const _: () = assert!(SIZE_DEFAULT % SIZE_STEP == 0, "기본값이 슬라이더 
 /// `size: 200`에서 펭귄은 150%인데 슬라이더는 100%를 가리키는 일이 없다.
 /// `theme_from`·`sanitizeVolume`이 이미 "깨진 값은 기본값" 규칙이다.
 ///
+/// **눈금 밖 값은 가까운 눈금으로 붙인다** ([`snap_to_step`]) — 55를 그냥 두면
+/// 배율과 라벨은 55%인데 슬라이더 thumb는 60%에 서서 셋이 갈린다.
+///
 /// `pinball_from`·`theme_from`처럼 `AppHandle`이 아니라 값을 받는다 (테스트를 위해서다).
 pub fn size_percent_from(stored: Option<&serde_json::Value>) -> u32 {
     stored
         .and_then(|value| value.get("size"))
         .and_then(|v| v.as_u64())
         .filter(|n| (u64::from(SIZE_MIN)..=u64::from(SIZE_MAX)).contains(n))
-        .map_or(SIZE_DEFAULT, |n| n as u32)
+        .map_or(SIZE_DEFAULT, |n| snap_to_step(n as u32))
+}
+
+/// 가장 가까운 슬라이더 눈금으로 붙인다. 정확히 가운데면 위로 올린다 —
+/// **프론트의 `snapToStep`과 규칙이 같아야 한다.** 반올림 방향이 갈리면 55가
+/// 한쪽에서는 60, 다른 쪽에서는 50이 된다.
+pub fn snap_to_step(percent: u32) -> u32 {
+    let p = percent.clamp(SIZE_MIN, SIZE_MAX);
+    let 칸 = (p - SIZE_MIN + SIZE_STEP / 2) / SIZE_STEP;
+    (SIZE_MIN + 칸 * SIZE_STEP).min(SIZE_MAX)
 }
 
 /// 퍼센트를 배율로. 저장·UI는 퍼센트(`size`), 코드 안은 배율(`scale`)이다 —

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { MotionCard, type Motion } from "./components/MotionCard";
 import { PetCountCard } from "./components/PetCountCard";
@@ -70,6 +70,8 @@ function App() {
   const [pinballEnabled, setPinballEnabledState] = useState(DEFAULT_PET_SETTINGS.pinball);
   const [volume, setVolumeState] = useState(DEFAULT_PET_SETTINGS.volume);
   const [size, setSizeState] = useState(DEFAULT_PET_SETTINGS.size);
+  /** 겹쳐 도는 크기 변경 중 **가장 나중 것**의 번호. 옛 호출은 이걸 보고 물러난다. */
+  const 크기_요청 = useRef(0);
   const [theme, setThemeState] = useState(DEFAULT_PET_SETTINGS.theme);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
   /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
@@ -234,13 +236,20 @@ function App() {
     async (next: number) => {
       const prev = size;
       setSizeState(next);
+      // **가장 나중 요청만 살린다.** 슬라이더를 끌면 눈금마다 이 함수가 겹쳐 도는데,
+      // 방송(`emitPetScale`)은 값을 직접 실어 보내므로 옛 호출이 나중에 도착하면
+      // 웹뷰가 옛 배율로 되돌아간다. (창 크기는 `pet_apply_size`가 저장소를 읽어
+      // 늘 최신이라 이 문제가 없다.)
+      const 내_차례 = ++크기_요청.current;
+      const 밀렸다 = () => 내_차례 !== 크기_요청.current;
       try {
         await savePetSettings({ size: next });
       } catch (err) {
         console.error("크기 저장 실패:", err);
-        setSizeState(prev);
+        if (!밀렸다()) setSizeState(prev);
         return;
       }
+      if (밀렸다()) return;
       // 창 크기(Rust)와 그림 크기(웹뷰)는 왕복이 둘로 나뉘므로 그 사이 한 프레임은
       // 둘이 어긋난다. 줄일 때 창이 먼저 줄면 `#pet-root`의 `overflow: hidden`이
       // 아직 큰 그림을 잘라 내므로, 줄일 때는 그림을 먼저 보낸다.
@@ -253,9 +262,11 @@ function App() {
       const 그림 = () => emitPetScale(next).catch((err) => console.error("크기 방송 실패:", err));
       if (그림_먼저) {
         await 그림();
+        if (밀렸다()) return;
         await 창();
       } else {
         await 창();
+        if (밀렸다()) return;
         await 그림();
       }
     },

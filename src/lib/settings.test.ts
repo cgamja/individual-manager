@@ -12,6 +12,7 @@ import {
   SIZE_MAX,
   SIZE_MIN,
   SIZE_STEP,
+  snapToStep,
 } from "./settings";
 
 afterEach(() => {
@@ -139,6 +140,36 @@ describe("펭귄 설정", () => {
     for (const bad of ["크게", 5000, 49, 151, 0, -30, 60.5, null]) {
       mockStore({ pet: { size: bad } });
       expect((await loadPetSettings()).size, String(bad)).toBe(100);
+    }
+  });
+
+  it("눈금_밖_크기는_가까운_눈금으로_붙는다", async () => {
+    // 55를 그냥 두면 배율과 라벨은 55%인데 슬라이더 thumb는 `step`에 맞춰 60%에
+    // 서서 셋이 갈린다. **Rust의 `snap_to_step`과 같은 결과여야 한다.**
+    for (const [저장, 기대] of [
+      [55, 60],
+      [54, 50],
+      [56, 60],
+      [61, 60],
+      [149, 150],
+    ] as const) {
+      mockStore({ pet: { size: 저장 } });
+      expect((await loadPetSettings()).size, String(저장)).toBe(기대);
+    }
+  });
+
+  it("눈금_위의_크기는_그대로다", async () => {
+    for (let p = SIZE_MIN; p <= SIZE_MAX; p += SIZE_STEP) {
+      expect(snapToStep(p), String(p)).toBe(p);
+    }
+  });
+
+  it("붙인_뒤에도_범위를_안_벗어난다", () => {
+    for (let p = 0; p <= 300; p += 1) {
+      const s = snapToStep(p);
+      expect(s, String(p)).toBeGreaterThanOrEqual(SIZE_MIN);
+      expect(s, String(p)).toBeLessThanOrEqual(SIZE_MAX);
+      expect((s - SIZE_MIN) % SIZE_STEP, String(p)).toBe(0);
     }
   });
 

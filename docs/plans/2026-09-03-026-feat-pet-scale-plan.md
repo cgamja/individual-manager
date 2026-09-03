@@ -27,8 +27,8 @@ execution: code
      깨진다 → 보고하고 정한다. **실제로 걸렸고 KTD4′로 뒤집었다.**
   2. **소품을 배율에 맞추려면 코어(`src-tauri/src/pet/**`)를 고쳐야 한다는 결론이 나온다**
      → 고치지 말고 보고한다. KTD1이 틀렸다는 신호이고, 설계를 다시 볼 자리다.
-  3. 커서 방망이가 P1(프로브)의 두 갈래 중 어느 쪽으로도 배율을 못 타면 보고한다 —
-     "펭귄만 줄고 방망이는 그대로"는 이 작업의 완료 조건을 못 넘는다.
+  3. 커서 방망이가 배율을 못 타면 보고한다 — "펭귄만 줄고 방망이는 그대로"는
+     이 작업의 완료 조건을 못 넘는다.
   4. 병렬 작업(`fix/f4-pet-hit-area-01`)과 같은 파일에서 **설계가** 부딪힌다
      (단순 텍스트 충돌은 아님).
 - **꼬리 작업** — `.github/TEMPLATE/PR.md`로 PR을 연다. **merge하지 않는다.**
@@ -334,8 +334,10 @@ pub fn to_core(v: f64, scale: f64) -> f64;           // 화면 → 코어
 
 ### Assumptions
 
-- **A1** `WKWebView.setPageZoom`이 `transparent(true)` + `decorations(false)` 창에서 정상
-  동작한다. 확인 못 하면 KTD4 폴백. **틀리면 구현 전에 알려 달라.**
+- **A1** ~~`WKWebView.setPageZoom`이 투명·무장식 창에서 정상 동작한다~~ → **KTD4′로 폐기.**
+  확대는 `#pet-root`·`#court-root`의 CSS `transform: scale(var(--pg-scale))`이 하고,
+  커서는 `installBatCursor(…, scale)`이 따로 그린다. 검증도 그 둘로 바뀐다:
+  50%·150% 렌더가 온전한가(창 스크린샷), 커서 방망이가 함께 줄고 핫스팟이 안 어긋나는가.
 - **A2** WebKit의 커서 이미지 상한이 128×128 px 언저리다. 정확한 값이 달라도 72px는
   안전하다는 판단이지만, 150%에서 커서가 사라지면 이 가정이 틀린 것이다(AE8이 잡는다).
 - **A3** 배율은 전역이다 — 마리마다 다르게 하고 싶다는 요구는 없다.
@@ -475,35 +477,28 @@ stateDiagram-v2
 - **Verification** `cargo test` + `npm run tauri dev` 스모크(AE2·AE3·AE5·AE7), 판이 도는
   중에 슬라이더 밀어 보기(A4)
 
-### U4 — 커서 방망이가 배율을 탄다 (P1 프로브 → 두 갈래 중 하나)
+### U4 — 커서 방망이가 배율을 탄다
 
 - **Goal** 60%에서 방망이 커서도 60%이고 핫스팟이 안 어긋난다(AE8). 소품 표 1·4번.
-- **Requirements** R9(1·4) / KTD9
+- **Requirements** R9(1·4) / KTD9′
 - **Dependencies** U3
-- **선행: P1 프로브** — U3 뒤에 실측한다(줌이 있어야 관측된다). 크기 150% + 핀볼 모드로
-  펭귄 위/판 위 커서를 `screencapture -C`로 찍어 **크기와 핫스팟을** 비교한다.
-  **결과를 이 플랜과 `TODO.md`에 한 줄로 기록하고** 갈래를 고른다.
-- **Files**
-  - 공통: `src/assets/props/bat.ts`(배율 인자) · `src/assets/assets.test.ts` ·
-    `src/pinball/main.ts` · `src/lib/pet.ts`(`EVENT_PET_SCALE`·`emitPetScale`·`onPetScale`) ·
-    `src/App.tsx`(저장 뒤 브로드캐스트).
-  - 결과 B에서만 추가: `src/pet/main.tsx`(펭귄 창도 명시 설치).
-  - **`pinball.rs`는 안 만진다** — 판 창에는 확대를 안 건다(KTD4′).
+- **Files** `src/assets/props/bat.ts`(배율 인자) · `src/assets/assets.test.ts` ·
+  `src/pet/main.tsx` · `src/pinball/main.ts` · `src/lib/settings.ts`(`followPetScale`) ·
+  `src/lib/pet.ts`(`EVENT_PET_SCALE`·`emitPetScale`·`onPetScale`) · `src/App.tsx`.
+  **`pinball.rs`에는 확대를 안 건다** (KTD4′) — 첫 배율을 심는 스크립트만 넣는다.
 - **Approach**
-  - `batCursorUrl(deg, scale)`: SVG `width/height = 48 * scale`, **`viewBox`는 `0 0 48 48`
-    그대로**(그림이 늘어난다), 핫스팟은 `10*scale 30*scale`. `HOTSPOT` 상수를 숫자 쌍으로
-    쪼개 문자열을 만들 때 곱한다 — 지금은 `"10 30"` 문자열이라 그대로는 못 곱한다.
-  - `batCursorValue`/`installBatCursor`의 **맨 키워드 처리 구조는 그대로 둔다**(KTD9).
-  - `installBatCursor(fallback, doc, scale)` — 기본값 1로 두면 기존 호출부가 안 깨진다.
-  - `pet://scale` 브로드캐스트는 `pet://sound`를 그대로 베낀다. 판 창 엔트리에서는
-    **Esc 등록보다 뒤에** 심는다(지금 `installBatCursor` 호출이 그 자리에 있는 이유와 같다 —
-    앞에서 던지면 나가는 문 하나가 사라진다).
+  - `batCursorUrl(deg, scale)`: SVG `width/height = 48 × s`, **`viewBox`는 `0 0 48 48`
+    그대로**(그림이 늘어난다), 핫스팟은 `10×s 30×s`. `HOTSPOT` 상수를 숫자 쌍으로
+    쪼개 문자열을 만들 때 곱한다.
+  - `batCursorValue`/`installBatCursor`의 **맨 키워드 처리 구조는 그대로 둔다**(KTD9′).
+  - **세 창이 같은 길로 배율을 받는다** — `followPetScale`(`lib/settings.ts`)이 첫
+    페인트·구독 순서·저장소 읽기·`resize` 화해를 한 곳에서 쥔다. 판 창 엔트리에서는
+    **Esc 등록보다 뒤에** 부른다(앞에서 던지면 나가는 문 하나가 사라진다).
 - **Test scenarios**
-  - `커서_이미지가_128px를_넘지_않는다` (`48 * SIZE_MAX/100 <= 128`) — **두 갈래 모두에서 쓴다**
-  - 결과 B: `배율이_커서_이미지와_핫스팟에_함께_걸린다` ·
-    `커서_값의_맨_끝에만_키워드가_온다`(기존 `pinball-css.test.ts` 규칙과 짝) ·
-    `배율이_1이면_예전과_같은_커서_문자열이다`
-  - 결과 A: **Test expectation: none — Tauri 런타임 표면이다. AE8 수동 검증.**
+  - `커서_이미지가_128px를_넘지_않는다` (`48 × SIZE_MAX/100 <= 128`)
+  - `배율이_그림과_핫스팟에_함께_걸린다` · `viewBox는_배율과_무관하게_그대로다` ·
+    `배율이_1이면_예전과_같은_문자열이다` · `맨_키워드는_값의_끝에만_온다`
+  - `판과_펭귄의_방망이가_같은_그림이다`가 두 엔트리의 최상위 구독을 대조한다
 - **Verification** `npm test` · `npm run build` · AE8 수동(60%·150% 둘 다)
 
 ### U5 — 설정 창의 크기 슬라이더
@@ -535,12 +530,12 @@ stateDiagram-v2
 - **Files**
   - `TODO.md` — `## 후속 (급하지 않음)` 앞에 **`## 펭귄 크기`** 절을 새로 만들고
     `- [x] **펭귄 크기 % 조절**` 한 줄 + 결정 요약(**소품 전부가 함께 줄어든다는 것**과
-    P1 프로브의 결과를 남긴다).
+    확대 방식과 커서 경로의 결론을 남긴다).
   - `PRD.md` §5.5 — 음량 다음에 **크기** 항목(범위·기본값·"소품과 물리가 함께 줄어든다").
   - `PRD.md` §7 — `8. 크기 배율 (§5.5)`.
   - `PRINCIPLE.md` — 저장 목록을 세는 문장에 크기를 더한다.
   - `CLAUDE.md` — 설계 원칙 요약 5번의 설정 목록에 "크기" 추가.
-    P1이 놀라운 결과였으면 함정 목록에도 한 줄(그리고 `ce-compound`로 `docs/solutions/`).
+    놀라운 결과가 있었으면 함정 목록에도 한 줄(그리고 `ce-compound`로 `docs/solutions/`).
 - **Test scenarios** `Test expectation: none — 문서만 바뀐다.`
 - **Verification** 두 러너 재실행(소스를 읽는 검사가 있으므로 한 번 더 돌린다)
 
@@ -567,7 +562,7 @@ stateDiagram-v2
 | Rust 단위 테스트 | `cd src-tauri && cargo test` | U1, U2, U3, U6, U7 |
 | 프론트 단위 테스트 | `npm test` | U4, U5, U6 |
 | 타입 검사 + 번들 | `npm run build` | U4, U5, U6 |
-| 개발 스모크 | `npm run tauri dev` | P1, U3, U4, U5 (AE1~AE9) |
+| 개발 스모크 | `npm run tauri dev` | U3, U4, U5 (AE1~AE9) |
 | 코드 리뷰 | `ce-code-review` | PR 직전 |
 
 **수동 스모크 체크리스트** (설치본을 끄고 번들 안 바이너리를 직접 실행 — 메모리
@@ -600,7 +595,7 @@ stateDiagram-v2
   "별도 조치"인 것은 그 조치가 diff에 있다
 - 렌더 크기를 내는 함수가 `pet_render_px` 하나뿐이다 (`grep`으로 확인)
 - `pet_set_size`가 `lib.rs`의 `generate_handler!`에 등록돼 있다
-- P1 프로브의 결과가 플랜과 `TODO.md`에 한 줄로 남았다
+- 확대 방식(KTD4′)과 커서 경로(KTD9′)의 결론이 플랜과 `TODO.md`에 남았다
 - 브랜치 `feat/f4-pet-scale-01`, 한국어 Angular 커밋, `.github/TEMPLATE/PR.md`로 PR
 - `TODO.md`·`PRD.md`·`PRINCIPLE.md`·`CLAUDE.md` 갱신이 같은 PR에
 - **merge하지 않는다**
@@ -635,5 +630,5 @@ stateDiagram-v2
   그쪽은 `PET_SIZE` 비율로만 계산하고 `PET_PAD_*`·`PET_WINDOW_*`를 안 쓴다.
 - `settings.rs`는 **안 만진다** — `PET_KEY`·`SETTINGS_FILE`을 `scale.rs`가 `use`할 뿐이다.
 - `PetApp.tsx`는 정규화 계산을 `lib/pet.ts`로 옮기는 만큼만 바뀐다(KTD11). 커서는 엔트리
-  (`src/pet/main.tsx`)에 있으므로 P1 결과 B여도 `PetApp.tsx`는 안 건드린다.
+  (`src/pet/main.tsx`)에 있으므로 커서 경로가 바뀌어도 `PetApp.tsx`는 안 건드린다.
 - 상대 브랜치의 코드를 미리 가져오지 않는다. U1~U6은 `main` 기준이고, U7만 rebase 뒤에 한다.

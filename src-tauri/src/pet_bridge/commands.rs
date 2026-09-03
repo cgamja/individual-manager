@@ -203,7 +203,9 @@ pub fn pet_apply_size(state: State<'_, PetState>, app: AppHandle) {
             .map(|s| window_origin(s.x, s.y, scale));
         if let Some(at) = at {
             // 크기와 자리를 **한 문으로** 건다 ([`place_window`]).
-            place_window(&window, at, Some(size));
+            // 캐시가 없는 경로라 실패해도 다음 틱이 화해시킨다.
+            // 캐시가 없는 경로라 실패해도 다음 틱이 화해시킨다.
+            let _ = place_window(&window, at, Some(size));
         }
     }
 }

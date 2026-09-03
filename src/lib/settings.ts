@@ -1,5 +1,6 @@
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { load } from "@tauri-apps/plugin-store";
-import { DEFAULT_TAUNTS, normalizeTaunts } from "./pet";
+import { DEFAULT_TAUNTS, normalizeTaunts, onPetScale } from "./pet";
 
 const STORE_FILE = "settings.json";
 /** Rust의 `pet_bridge::PET_KEY`와 같은 키 — 시작 시점 판단을 Rust가 직접 읽는다. */
@@ -51,11 +52,24 @@ const sanitizeTheme = (v: unknown): AppTheme =>
 const sanitizeVolume = (v: unknown): number =>
   typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 4 ? v : 2;
 
+/** 가장 가까운 슬라이더 눈금으로 붙인다. 정확히 가운데면 위로 올린다 —
+ * **Rust의 `snap_to_step`과 규칙이 같아야 한다.** 반올림 방향이 갈리면 55가
+ * 한쪽에서는 60, 다른 쪽에서는 50이 된다. */
+export function snapToStep(percent: number): number {
+  const p = Math.min(Math.max(percent, SIZE_MIN), SIZE_MAX);
+  const 칸 = Math.floor((p - SIZE_MIN + SIZE_STEP / 2) / SIZE_STEP);
+  return Math.min(SIZE_MIN + 칸 * SIZE_STEP, SIZE_MAX);
+}
+
 /** 50~150의 정수만 유효하다. 깨진 값은 100(원래 크기)으로 수렴한다 — 손으로 고친
- * 저장 파일이 화면을 덮는 펭귄을 만들면 안 된다. **10 단위로 강제하지는 않는다**:
- * 슬라이더가 이미 `step`으로 막고, 손으로 넣은 55를 100으로 되돌리면 더 놀란다. */
+ * 저장 파일이 화면을 덮는 펭귄을 만들면 안 된다.
+ *
+ * **눈금 밖 값은 가까운 눈금으로 붙인다.** 55를 그냥 두면 배율과 라벨은 55%인데
+ * 슬라이더 thumb는 `step`에 맞춰 60%에 서서 셋이 갈린다. */
 const sanitizeSize = (v: unknown): number =>
-  typeof v === "number" && Number.isInteger(v) && v >= SIZE_MIN && v <= SIZE_MAX ? v : 100;
+  typeof v === "number" && Number.isInteger(v) && v >= SIZE_MIN && v <= SIZE_MAX
+    ? snapToStep(v)
+    : 100;
 
 /** 펭귄은 기본 켜짐(사용자가 직접 요청한 기능이라 opt-in으로 숨기지 않는다), */
 export const DEFAULT_PET_SETTINGS: PetSettings = {
@@ -87,6 +101,39 @@ export async function savePetSettings(settings: Partial<PetSettings>): Promise<v
   const store = await load(STORE_FILE);
   const current = (await store.get<Record<string, unknown>>(PET_KEY)) ?? {};
   await store.set(PET_KEY, { ...current, ...settings });
+}
+
+/** 창이 크기 배율을 따라가는 **유일한 길**. 세 창(펭귄·판·코트)이 같은 부팅
+ * 경쟁 위에 있어 한 곳에 모은다.
+ *
+ * 순서가 정확성이다:
+ * 1. Rust가 창을 만들며 심어 준 값으로 **첫 페인트**를 맞춘다.
+ * 2. **방송을 먼저 구독한다.** `listen`은 비동기라, 저장소부터 읽으면 그 사이에
+ *    날아온 방송이 통째로 유실되고 옛 값이 새 값을 덮는다.
+ * 3. 그다음 저장소를 읽는다. 읽는 동안 방송이 오면 세대가 올라가 이 결과를 버린다.
+ *
+ * 그리고 **화해자**: 창 크기를 바꾸는 것은 배율뿐이라 `resize`가 곧 "Rust가 크기를
+ * 바꿨다"는 신호다. 방송이 유실돼도 여기서 스스로 낫는다. 값은 창 크기에서
+ * 역산하지 않고 저장소에서 다시 읽는다 — 창 크기는 정수로 반올림돼 배율이 미세하게
+ * 어긋나고, 그 값이 Rust의 히트 상자와 갈린다. */
+export async function followPetScale(apply: (scale: number) => void): Promise<UnlistenFn> {
+  apply(initialScale());
+  let 세대 = 0;
+  const 읽어_적용 = async () => {
+    const 내_세대 = 세대;
+    const saved = await loadPetSettings().catch(() => null);
+    if (saved && 내_세대 === 세대) apply(saved.size / 100);
+  };
+  const unlisten = await onPetScale(({ size }) => {
+    세대 += 1;
+    apply(snapToStep(size) / 100);
+  });
+  window.addEventListener("resize", () => {
+    세대 += 1;
+    void 읽어_적용();
+  });
+  await 읽어_적용();
+  return unlisten;
 }
 
 /** 펭귄이 할 말 목록. 저장된 게 없으면 기본 목록을 쓴다. */

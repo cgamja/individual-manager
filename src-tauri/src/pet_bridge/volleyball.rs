@@ -267,8 +267,9 @@ pub(super) fn apply_volley(
                 // 자리를 먼저 걸면 뒤따르는 크기 변경이 위 모서리를 높이 차이만큼
                 // 밀어, 판이 도는 중에 배율을 바꾸면 모래가 착지면에서 어긋난 채
                 // 캐시된다.
-                place_window(&window, (x, y), Some((w, h)));
-                view.court_rect = Some(court);
+                if place_window(&window, (x, y), Some((w, h))) {
+                    view.court_rect = Some(court);
+                }
             }
         }
         None => match create_court_window(app, court, scale) {
@@ -300,8 +301,9 @@ pub(super) fn apply_volley(
 
     let side = vball_window_size(scale);
     let 다시_잰다 = view.ball_side != Some(side);
-    if 다시_잰다 || view.ball_at != Some(at) {
-        place_window(&window, at, 다시_잰다.then_some((side, side)));
+    if (다시_잰다 || view.ball_at != Some(at))
+        && place_window(&window, at, 다시_잰다.then_some((side, side)))
+    {
         view.ball_side = Some(side);
         view.ball_at = Some(at);
     }

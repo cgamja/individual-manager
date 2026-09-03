@@ -50,16 +50,25 @@ pub const EVENT_BOWLING_OVER: &str = "bowling://over";
 /// 그 뒤 캐시에 적히면 스스로 못 고친다.
 ///
 /// `size`가 `None`이면 자리만 옮긴다 (크기가 안 변하는 경로).
+///
+/// **성공 여부를 돌려준다.** 부르는 쪽은 "이만큼 걸었다"를 캐시하는데, 실패한
+/// 값을 캐시하면 다음 틱이 "이미 맞다"고 보고 넘어가 화해 장치가 그 자리에서
+/// 무력해진다 — 창은 영영 안 맞는다.
+#[must_use]
 pub fn place_window(
     window: &tauri::WebviewWindow,
     at: (f64, f64),
     size: Option<(f64, f64)>,
-) {
+) -> bool {
     use tauri::{LogicalPosition, LogicalSize};
     if let Some((w, h)) = size {
-        let _ = window.set_size(LogicalSize::new(w, h));
+        if window.set_size(LogicalSize::new(w, h)).is_err() {
+            return false;
+        }
     }
-    let _ = window.set_position(LogicalPosition::new(at.0, at.1));
+    window
+        .set_position(LogicalPosition::new(at.0, at.1))
+        .is_ok()
 }
 
 pub struct PetState {

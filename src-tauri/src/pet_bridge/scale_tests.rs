@@ -114,3 +114,37 @@ fn 배율을_첫_페인트_전에_심는_스크립트가_수를_담는다() {
     // 웹뷰가 `Number.isFinite`로 거르므로 수여야 한다 — 따옴표가 붙으면 안 된다.
     assert!(!script.contains('"'), "값이 문자열이 됐다: {script}");
 }
+
+#[test]
+fn 눈금_밖_크기는_가까운_눈금으로_붙는다() {
+    // 55를 그냥 두면 배율·라벨은 55%인데 슬라이더 thumb는 60%에 서서 셋이 갈린다.
+    // **프론트의 `snapToStep`과 같은 규칙이어야 한다** — 반올림 방향이 갈리면
+    // 55가 한쪽에서 60, 다른 쪽에서 50이 된다.
+    for (값, 기대) in [(55u32, 60u32), (54, 50), (56, 60), (61, 60), (149, 150)] {
+        let v = 저장(serde_json::json!({ "size": 값 }));
+        assert_eq!(
+            size_percent_from(Some(&v)),
+            기대,
+            "{값}% 가 {기대}% 눈금으로 안 붙었다"
+        );
+    }
+}
+
+#[test]
+fn 눈금_위의_크기는_그대로다() {
+    for percent in (SIZE_MIN..=SIZE_MAX).step_by(SIZE_STEP as usize) {
+        assert_eq!(snap_to_step(percent), percent, "{percent}% 가 옮겨졌다");
+    }
+}
+
+#[test]
+fn 붙인_뒤에도_범위를_안_벗어난다() {
+    for percent in 0..=300u32 {
+        let s = snap_to_step(percent);
+        assert!(
+            (SIZE_MIN..=SIZE_MAX).contains(&s),
+            "{percent}% → {s}% 가 범위 밖이다"
+        );
+        assert_eq!((s - SIZE_MIN) % SIZE_STEP, 0, "{s}% 가 눈금이 아니다");
+    }
+}

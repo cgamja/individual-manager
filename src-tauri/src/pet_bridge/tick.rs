@@ -377,7 +377,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 let moves = should_move(snapshot.behavior.moves_window(), *rescued || resized);
                 any_moves |= snapshot.behavior.moves_window() || resized;
                 let look = look_of(&snapshot);
-                apply(
+                let placed = apply(
                     window,
                     snapshot,
                     moves,
@@ -385,7 +385,9 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     scale,
                     if resized { Some(want) } else { None },
                 );
-                if resized {
+                // **걸렸을 때만 캐시한다** — 실패를 적으면 다음 틱이 "이미 맞다"고
+                // 보고 넘어가 화해가 그 자리에서 멎는다.
+                if resized && placed {
                     last_size.insert(id, want);
                 }
                 last_look.insert(id, look);
@@ -413,6 +415,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
 
 /// 스냅샷을 창 위치와 웹뷰 상태에 반영한다. 창 이동과 상태 통지는 조건이
 /// 다르다 — 자는 펭귄은 움직이지 않지만 "잔다"는 사실은 알려야 한다.
+/// 참을 돌려주면 **창에 실제로 걸렸다** — 부르는 쪽이 그때만 캐시한다.
 pub(super) fn apply(
     window: &WebviewWindow,
     snapshot: Snapshot,
@@ -420,10 +423,11 @@ pub(super) fn apply(
     notify: bool,
     scale: f64,
     resize: Option<(f64, f64)>,
-) {
+) -> bool {
+    let mut placed = true;
     if move_window || resize.is_some() {
         let at = window_origin(snapshot.x, snapshot.y, scale);
-        place_window(window, at, resize);
+        placed = place_window(window, at, resize);
     }
     if notify {
         let _ = window.emit_to(
@@ -432,6 +436,7 @@ pub(super) fn apply(
             snapshot,
         );
     }
+    placed
 }
 
 /// 공을 창에 반영한다. 판이 끝나면(`None`) 창을 닫는다 — **`app.hide()`가
@@ -496,8 +501,9 @@ pub(super) fn apply_ball(
 
     let side = ball_window_size(scale);
     let 다시_잰다 = view.side != Some(side);
-    if 다시_잰다 || view.at != Some(at) {
-        place_window(&window, at, 다시_잰다.then_some((side, side)));
+    if (다시_잰다 || view.at != Some(at))
+        && place_window(&window, at, 다시_잰다.then_some((side, side)))
+    {
         view.side = Some(side);
         view.at = Some(at);
     }
@@ -521,7 +527,7 @@ pub(super) fn flush_ball(app: &AppHandle) {
     let (Some(ball), Some(window)) = (ball, ball_window(app)) else {
         return;
     };
-    place_window(&window, ball_window_origin(ball.x, ball.y, pet_scale(app)), None);
+    let _ = place_window(&window, ball_window_origin(ball.x, ball.y, pet_scale(app)), None);
 }
 
 /// 커맨드가 상태를 바꾼 뒤 즉시 화면에 반영한다 — 다음 틱(최대 500ms)을
@@ -536,6 +542,6 @@ pub(super) fn flush(app: &AppHandle, id: PetId) -> Option<Snapshot> {
         .unwrap()
         .get(id)?
         .snapshot();
-    apply(&window, snapshot, true, true, pet_scale(app), None);
+    let _ = apply(&window, snapshot, true, true, pet_scale(app), None);
     Some(snapshot)
 }

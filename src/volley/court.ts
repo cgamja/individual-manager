@@ -1,6 +1,5 @@
 import { NET_SVG, SAND_SVG } from "../assets/props/court";
-import { onPetScale } from "../lib/pet";
-import { initialScale, loadPetSettings } from "../lib/settings";
+import { followPetScale } from "../lib/settings";
 import "./court.css";
 
 /**
@@ -20,23 +19,10 @@ import "./court.css";
  * 뜬다 — 한 번 화면 바닥의 배경 해변으로 그렸다가 되돌렸다.
  */
 
-/** 네트·모래는 고정 px라 배율을 직접 걸어야 한다. 판마다 새로 뜨는 창이지만
- * 판이 도는 도중에 크기가 바뀔 수도 있어 방송도 듣는다. */
-function 배율(s: number) {
+/** 네트·모래는 고정 px라 배율을 직접 걸어야 한다. 부팅 경쟁과 화해는
+ * `followPetScale`이 쥔다 — 펭귄 창·판 창이 같은 것을 쓴다. */
+void followPetScale((s) => {
   document.documentElement.style.setProperty("--pg-scale", String(s));
-}
-배율(initialScale());
-// 저장소 왕복이 방송보다 늦게 오면 옛 배율이 새 배율을 덮는다 (펭귄 창과 같은 장치).
-let 세대 = 0;
-const 부팅_세대 = 세대;
-void loadPetSettings()
-  .then((s) => {
-    if (부팅_세대 === 세대) 배율(s.size / 100);
-  })
-  .catch(() => {});
-void onPetScale(({ size }) => {
-  세대 += 1;
-  배율(size / 100);
 }).catch(() => {});
 
 const root = document.getElementById("court-root");

@@ -37,7 +37,13 @@
 
 ```text
 src/
-  pet/                펭귄 창 웹뷰 — Penguin.tsx(SVG), PetApp.tsx, sound·synth
+  assets/             **그림과 색은 전부 여기 있다** — 로직 파일에 SVG를 두지 않는다
+    palette.ts        모든 색. 부위별 이름 하나씩
+    penguin/          index(조립·겹침 순서) · body · hula(훌라 차림) · gear(방망이·낚시)
+    props/            소품 — bat(커서 방망이) · bowling-ball · beach-ball · court
+                      **React를 쓰지 않는다** (바닐라 창이 쓴다)
+    assets.test.ts    그림 렌더 스냅샷 + props의 React 무의존 검사
+  pet/                펭귄 창 웹뷰 — PetApp.tsx, sound·synth
     css/              동작별 스타일 (base·ground·air·react·pinball·drag·
                       fishing·freakout·rest·speech·bowling·volleyball)
                       — index.css가 묶는다
@@ -157,6 +163,17 @@ Rust는 아무 말도 하지 않는다.
   네이티브 창은 클릭을 그대로 먹는다. 클릭 통과와 창 레벨은 서로를 대신하지 못하므로
   **둘 다** 건다. →
   `docs/solutions/best-practices/tauri-ignore-cursor-events-is-async.md`
+- **그림은 두 러너·타입 검사·리뷰를 전부 통과하면서 바뀔 수 있다.** 그래서
+  `src/assets/assets.test.ts`가 **렌더 스냅샷**으로 못 박아 뒀다 — 펭귄 둘(암·수)과
+  소품 넷. **`-u`로 덮는 것은 "그림을 바꾸겠다"는 선언**이지 통과시키는 방법이 아니다.
+  에셋 리팩터링 때 실제로 두 번 잡았다: 다중행 `d` 속성 **문자열 안**의 들여쓰기가
+  2칸 밀린 것, 그리고 부위를 쪼개다 겹침 순서가 뒤집힌 것.
+- **`git checkout <파일>`은 아직 커밋 안 한 작업을 되돌린다.** 돌연변이 테스트로
+  검사의 실효성을 확인할 때 이걸로 되돌리면 **그 유닛의 변경이 통째로 날아가고**,
+  테스트는 멀쩡히 통과해서 눈치채기 어렵다. 커밋 전에는 파일을 복사해 두고 되돌린다.
+- **검사가 소스 텍스트를 볼 때는 주석을 걷어낸다.** 안 그러면 호출을 주석 처리해도
+  이름이 남아 통과한다 — `installBatCursor()` 검사가 실제로 그렇게 헛돌았다.
+  이 레포의 기존 검사 여럿이 같은 이유로 `.replace(/\/\/.*/g, " ")`를 먼저 한다.
 - **화면을 넘나드는 좌표는 배율부터 의심한다.** 창 하나로 여러 화면을 덮으면 그 창은
   배율 하나만 쓰므로 배율이 다른 화면에서 어긋난다. 화면마다 창을 따로 만든다.
 - **사용자를 막는 기능에는 나가는 문이 둘 있어야 한다.** 핀볼 판은 화면 전체의 클릭을

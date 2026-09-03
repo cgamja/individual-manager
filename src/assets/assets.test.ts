@@ -19,13 +19,17 @@ import { NET_SVG, SAND_SVG } from "./props/court";
  * **CSS는 안 덮는다** — `@keyframes`가 겹쳐 애니메이션이 죽는 것은 여기서 안 잡힌다.
  */
 
+/** 태그마다 줄을 나눈다. 한 줄로 두면 속성 하나만 바뀌어도 diff가 14KB짜리
+ * 통짜 줄 교체로 나와, `-u`가 "그림을 바꾸겠다"는 선언이 아니라 도장이 된다. */
+const 태그마다_줄바꿈 = (html: string) => html.replace(/></g, ">\n<");
+
 afterEach(cleanup);
 
 describe("펭귄 그림", () => {
   /** 렌더된 펭귄의 마크업. `female`이 훌라 상의를 켠다. */
   function 그린다(female: boolean): string {
     const { container } = render(createElement(Penguin, female ? { female: true } : {}));
-    return container.innerHTML;
+    return 태그마다_줄바꿈(container.innerHTML);
   }
 
   it("수컷_펭귄_그림이_그대로다", () => {

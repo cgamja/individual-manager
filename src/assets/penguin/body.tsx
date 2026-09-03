@@ -37,11 +37,11 @@ export function BodyBack() {
         opacity="0.72"
       />
 
-      <g className="pg-foot pg-foot--far">
+      <g className="pg-foot--far">
         <rect x="44" y="104" width="4" height="9" rx="2" fill={FOOT} opacity="0.85" />
         <path d="M46 112 L38 120 L52 120 Z" fill={FOOT} opacity="0.85" />
       </g>
-      <g className="pg-foot pg-foot--near">
+      <g className="pg-foot--near">
         <rect x="54" y="104" width="4" height="9" rx="2" fill={FOOT} />
         <path d="M56 112 L48 120 L63 120 Z" fill={FOOT} />
       </g>

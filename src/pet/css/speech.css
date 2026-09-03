@@ -25,7 +25,7 @@
   padding: 9px 13px;
   border-radius: 14px;
   background: rgba(252, 252, 254, 0.97);
-  color: #1b1f24;
+  color: var(--pg-ink);
   font: 600 14.5px/1.35 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
   text-align: center;
   white-space: pre-wrap;

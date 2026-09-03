@@ -27,7 +27,7 @@ use volleyball::{assign_sides, both_sides_present};
 
 pub use behavior::{
     Behavior, BowlingPhase, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech,
-    Vertical, VolleyPhase,
+    Vertical, VolleyPhase, YachaPhase,
 };
 use behavior::{IDLE_KINDS, SASSY_KINDS};
 
@@ -53,6 +53,16 @@ pub struct Snapshot {
     /// 핀볼 모드인가. 웹뷰는 이걸로 **커서를 채로 바꾼다** — 저장소를 다시
     /// 읽게 하면 토글이 즉시 반영되지 않는다.
     pub pinball: bool,
+    /// 야차에서 **이 마리가 이번 라운드의 대표 타격인가.** 늘어날 때마다
+    /// 웹뷰가 "퍽"을 한 발 낸다.
+    ///
+    /// **라운드마다 딱 한 마리만 오른다** (판이 고른다). 맞는 마리마다 올리면
+    /// 여덟 마리에서 라운드당 네 발이 겹쳐 기관총이 된다. `whack_seq`와 같은
+    /// 꼴인 이유는 웹뷰의 소리 판정(`soundsFor`)이 보는 것이 `Snapshot`
+    /// 하나뿐이라서다 — 판 스냅샷은 안 본다.
+    pub punch_seq: u64,
+    /// 그 한 발이 **쓰러뜨린 한 방**인가. 웹뷰가 반음을 낮춰 더 낮고 길게 낸다.
+    pub punch_down: bool,
     pub behavior: Behavior,
 }
 
@@ -114,6 +124,10 @@ pub struct Pet {
     /// 지금 하는 얼음낚시 한 판이 끝나는 시각. **절대 시각 하나로 갖는다** —
     /// 국면마다 남은 시간을 빼 나가면 국면이 늘 때마다 계산이 갈라진다.
     fishing_until_ms: u64,
+    /// 야차에서 대표 타격으로 뽑힌 횟수 (`Snapshot::punch_seq`).
+    punch_seq: u64,
+    /// 그 대표 타격이 쓰러뜨린 한 방이었는가 (`Snapshot::punch_down`).
+    punch_down: bool,
     rng: u64,
 }
 
@@ -919,6 +933,8 @@ impl Pet {
             swim_descending: false,
             freakout_until_ms: 0,
             fishing_until_ms: 0,
+            punch_seq: 0,
+            punch_down: false,
             rng: if seed == 0 {
                 0x9E37_79B9_7F4A_7C15
             } else {
@@ -939,6 +955,8 @@ impl Pet {
             speech: self.speech,
             whack_seq: self.whack_seq,
             pinball: self.pinball,
+            punch_seq: self.punch_seq,
+            punch_down: self.punch_down,
             behavior: self.behavior,
         }
     }

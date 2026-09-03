@@ -22,6 +22,8 @@ fn 스냅샷(behavior: crate::pet::Behavior, air: bool) -> Snapshot {
         speech: None,
         whack_seq: 0,
         pinball: false,
+        punch_seq: 0,
+        punch_down: false,
         behavior,
     }
 }

@@ -133,6 +133,33 @@ pub enum VolleyPhase {
     Sulk,
 }
 
+/// 단체 야차 한 판에서 **마리 하나가** 거쳐 가는 국면. 판 전체의 국면은 따로
+/// 있다 (`yacha::RingPhase`) — 볼링·비치발리볼과 같은 두 층 구조다.
+///
+/// **스스로 끝나는 것은 `Gather`·`Punch`·`Hurt`·`Win`뿐이다.** `Guard`는 다음
+/// 라운드를 기다리고, `Down`은 판이 끝날 때까지 누워 있고, `Champ`는 세레모니가
+/// 끝나야 나간다 — 셋 다 마리 혼자서는 언제 끝나는지 알 수 없다.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum YachaPhase {
+    /// 링의 자기 자리로 **날아간다**
+    Gather,
+    /// 가드를 올리고 스텝을 밟는다 — 난투의 기본 자세
+    Guard,
+    /// 펀치를 뻗는다. **좌표는 안 바뀐다**
+    Punch,
+    /// 맞고 휘청인다. **좌표는 안 바뀐다** — 서로 튕겨나가지 않는 것이
+    /// 이 동작의 정의다 (R7). 휘청이는 그림은 CSS가 그린다
+    Hurt,
+    /// 눈이 X자가 되어 쓰러져 있다. 판이 끝날 때까지 안 일어난다
+    Down,
+    /// 최후의 1인 — 양 날개를 번쩍 든다. 글자를 못 쓰는 이 앱에서
+    /// 링 아나운서의 결과 발표를 대신하는 자리다
+    Win,
+    /// 벨트를 차고 세레모니
+    Champ,
+}
+
 /// 발작 한 판이 거쳐 가는 국면.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]

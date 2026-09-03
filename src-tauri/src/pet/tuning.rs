@@ -564,3 +564,111 @@ const _: () = assert!(VOLLEY_SESSION_MS.0 / VOLLEY_FLIGHT_MS[2] >= 10);
 /// 판이 어떤 이유로도 마리를 이보다 오래 붙들지 못한다 (R14의 마지막 장치).
 pub(super) const VOLLEY_MAX_MS: u64 = 60_000;
 const _: () = assert!(VOLLEY_MAX_MS > VOLLEY_SESSION_MS.1 + VOLLEY_POINT_MS);
+
+// ── 단체 야차 ──────────────────────────────────────────────────
+//
+// 야차(=야차클럽 유래의 맞장 은어)의 다인전은 battle royal이다. 판은 볼링·
+// 비치발리볼과 같은 자리에 선다 — **화면 세로 중앙**. 근거와 설계는
+// `MOTIONS.md`의 "단체 야차" 절에 있다.
+
+/// 판을 열 수 있는 최소 마릿수. **한 마리면 때릴 상대가 없다** (R3).
+/// **홀수 제약은 없다** — 팀이 없는 난투라 세 마리도 정상이다.
+pub(super) const YACHA_MIN_PETS: usize = 2;
+const _: () = assert!(YACHA_MIN_PETS >= 2);
+
+/// 링 가운데에서 링 끝까지 (가로).
+pub(super) const YACHA_RING_HALF: f64 = 460.0;
+
+/// 링 매트의 세로 두께. 펭귄이 딛는 면이 이 안에 있다.
+pub(super) const YACHA_RING_DEPTH: f64 = 120.0;
+
+/// 이웃과의 가로 간격 (몸통 가운데 기준).
+pub(super) const YACHA_STANCE_GAP: f64 = 96.0;
+
+/// 펀치가 닿는 가로 거리 (몸통 가운데 사이).
+///
+/// **`YACHA_STANCE_GAP`보다 커야 한다.** 이게 KTD5의 종료 증명 ②를 떠받친다:
+/// 서 있는 마리가 둘 이상인 동안 이웃은 **항상** 사정거리 안이므로 피격 수가
+/// 매 라운드 반드시 늘고, 그래서 다운이 반드시 일어난다. 뒤집히면 아무도 안
+/// 맞아 판이 예산이 다 될 때까지 헛돈다.
+pub(super) const YACHA_REACH_X: f64 = 150.0;
+const _: () = assert!(YACHA_STANCE_GAP < YACHA_REACH_X);
+
+/// **여덟 마리가 링 안에 들어간다.** 안 들어가면 바깥 두 마리가 링 밖에 서서
+/// 허공에서 주먹질하는 그림이 된다.
+const _: () = assert!(YACHA_STANCE_GAP * 7.0 + PET_SIZE <= 2.0 * YACHA_RING_HALF);
+
+/// 이보다 좁은 세계에서는 판을 열지 않는다 — 두 마리가 사정거리 안에 못 선다.
+pub(super) const YACHA_MIN_WORLD_WIDTH: f64 = 2.0 * (YACHA_STANCE_GAP + PET_SIZE);
+/// 가장 좁은 세계에서도 두 마리가 서고 양옆에 여유가 남아야 한다.
+const _: () = assert!(YACHA_MIN_WORLD_WIDTH > YACHA_STANCE_GAP + PET_SIZE);
+
+/// 세로로도 이만큼은 있어야 한다 — 링이 화면 세로 중앙에 뜨고 그 위에서
+/// 쓰러지는 그림에 여유가 필요하다.
+pub(super) const YACHA_MIN_WORLD_HEIGHT: f64 = 360.0;
+const _: () = assert!(YACHA_MIN_WORLD_HEIGHT > YACHA_RING_DEPTH + PET_SIZE);
+
+/// 링으로 **날아가는** 속도. 볼링·발리볼과 같은 값·같은 이유다.
+pub(super) const YACHA_GATHER_SPEED: f64 = 420.0;
+const _: () = assert!(YACHA_GATHER_SPEED > SWIM_SPEED);
+const _: () = assert!(YACHA_GATHER_SPEED < FREAKOUT_SPEED);
+
+/// 난투 한 라운드의 주기. 이 주기마다 **서 있는 마리의 절반**이 이웃을 친다.
+pub(super) const YACHA_ROUND_MS: u64 = 340;
+
+/// 펀치를 뻗은 자세의 길이.
+pub(super) const YACHA_PUNCH_MS: u64 = 260;
+const _: () = assert!(YACHA_PUNCH_MS < YACHA_ROUND_MS);
+
+/// 맞고 휘청이는 자세의 길이. **자리는 안 변한다** (R7).
+pub(super) const YACHA_HURT_MS: u64 = 220;
+const _: () = assert!(YACHA_HURT_MS < YACHA_ROUND_MS);
+
+/// 난투 예산 범위 — 시드로 뽑는다. 다운 일정이 이 안에 배치된다.
+pub(super) const YACHA_BRAWL_MS: (u64, u64) = (14_000, 18_000);
+const _: () = assert!(YACHA_BRAWL_MS.1 >= YACHA_BRAWL_MS.0);
+/// 예산 안에 라운드가 충분히 들어가야 "치고받는" 것으로 보인다.
+const _: () = assert!(YACHA_BRAWL_MS.0 / YACHA_ROUND_MS >= 30);
+/// **여덟 마리에서도 다운 간격이 눈에 보여야 한다.** 일곱 번의 다운이 예산을
+/// 나눠 가지므로 한 칸이 라운드 몇 번은 돼야 "맞다가 쓰러진다"로 읽힌다.
+const _: () = assert!(YACHA_BRAWL_MS.0 / 8 > YACHA_ROUND_MS * 3);
+
+/// 이만큼은 맞아야 쓰러진다. **한 대도 안 맞고 넘어가는 그림을 막는다** —
+/// 다운 시각이 됐는데 최다 피격이 이보다 적으면 다음 틱으로 미룬다.
+pub(super) const YACHA_MIN_HITS: u32 = 3;
+const _: () = assert!(YACHA_MIN_HITS >= 1);
+
+/// 최후의 1인이 양 날개를 드는 시간. **`SASSY_MS`와 같아야 한다** — CSS가
+/// 싸가지 반응의 keyframe을 참조하므로 어긋나면 자세가 중간에 멈춘다.
+pub(super) const YACHA_WIN_MS: u64 = SASSY_MS;
+
+/// 미녀 펭귄이 **걸어오는** 속도. 다른 마리들이 날아온 것과 대비되어야 한다.
+pub(super) const YACHA_QUEEN_SPEED: f64 = 220.0;
+const _: () = assert!(YACHA_QUEEN_SPEED > WALK_SPEED);
+const _: () = assert!(YACHA_QUEEN_SPEED < YACHA_GATHER_SPEED);
+
+/// 미녀가 챔피언 옆 어디에 서나 (몸통 가운데 사이).
+pub(super) const YACHA_QUEEN_STOP_GAP: f64 = 110.0;
+const _: () = assert!(YACHA_QUEEN_STOP_GAP < PET_SIZE);
+
+/// 벨트를 채우는 동안.
+pub(super) const YACHA_BELT_MS: u64 = 1_200;
+
+/// 세레모니 — 벨트를 차고 양 날개를 들어 흔든다.
+pub(super) const YACHA_CEREMONY_MS: u64 = 2_500;
+const _: () = assert!(YACHA_CEREMONY_MS > YACHA_BELT_MS);
+
+/// 미녀가 오른쪽으로 걸어 나가는 동안. 같은 시간에 링이 걷히고 쓰러진 마리가
+/// 일어난다.
+pub(super) const YACHA_EXIT_MS: u64 = 1_200;
+
+/// 판이 어떤 이유로도 마리를 이보다 오래 붙들지 못한다 (KTD5의 종료 증명 ③).
+pub(super) const YACHA_MAX_MS: u64 = 90_000;
+const _: () = assert!(
+    YACHA_MAX_MS
+        > YACHA_BRAWL_MS.1
+            + YACHA_WIN_MS
+            + YACHA_BELT_MS
+            + YACHA_CEREMONY_MS
+            + YACHA_EXIT_MS
+);

@@ -1019,6 +1019,7 @@ impl Pet {
             Behavior::Swing => self.tick_swing(now_ms),
             Behavior::Sassy { .. } => self.tick_sassy(now_ms),
             Behavior::Squawk => self.tick_squawk(now_ms),
+            Behavior::DontAsk => self.tick_dont_ask(now_ms),
             Behavior::Falling => self.tick_falling(now_ms, bounds, dt),
             Behavior::Swim => self.tick_swim(now_ms, bounds, dt),
             Behavior::Thrown => self.tick_thrown(now_ms, bounds, dt),
@@ -1062,6 +1063,7 @@ impl Pet {
             | Behavior::Dragged
             | Behavior::Swing
             | Behavior::Squawk
+            | Behavior::DontAsk
             | Behavior::IceFishing { .. } => {}
             Behavior::Land | Behavior::Splat | Behavior::Sprawl | Behavior::Tumble => {
                 self.air = false

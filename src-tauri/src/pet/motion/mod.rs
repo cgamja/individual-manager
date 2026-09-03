@@ -5,6 +5,7 @@
 
 mod air;
 mod bowling;
+mod dont_ask;
 mod drag;
 mod fishing;
 mod freakout;

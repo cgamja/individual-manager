@@ -224,7 +224,7 @@ describe("웹뷰 규약", () => {
     // **주석을 걷어낸다** — 안 그러면 "쓰지 말라"고 적어 둔 주석이 검사에 걸린다.
     const 코드 = ballTs.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/.*/g, " ");
     expect(코드).toContain("onVolleyState");
-    expect(코드).not.toMatch(/\blisten\(/);
+    expect(코드).not.toMatch(/\blisten\s*\(/);
   });
 
   it("코트는_구독하지_않는다", () => {
@@ -232,7 +232,7 @@ describe("웹뷰 규약", () => {
     expect(courtTs).not.toContain("onVolleyState");
     // 전역 `listen(`도 막는다 — 대상을 `Any`로 등록해 emit 대상과 무관하게
     // 전부 호출된다 (위 `공은_자기_창에만_묶인다`와 같은 위험).
-    expect(courtTs).not.toMatch(/\blisten\(/);
+    expect(courtTs).not.toMatch(/\blisten\s*\(/);
   });
 
   it("배경을_칠하지_않는다", () => {

@@ -73,7 +73,9 @@ execution: code
 
 ### 성공 기준
 
-1. `npm test` — **313 + 신규 N개**, **기존 이름 0개 소실**.
+1. `npm test` — **313 + 신규 N개**, **기존 이름 0개 소실**. 실제로는 **328**로 끝났다
+   (아래 유닛별 예측치는 구현 전에 적은 것이라 낮게 잡혔다 — 예측이 아니라 이
+   숫자가 완료 조건이다).
 2. `cargo test` — 423 통과 (Rust는 손대지 않는다; 손대야 하면 정지 조건 3).
 3. `npm run build` — 타입·번들 통과.
 4. 개발 스모크에서 여섯 그림이 전부 눈으로 확인된다 (아래 Verification Contract).
@@ -441,7 +443,7 @@ flowchart LR
 
 | 게이트 | 명령 | 기준 |
 |---|---|---|
-| 프론트 | `npm test` | 313 → **323** (신규 10, 소실 0) |
+| 프론트 | `npm test` | 313 → **328** (신규 15, 소실 0) |
 | Rust | `cargo test` | 423 통과 — **변화 없어야 한다** |
 | 타입·번들 | `npm run build` | 통과 |
 | 번들 분리 | `dist/assets/` 확인 | 바닐라 창 청크에 React 없음 |
@@ -464,7 +466,7 @@ flowchart LR
 ### Definition of Done
 
 - [ ] 여섯 유닛이 각각 커밋 하나로 들어갔고 각 커밋에서 두 러너가 통과했다
-- [ ] `npm test` 323, `cargo test` 423, `npm run build` 통과
+- [ ] `npm test` 328, `cargo test` 423, `npm run build` 통과
 - [ ] 스모크 체크리스트 7항목 전부 확인 (스크린샷을 PR에 넣는다)
 - [ ] `src/pet/Penguin.tsx`가 없다. `data:image/svg+xml`이 CSS에 없다
 - [ ] `TODO.md` — 이 항목 추가+체크, 후속 두 줄 추가

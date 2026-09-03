@@ -38,10 +38,49 @@ fn 서_있는_국면은_상자_안이다() {
 fn 그림이_상자를_넘는_국면은_통과를_접는다() {
     // 이 목록이 비면 슬라이딩·굴러떨어지기 중에 그려진 펭귄을 눌렀는데 클릭이
     // 아래 앱으로 샌다 — 이 설계가 없애려던 갈래다.
+    //
+    // **판·경기 동작도 여기 든다.** 코어 좌표는 바닥에 두고 CSS로만 그리므로
+    // 스파이크(`translateY(-26px)`)나 핀 자세(`rotate(48deg)`)가 되돌리기
+    // 여유(`PET_SIZE * 0.1`)를 넘는다.
     use crate::pet::Behavior::*;
-    for b in [Slide, Tumble, Splat, Sprawl, Thrown, Dragged] {
+    for b in [
+        Slide,
+        Tumble,
+        Splat,
+        Sprawl,
+        Thrown,
+        Dragged,
+        Land,
+        Falling,
+        Volleyball {
+            volley: crate::pet::VolleyPhase::Bump,
+        },
+        Volleyball {
+            volley: crate::pet::VolleyPhase::Chase,
+        },
+        Bowling {
+            bowling: crate::pet::BowlingPhase::Ready,
+        },
+    ] {
         assert!(!pose_of(&스냅샷(b, false)).in_box(), "{b:?}");
     }
+}
+
+#[test]
+fn 모르는_동작은_통과를_접는다() {
+    // 목록을 **뒤집어** 뒀다: 상자 안이 확인된 국면만 통과를 허락한다.
+    // 모션은 일곱 자리에 흩어져 있어서(`behavior.rs`) 새 동작을 얹을 때 이
+    // 목록을 빠뜨리기 쉬운데, 빠뜨린 쪽이 안전한 기본값(= 오늘까지의 동작)이
+    // 되어야 한다. 이 테스트가 그 방향을 못 박는다.
+    use crate::pet::{Behavior::*, FreakoutPhase};
+    assert!(!pose_of(&스냅샷(
+        Freakout {
+            freakout: FreakoutPhase::Dash
+        },
+        false
+    ))
+    .in_box());
+    assert!(!pose_of(&스냅샷(Swim, false)).in_box());
 }
 
 #[test]

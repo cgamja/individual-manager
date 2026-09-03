@@ -130,43 +130,62 @@ impl Pose {
     }
 }
 
+/// 이번 틱의 판정. **접는 이유를 둘로 가른다** — 요청을 지울지가 갈리기 때문이다.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Verdict {
+    /// 통과시킨다.
+    Through,
+    /// 이번 틱만 접는다. **요청은 남긴다** — 자세나 커서 읽기처럼 곧 지나가는
+    /// 사정이고, 지우면 사용자는 마우스를 다시 흔들어야 한다(웹뷰는 포인터가
+    /// 움직일 때만, 그것도 스로틀에 걸려 재요청한다).
+    Hold,
+    /// 되돌리고 **요청도 지운다.** 커서가 그림 근처로 왔거나 너무 멀어졌다 —
+    /// 둘 다 배율에 기대는 판정이라, 다시 켜려면 웹뷰의 client 좌표를 거쳐야
+    /// 한다. 배율이 틀려도 되찾을 수 있는 길이 그것뿐이다.
+    Latch,
+}
+
+impl Verdict {
+    pub fn through(self) -> bool {
+        self == Verdict::Through
+    }
+    pub fn latches(self) -> bool {
+        self == Verdict::Latch
+    }
+}
+
 /// 이번 틱에 이 창이 클릭을 통과시켜야 하는가. 좌표는 화면 **논리** 좌표다.
 ///
-/// **요청은 걸쇠다** — 거짓이 나오면 부르는 쪽([`super::apply_click_through`])이
-/// 요청까지 지운다. 그래야 통과가 "요청이 남아 있는 동안"이 아니라 "근거가
-/// 있는 동안"만 유지되고, 되돌린 뒤에는 웹뷰가 **자기 client 좌표로** 다시
-/// 판단해야 켜진다 — 배율이 틀려도 되찾을 수 있는 길이 그것뿐이다.
-///
-/// 참으로 가는 길은 하나, 거짓으로 가는 길이 다섯이다. 거짓은 곧 오늘까지의
-/// 동작(창이 클릭을 먹는다)이라 무엇이 어긋나든 최악이 회귀 없음이다.
+/// 통과로 가는 길은 하나, 접는 길이 다섯이다. 접는 것은 곧 오늘까지의 동작
+/// (창이 클릭을 먹는다)이라 무엇이 어긋나든 최악이 회귀 없음이다.
 pub fn decide_click_through(
     requested: bool,
     pose: Pose,
     pet: (f64, f64),
     cursor: Option<(f64, f64)>,
     anchor: Option<(f64, f64)>,
-) -> bool {
+) -> Verdict {
     if !requested {
-        return false;
+        return Verdict::Hold;
     }
     if !pose.in_box() {
-        return false;
+        return Verdict::Hold;
     }
     // 커서나 배율을 못 읽었다.
     let Some((cx, cy)) = cursor else {
-        return false;
+        return Verdict::Hold;
     };
     // 커서가 그림 근처로 돌아왔다.
     if contains(revert_rect(pet.0, pet.1), cx, cy) {
-        return false;
+        return Verdict::Latch;
     }
     // 요청받은 자리에서 한 마리 폭 넘게 움직였다.
     if let Some((ax, ay)) = anchor {
         if (cx - ax).hypot(cy - ay) > PET_SIZE * PET_DRIFT_RATIO {
-            return false;
+            return Verdict::Latch;
         }
     }
-    true
+    Verdict::Through
 }
 
 #[cfg(test)]

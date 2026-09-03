@@ -5,6 +5,7 @@ import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Penguin } from "../assets/penguin";
 import {
+  PENGUIN_HIT_ARM_RATIO,
   PENGUIN_HIT_BOX,
   PENGUIN_HIT_HYSTERESIS_RATIO,
   PENGUIN_VIEWBOX,
@@ -220,10 +221,16 @@ describe("히트 박스 상수 동기화", () => {
     expect(PENGUIN_VIEWBOX[key as keyof typeof PENGUIN_VIEWBOX]).toBe(b);
   });
 
-  it("히스테리시스_비율이_Rust와_같다", () => {
-    const b = rustConst("PET_HIT_HYSTERESIS_RATIO");
-    expect(b, "Rust에서 PET_HIT_HYSTERESIS_RATIO를 못 찾았다").not.toBeNull();
-    expect(PENGUIN_HIT_HYSTERESIS_RATIO).toBe(b);
+  // **비율도 빠짐없이 본다.** 셋 중 하나만 갈라져도 `요청 ⊃ 되돌리기 ⊃ 히트`가
+  // 깨지는데, 그러면 그 띠에서 통과가 50ms마다 켜졌다 꺼진다 — 두 러너도 타입
+  // 검사도 아무 말을 안 한다.
+  it.each([
+    [PENGUIN_HIT_ARM_RATIO, "PET_HIT_ARM_RATIO"],
+    [PENGUIN_HIT_HYSTERESIS_RATIO, "PET_HIT_HYSTERESIS_RATIO"],
+  ])("비율 %s 가 Rust의 %s 와 같다", (ts, rustName) => {
+    const b = rustConst(rustName);
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(ts).toBe(b);
   });
 
   it("히트_박스가_그림과_같은_좌표계다", () => {

@@ -136,6 +136,18 @@ fn 세_상자가_안에서_바깥_순서다() {
 
 // ── 통과 판정 ────────────────────────────────────────────────────
 
+/// [`decide_click_through`]가 통과를 허락했나. 접는 이유(`Hold`/`Latch`)를
+/// 가르는 검사는 아래 "거부의 갈래"에 따로 있다.
+fn 통과(
+    requested: bool,
+    pose: Pose,
+    pet: (f64, f64),
+    cursor: Option<(f64, f64)>,
+    anchor: Option<(f64, f64)>,
+) -> bool {
+    decide_click_through(requested, pose, pet, cursor, anchor).through()
+}
+
 /// 되돌리기 상자 밖, 창 여백. 통과를 유지해야 하는 자리다.
 fn 여백() -> (f64, f64) {
     (AT.0 - PET_PAD_X + 4.0, AT.1 + PET_SIZE / 2.0)
@@ -149,7 +161,7 @@ fn 몸() -> (f64, f64) {
 #[test]
 fn 여백에_요청이_있고_커서가_그대로면_통과를_유지한다() {
     // 참으로 가는 유일한 길이다. 이게 깨지면 기능이 통째로 죽는다.
-    assert!(decide_click_through(
+    assert!(통과(
         true,
         Pose::InBox,
         AT,
@@ -160,20 +172,20 @@ fn 여백에_요청이_있고_커서가_그대로면_통과를_유지한다() {
 
 #[test]
 fn 요청이_없으면_클릭을_먹는다() {
-    assert!(!decide_click_through(false, Pose::InBox, AT, Some(여백()), None));
+    assert!(!통과(false, Pose::InBox, AT, Some(여백()), None));
 }
 
 #[test]
 fn 커서를_못_읽으면_클릭을_먹는다() {
     // 배율을 못 읽었을 때도 부르는 쪽이 `None`을 준다 — 같은 갈래다.
-    assert!(!decide_click_through(true, Pose::InBox, AT, None, Some(여백())));
+    assert!(!통과(true, Pose::InBox, AT, None, Some(여백())));
 }
 
 #[test]
 fn 상자를_벗어나는_자세면_클릭을_먹는다() {
     // 들려 있기·슬라이딩·굴러떨어지기 따위. 그림이 상자 밖에 있는데 통과를
     // 걸면 그려진 펭귄을 눌렀는데 아래 앱이 받는다.
-    assert!(!decide_click_through(
+    assert!(!통과(
         true,
         Pose::OutOfBox,
         AT,
@@ -191,7 +203,7 @@ fn 커서가_그림_근처로_오면_닿기_전에_되돌린다() {
         !contains(hit_rect(AT.0, AT.1), 코앞.0, 코앞.1),
         "아직 그림 밖이다"
     );
-    assert!(!decide_click_through(
+    assert!(!통과(
         true,
         Pose::InBox,
         AT,
@@ -202,7 +214,7 @@ fn 커서가_그림_근처로_오면_닿기_전에_되돌린다() {
 
 #[test]
 fn 커서가_펭귄_위면_되돌린다() {
-    assert!(!decide_click_through(true, Pose::InBox, AT, Some(몸()), Some(여백())));
+    assert!(!통과(true, Pose::InBox, AT, Some(몸()), Some(여백())));
 }
 
 #[test]
@@ -211,21 +223,21 @@ fn 펭귄이_커서_밑으로_걸어오면_되돌린다() {
     // 않으면 지나가는 동안 클릭이 아래 앱으로 샌다.
     let 커서 = 몸();
     let 지나간_뒤 = (AT.0 + 400.0, AT.1);
-    assert!(decide_click_through(
+    assert!(통과(
         true,
         Pose::InBox,
         지나간_뒤,
         Some(커서),
         Some(커서)
     ));
-    assert!(!decide_click_through(true, Pose::InBox, AT, Some(커서), Some(커서)));
+    assert!(!통과(true, Pose::InBox, AT, Some(커서), Some(커서)));
 }
 
 #[test]
 fn 요청_지점에서_한_마리_폭_넘게_움직이면_되돌린다() {
     let (ax, ay) = 여백();
     let 멀리 = (ax - PET_SIZE * PET_DRIFT_RATIO - 1.0, ay);
-    assert!(!decide_click_through(
+    assert!(!통과(
         true,
         Pose::InBox,
         AT,
@@ -238,7 +250,7 @@ fn 요청_지점에서_한_마리_폭_넘게_움직이면_되돌린다() {
 fn 기준점_근처의_잔떨림에는_안_풀린다() {
     let (ax, ay) = 여백();
     let 조금 = (ax + 3.0, ay - 2.0);
-    assert!(decide_click_through(
+    assert!(통과(
         true,
         Pose::InBox,
         AT,
@@ -247,3 +259,35 @@ fn 기준점_근처의_잔떨림에는_안_풀린다() {
     ));
 }
 
+
+// ── 거부의 갈래 ──────────────────────────────────────────────────
+
+#[test]
+fn 자세_때문에_접을_때는_요청을_남긴다() {
+    // 지우면 슬라이딩이 끝난 뒤에도 요청이 없고, 웹뷰는 포인터가 움직일 때만
+    // 그것도 스로틀에 걸려 재요청한다 — 커서가 멈춰 있으면 여백이 계속 클릭을
+    // 먹는다(고치기 전 동작으로 퇴화).
+    let v = decide_click_through(true, Pose::OutOfBox, AT, Some(여백()), None);
+    assert!(!v.through());
+    assert!(!v.latches(), "일시적 사정인데 걸쇠가 걸렸다");
+}
+
+#[test]
+fn 커서를_못_읽을_때도_요청을_남긴다() {
+    let v = decide_click_through(true, Pose::InBox, AT, None, None);
+    assert!(!v.through());
+    assert!(!v.latches());
+}
+
+#[test]
+fn 위치_판정으로_되돌릴_때만_요청을_지운다() {
+    // 이 둘은 배율에 기대는 판정이라, 다시 켜려면 웹뷰의 client 좌표를 거쳐야
+    // 한다 — 걸쇠가 그걸 강제한다.
+    let 몸_위 = decide_click_through(true, Pose::InBox, AT, Some(몸()), Some(여백()));
+    assert!(몸_위.latches(), "커서가 그림 근처인데 요청이 남는다");
+
+    let (ax, ay) = 여백();
+    let 멀리 = (ax - PET_SIZE * PET_DRIFT_RATIO - 1.0, ay);
+    let 드리프트 = decide_click_through(true, Pose::InBox, AT, Some(멀리), Some((ax, ay)));
+    assert!(드리프트.latches(), "너무 멀어졌는데 요청이 남는다");
+}

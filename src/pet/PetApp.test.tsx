@@ -244,15 +244,16 @@ describe("시선 추적", () => {
     );
   }
 
-  it("무대_밖에서_움직여도_눈동자가_따라온다", async () => {
+  it("실루엣_밖에서_움직여도_눈동자가_따라온다", async () => {
     // 실루엣만 포인터를 받게 되면서(base.css) SVG에 리스너를 두면 눈동자가
-    // 펭귄 몸 위에서만 움직인다. 창 전역이어야 한다.
+    // 펭귄 몸 위에서만 움직인다. 창 전역이어야 한다. client 80은 무대 안이지만
+    // 레터박스라 그림이 시작하지도 않은 자리다.
     mockPet();
     render(<PetApp />);
     await flush();
     stage();
 
-    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    pointer("pointermove", window as unknown as Element, { clientX: 80, clientY: 150 });
     await flush();
 
     expect(gazeX()).not.toBe("0px");
@@ -274,13 +275,32 @@ describe("시선 추적", () => {
     expect(gazeX()).toBe(before);
   });
 
+  it("통과가_걸리면_눈동자가_가운데로_돌아온다", async () => {
+    // 통과가 걸리는 순간 이 창은 포인터 이벤트를 아예 못 받는다 —
+    // `pointerleave`조차 안 온다. 그때 시선을 안 되돌리면 눈동자가 마지막
+    // 표본(대개 ±1.6 최대치)에 얼어붙어 계속 한쪽을 노려본다 (R7).
+    mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 100, clientY: 150 });
+    await flush();
+    expect(gazeX()).not.toBe("0px");
+
+    pointer("pointermove", window as unknown as Element, { clientX: 4, clientY: 150 });
+    await flush();
+
+    expect(gazeX()).toBe("0px");
+  });
+
   it("창을_벗어나면_눈동자가_가운데로_돌아온다", async () => {
     mockPet();
     render(<PetApp />);
     await flush();
     stage();
 
-    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    pointer("pointermove", window as unknown as Element, { clientX: 100, clientY: 150 });
     await flush();
     expect(gazeX()).not.toBe("0px");
 

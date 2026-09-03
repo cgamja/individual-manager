@@ -87,17 +87,23 @@ pub(super) struct ClickThroughView {
     anchor: Option<(f64, f64)>,
 }
 
-/// 스냅샷의 동작을 [`Pose`]로. **상자를 넘어가는 국면 목록이 여기 하나뿐이다** —
-/// 근거가 되는 CSS 변환은 `MOTIONS.md` "클릭의 경계는 창이 아니라 히트 상자다".
+/// 스냅샷의 동작을 [`Pose`]로. 근거가 되는 CSS 변환은 `MOTIONS.md`
+/// "클릭의 경계는 창이 아니라 히트 상자다".
+///
+/// **목록이 뒤집혀 있다** — 상자 안에 머무는 것이 확인된 국면만 적고 나머지는
+/// 전부 접는다. 모션 하나는 일곱 자리에 흩어져 있어서(`behavior.rs`) 새 동작을
+/// 얹을 때 여기를 빠뜨리기 쉬운데, **빠뜨린 쪽이 안전한 기본값**(= 창이 클릭을
+/// 먹는, 고치기 전 동작)이어야 한다.
 pub(super) fn pose_of(snapshot: &Snapshot) -> Pose {
     use crate::pet::Behavior::*;
-    // 공중에 있으면 몸이 기울거나(헤엄) 구른다(던져짐·떨어짐).
+    // 공중에서는 몸이 기울거나(헤엄) 구른다(던져짐·떨어짐).
     if snapshot.air {
         return Pose::OutOfBox;
     }
     match snapshot.behavior {
-        Dragged | Slide | Tumble | Splat | Sprawl | Thrown | Freakout { .. } => Pose::OutOfBox,
-        _ => Pose::InBox,
+        Walk | Turn | Sleep | Squawk | Swing => Pose::InBox,
+        Idle { .. } | Sassy { .. } | IceFishing { .. } => Pose::InBox,
+        _ => Pose::OutOfBox,
     }
 }
 
@@ -113,19 +119,20 @@ pub(super) fn apply_click_through(
     requested: bool,
     cursor: Option<(f64, f64)>,
     view: &mut ClickThroughView,
-) -> bool {
-    let want = decide_click_through(
+) -> Verdict {
+    let verdict = decide_click_through(
         requested,
         pose_of(snapshot),
         (snapshot.x, snapshot.y),
         cursor,
         view.anchor,
     );
+    let want = verdict.through();
     view.anchor = if want { view.anchor.or(cursor) } else { None };
     if view.applied != Some(want) {
         view.applied = window.set_ignore_cursor_events(want).ok().map(|()| want);
     }
-    want
+    verdict
 }
 
 /// 어긋남을 처음 본 시각들 중, 유예를 다 쓴 것들.
@@ -162,6 +169,12 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             //    `cursor_position()`은 메인 스레드를 왕복하는 블로킹 getter라
             //    (`current_monitor()`와 같은 부류, KTD5) 락을 쥔 채 부르면
             //    커맨드와 서로를 붙든다. 아래 `.clone()`이 가드를 그 자리에서 놓는다.
+            //
+            //    **캐시하지 않는 것은 의도적 예외다.** KTD5가 `current_monitor()`를
+            //    캐시하라는 근거는 그 값이 거의 안 변한다는 것인데, 커서는 정반대다 —
+            //    낡은 값이 곧 오판이고, 오판의 방향이 "펭귄 위인데 통과 중"이다.
+            //    대신 **부르는 횟수 자체를 좁혔다**: 요청이 살아 있는 동안에만 돌고,
+            //    위치 판정으로 되돌리는 순간 요청이 지워져 폴이 멎는다([`Verdict`]).
             let requests: HashMap<PetId, bool> =
                 잠금(&app.state::<PetState>().click_through).clone();
             let 볼_일이_있다 = requests.values().any(|w| *w)
@@ -314,17 +327,16 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     continue;
                 };
                 let requested = requests.get(&id).copied().unwrap_or(false);
-                let through = apply_click_through(
+                let verdict = apply_click_through(
                     window,
                     &snapshot,
                     requested,
                     cursor,
                     click_view.entry(id).or_default(),
                 );
-                any_click_through |= through;
-                // **되돌렸으면 요청도 지운다(걸쇠).** 안 지우면 다음 틱에 근거
-                // 없이 다시 걸리고 폴도 안 멎는다 (`decide_click_through` 문서).
-                if requested && !through {
+                any_click_through |= verdict.through();
+                // 되돌린 이유가 위치 판정일 때만 요청을 지운다 ([`Verdict`]).
+                if requested && verdict.latches() {
                     withdraw.push(id);
                 }
                 let moves = should_move(snapshot.behavior.moves_window(), *rescued);

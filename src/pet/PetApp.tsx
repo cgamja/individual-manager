@@ -238,7 +238,6 @@ export function PetApp() {
       if (!rect || rect.width === 0 || rect.height === 0) return;
       const nx = (e.clientX - rect.left) / rect.width - 0.5;
       const ny = (e.clientY - rect.top) / rect.height - 0.5;
-      setGaze({ x: clampGaze(nx * 4), y: clampGaze(ny * 4) });
 
       // 무대의 실제 자리에서 치수를 뽑는다 — CSS 변수를 파싱하지 않는다.
       // 무대가 커지거나 여백이 바뀌어도 저절로 따라간다.
@@ -253,8 +252,13 @@ export function PetApp() {
       // 그래서 보낸 기억이 아니라 **관측**으로 다시 판단한다.
       if (!want) {
         clickThroughAtRef.current = 0;
+        setGaze({ x: clampGaze(nx * 4), y: clampGaze(ny * 4) });
         return;
       }
+      // **통과가 걸리면 이 리스너가 조용해진다** — 커서가 창을 나가도
+      // `pointerleave`가 안 온다. 시선을 지금 가운데로 돌려놓지 않으면 눈동자가
+      // 마지막 표본(대개 ±1.6 최대치)에 얼어붙어 계속 한쪽을 노려본다 (R7).
+      setGaze({ x: 0, y: 0 });
       // 켜지지 않은 채 커서가 여백을 헤매면 매 이동마다 IPC가 나가므로 묶는다.
       // 정상 경로에서는 창이 곧 통과로 바뀌어 이 리스너가 조용해진다.
       const now = performance.now();

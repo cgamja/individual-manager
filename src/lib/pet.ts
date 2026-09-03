@@ -372,6 +372,10 @@ export const setPetEnabled = (enabled: boolean): Promise<void> =>
 export const setPetPinball = (on: boolean): Promise<void> =>
   invoke("pet_set_pinball", { on });
 
+/** 펭귄 크기 배율(퍼센트)을 지금 떠 있는 창에 건다. 저장은 웹뷰가 따로 한다. */
+export const setPetSize = (size: number): Promise<void> =>
+  invoke("pet_set_size", { size });
+
 /** 자기 창의 펭귄 상태만 구독한다. */
 export const onPetState = (cb: (snapshot: PetSnapshot) => void): Promise<UnlistenFn> =>
   getCurrentWebviewWindow().listen<PetSnapshot>(EVENT_PET_STATE, (event) => cb(event.payload));

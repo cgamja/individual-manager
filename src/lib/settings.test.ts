@@ -43,6 +43,7 @@ describe("펭귄 설정", () => {
       pinball: false,
       volume: 2,
       theme: "system",
+      size: 100,
     });
   });
 
@@ -54,6 +55,7 @@ describe("펭귄 설정", () => {
       pinball: false,
       volume: 2,
       theme: "system",
+      size: 100,
     });
   });
 
@@ -65,6 +67,7 @@ describe("펭귄 설정", () => {
       pinball: false,
       volume: 2,
       theme: "system",
+      size: 100,
     });
   });
 
@@ -115,6 +118,24 @@ describe("펭귄 설정", () => {
     }
   });
 
+  it("크기는_저장된_적이_없으면_100퍼센트다", async () => {
+    mockStore({ pet: { enabled: true, sound: true } });
+    expect((await loadPetSettings()).size).toBe(100);
+  });
+
+  it("저장된_크기를_그대로_읽는다", async () => {
+    mockStore({ pet: { size: 60 } });
+    expect((await loadPetSettings()).size).toBe(60);
+  });
+
+  it("범위를_벗어나거나_깨진_크기는_100으로_수렴한다", async () => {
+    // 손으로 고친 저장 파일이 화면을 덮는 펭귄을 만들면 안 된다.
+    for (const bad of ["크게", 5000, 49, 151, 0, -30, 60.5, null]) {
+      mockStore({ pet: { size: bad } });
+      expect((await loadPetSettings()).size, String(bad)).toBe(100);
+    }
+  });
+
   it("테마가_없으면_시스템이다", async () => {
     mockStore({ pet: { enabled: true } });
     expect((await loadPetSettings()).theme).toBe("system");
@@ -142,6 +163,7 @@ describe("펭귄 설정", () => {
       pinball: false,
       volume: 2,
       theme: "system",
+      size: 100,
     });
   });
 });

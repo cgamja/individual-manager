@@ -16,7 +16,15 @@ export interface PetSettings {
   volume: number;
   /** 겉모습 테마 — 설정 창이 따른다 (2026-09-01 사용자 지시). 트레이 아이콘은 */
   theme: AppTheme;
+  /** 펭귄 크기 **퍼센트** (50~150, 기본 100). 소품·물리가 함께 따라온다.
+   * Rust는 이 값을 배율(0.5~1.5)로 바꿔 쓴다 — `pet_bridge/scale.rs`. */
+  size: number;
 }
+
+/** 크기 슬라이더의 범위·단계. Rust의 `SIZE_MIN`·`SIZE_MAX`·`SIZE_STEP`과 짝이다. */
+export const SIZE_MIN = 50;
+export const SIZE_MAX = 150;
+export const SIZE_STEP = 10;
 
 export type AppTheme = "system" | "light" | "dark";
 
@@ -28,6 +36,12 @@ const sanitizeTheme = (v: unknown): AppTheme =>
 const sanitizeVolume = (v: unknown): number =>
   typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 4 ? v : 2;
 
+/** 50~150의 정수만 유효하다. 깨진 값은 100(원래 크기)으로 수렴한다 — 손으로 고친
+ * 저장 파일이 화면을 덮는 펭귄을 만들면 안 된다. **10 단위로 강제하지는 않는다**:
+ * 슬라이더가 이미 `step`으로 막고, 손으로 넣은 55를 100으로 되돌리면 더 놀란다. */
+const sanitizeSize = (v: unknown): number =>
+  typeof v === "number" && Number.isInteger(v) && v >= SIZE_MIN && v <= SIZE_MAX ? v : 100;
+
 /** 펭귄은 기본 켜짐(사용자가 직접 요청한 기능이라 opt-in으로 숨기지 않는다), */
 export const DEFAULT_PET_SETTINGS: PetSettings = {
   enabled: true,
@@ -35,6 +49,7 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   pinball: false,
   volume: 2,
   theme: "system",
+  size: 100,
 };
 
 /** 저장된 펭귄 설정을 로드한다. 깨진 값은 항목별로 기본값에 수렴시킨다 — */
@@ -48,6 +63,7 @@ export async function loadPetSettings(): Promise<PetSettings> {
       typeof value?.pinball === "boolean" ? value.pinball : DEFAULT_PET_SETTINGS.pinball,
     volume: sanitizeVolume(value?.volume),
     theme: sanitizeTheme(value?.theme),
+    size: sanitizeSize(value?.size),
   };
 }
 

@@ -14,6 +14,7 @@ import {
   removePet,
   setPetEnabled,
   setPetPinball,
+  setPetSize,
   setPetTheme,
   slidePet,
   squawkPet,
@@ -67,6 +68,7 @@ function App() {
   const [soundEnabled, setSoundEnabledState] = useState(DEFAULT_PET_SETTINGS.sound);
   const [pinballEnabled, setPinballEnabledState] = useState(DEFAULT_PET_SETTINGS.pinball);
   const [volume, setVolumeState] = useState(DEFAULT_PET_SETTINGS.volume);
+  const [size, setSizeState] = useState(DEFAULT_PET_SETTINGS.size);
   const [theme, setThemeState] = useState(DEFAULT_PET_SETTINGS.theme);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
   /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
@@ -88,6 +90,7 @@ function App() {
         setSoundEnabledState(savedPet.sound);
         setPinballEnabledState(savedPet.pinball);
         setVolumeState(savedPet.volume);
+        setSizeState(savedPet.size);
         setThemeState(savedPet.theme);
       }
       const savedTaunts = await loadTaunts().catch(() => []);
@@ -108,6 +111,7 @@ function App() {
             setSoundEnabledState(saved.sound);
             setPinballEnabledState(saved.pinball);
             setVolumeState(saved.volume);
+            setSizeState(saved.size);
             setThemeState(saved.theme);
           })
           .catch(() => {});
@@ -221,6 +225,24 @@ function App() {
       );
     },
     [soundEnabled, volume],
+  );
+
+  /** 크기 — 음량과 같은 순서다: 저장이 성공한 뒤에만 창에 건다. Rust의 틱과
+   * 새 창은 저장된 값을 원천으로 읽으므로 순서가 뒤집히면 한 틱이 옛 배율이다. */
+  const handleSizeChange = useCallback(
+    async (next: number) => {
+      const prev = size;
+      setSizeState(next);
+      try {
+        await savePetSettings({ size: next });
+      } catch (err) {
+        console.error("크기 저장 실패:", err);
+        setSizeState(prev);
+        return;
+      }
+      await setPetSize(next).catch((err) => console.error("크기 적용 실패:", err));
+    },
+    [size],
   );
 
   /** 핀볼 on/off — **거는 것과 저장하는 것 둘 다 한다.** 거는 쪽은 지금 떠 있는 */
@@ -342,6 +364,8 @@ function App() {
         onSoundEnabledChange={(next) => void handleSoundEnabledChange(next)}
         volume={volume}
         onVolumeChange={(next) => void handleVolumeChange(next)}
+        size={size}
+        onSizeChange={(next) => void handleSizeChange(next)}
         theme={theme}
         onThemeChange={(next) => void handleThemeChange(next)}
         pinballEnabled={pinballEnabled}

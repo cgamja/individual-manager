@@ -40,6 +40,7 @@ src/
   assets/             **그림과 색은 전부 여기 있다** — 로직 파일에 SVG를 두지 않는다
     palette.ts        모든 색. 부위별 이름 하나씩
     penguin/          index(조립·겹침 순서) · body · hula(훌라 차림) · gear(방망이·낚시)
+                      hit(클릭 판정 상자 — Rust와 같은 수를 들고 있다)
     props/            소품 — bat(커서 방망이) · bowling-ball · beach-ball · court
                       **React를 쓰지 않는다** (바닐라 창이 쓴다)
     assets.test.ts    그림 렌더 스냅샷 + props의 React 무의존 검사
@@ -165,6 +166,13 @@ Rust는 아무 말도 하지 않는다.
   네이티브 창은 클릭을 그대로 먹는다. 클릭 통과와 창 레벨은 서로를 대신하지 못하므로
   **둘 다** 건다. →
   `docs/solutions/best-practices/tauri-ignore-cursor-events-is-async.md`
+- **macOS의 클릭 통과는 창 단위다 — "이 부분만 통과"가 없다.** 흉내 내려면 커서를
+  따라 껐다 켜야 하고, 그러면 **통과 중에는 웹뷰에 이벤트가 안 와서 스스로 되돌릴 수
+  없다** — 웹뷰가 요청하고 Rust 틱만 되돌린다. 되돌리는 눈이 하나뿐이라 **그 눈이
+  멀면 영영 못 누른다.** `pointer-events`와 창 통과는 **다른 층**이고
+  (`opacity: 0`은 히트 테스트를 **안** 막는다), 둘의 경계가 어긋나면 "웹뷰는
+  반응하는데 창은 통과시키는" 갈래가 생긴다. →
+  `docs/solutions/best-practices/macos-click-through-is-per-window.md`
 - **그림은 두 러너·타입 검사·리뷰를 전부 통과하면서 바뀔 수 있다.** 그래서
   `src/assets/assets.test.ts`가 **렌더 스냅샷**으로 못 박아 뒀다 — 펭귄 둘(암·수)과
   소품 다섯. **`-u`로 덮는 것은 "그림을 바꾸겠다"는 선언**이지 통과시키는 방법이

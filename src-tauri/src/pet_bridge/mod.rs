@@ -46,6 +46,13 @@ pub struct PetState {
     /// 마지막으로 우클릭된 펭귄. 팝오버(`main` 창)는 자기가 **어느 펭귄 때문에**
     /// 열렸는지 모르므로, 삭제 대상을 알려면 여는 쪽이 남겨 줘야 한다 (KTD6).
     pub focused: Mutex<Option<PetId>>,
+    /// 웹뷰가 "포인터가 펭귄 밖이니 통과시켜 달라"고 남긴 요청. **요청일 뿐**
+    /// 이고 플래그를 걸고 되돌리는 것은 틱이 한다 (`pet_bridge/hit.rs`).
+    ///
+    /// **`pets`와 동시에 잡지 않는다** — 락 둘을 겹쳐 쥐면 순서가 갈리는 순간
+    /// 데드락이다
+    /// (`docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md`).
+    pub click_through: Mutex<std::collections::HashMap<PetId, bool>>,
 }
 
 impl PetState {
@@ -53,6 +60,7 @@ impl PetState {
         PetState {
             pets: Mutex::new(pets),
             focused: Mutex::new(None),
+            click_through: Mutex::new(std::collections::HashMap::new()),
         }
     }
 }
@@ -113,6 +121,7 @@ pub fn bowling_over(was_alive: bool, is_alive: bool) -> bool {
 mod ball_window;
 mod bounds;
 pub mod commands;
+mod hit;
 mod pinball;
 mod volleyball;
 mod popover;
@@ -123,6 +132,7 @@ mod window;
 pub use ball_window::*;
 pub use bounds::*;
 pub use commands::*;
+pub use hit::*;
 pub use pinball::*;
 pub use volleyball::*;
 pub use popover::*;

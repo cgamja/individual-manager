@@ -54,12 +54,85 @@ pub(super) fn should_move(moves_window: bool, rescued: bool) -> bool {
 
 /// 다음 틱까지 잘 시간. **구조는 여기에 넣지 않는다** — 한 번 옮기면 제자리를 찾으므로
 /// 다음 틱까지 빠르게 돌 이유가 없다.
-pub(super) fn tick_interval(any_moves: bool) -> u64 {
-    if any_moves {
+///
+/// **클릭을 통과 중이면 자는 펭귄이어도 빠르게 돈다.** 통과를 되돌리는 유일한
+/// 눈이 이 틱이라, 500ms로 늘어지면 커서를 펭귄 위로 옮기고 그 안에 누른 클릭이
+/// 아래 앱으로 샌다. 자는 펭귄은 그 구간이 가장 길다.
+pub(super) fn tick_interval(any_moves: bool, any_click_through: bool) -> u64 {
+    if any_moves || any_click_through {
         TICK_MS
     } else {
         SLEEP_TICK_MS
     }
+}
+
+/// 틱이 락을 잡는 유일한 방법 — **중독(poison)돼도 죽지 않는다.**
+///
+/// 커맨드가 락을 쥔 채 패닉하면 `unwrap()`은 이 스레드를 죽인다. 그러면 클릭
+/// 통과를 되돌릴 눈이 사라져 **그때 통과 중이던 창이 영영 안 눌린다** — 이 작업이
+/// 막으려던 바로 그 상태다. 값 자체는 한 틱 뒤에 스스로 교정되므로 붙들고 간다.
+/// (두 번째 문은 트레이 → 설정에서 펭귄을 껐다 켜는 것이다. 창이 새로 만들어지며
+/// 통과가 초기화된다.)
+fn 잠금<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 창 하나의 클릭 통과에 대해 틱이 들고 있는 기억.
+#[derive(Clone, Copy, Default)]
+pub(super) struct ClickThroughView {
+    /// 창에 **성공적으로** 건 값. `None`이면 모르는 상태라 다음 틱에 다시 건다 —
+    /// 실패를 성공으로 적으면 되돌리기가 한 번 실패한 뒤 영영 재시도되지 않는다.
+    applied: Option<bool>,
+    /// 통과를 시작한 순간의 커서 자리 — 드리프트의 기준점.
+    anchor: Option<(f64, f64)>,
+}
+
+/// 스냅샷의 동작을 [`Pose`]로. 근거가 되는 CSS 변환은 `MOTIONS.md`
+/// "클릭의 경계는 창이 아니라 히트 상자다".
+///
+/// **목록이 뒤집혀 있다** — 상자 안에 머무는 것이 확인된 국면만 적고 나머지는
+/// 전부 접는다. 모션 하나는 일곱 자리에 흩어져 있어서(`behavior.rs`) 새 동작을
+/// 얹을 때 여기를 빠뜨리기 쉬운데, **빠뜨린 쪽이 안전한 기본값**(= 창이 클릭을
+/// 먹는, 고치기 전 동작)이어야 한다.
+pub(super) fn pose_of(snapshot: &Snapshot) -> Pose {
+    use crate::pet::Behavior::*;
+    // 공중에서는 몸이 기울거나(헤엄) 구른다(던져짐·떨어짐).
+    if snapshot.air {
+        return Pose::OutOfBox;
+    }
+    match snapshot.behavior {
+        Walk | Turn | Sleep | Squawk | Swing => Pose::InBox,
+        Idle { .. } | Sassy { .. } | IceFishing { .. } => Pose::InBox,
+        _ => Pose::OutOfBox,
+    }
+}
+
+/// 스냅샷과 커서를 보고 창의 클릭 통과를 맞춘다. 참을 돌려주면 통과 중이다.
+///
+/// **적용됐는지 읽어서 확인하지 않는다** — 세터가 비동기라 직후에 읽으면 오답이
+/// 나온다 (`docs/solutions/best-practices/tauri-ignore-cursor-events-is-async.md`).
+/// **`ns_window()`로 안 내려간다** — Tauri API라 틱 스레드에서 안전하다
+/// (`docs/solutions/best-practices/appkit-from-tick-thread-kills-the-app.md`).
+pub(super) fn apply_click_through(
+    window: &WebviewWindow,
+    snapshot: &Snapshot,
+    requested: bool,
+    cursor: Option<(f64, f64)>,
+    view: &mut ClickThroughView,
+) -> Verdict {
+    let verdict = decide_click_through(
+        requested,
+        pose_of(snapshot),
+        (snapshot.x, snapshot.y),
+        cursor,
+        view.anchor,
+    );
+    let want = verdict.through();
+    view.anchor = if want { view.anchor.or(cursor) } else { None };
+    if view.applied != Some(want) {
+        view.applied = window.set_ignore_cursor_events(want).ok().map(|()| want);
+    }
+    verdict
 }
 
 /// 어긋남을 처음 본 시각들 중, 유예를 다 쓴 것들.
@@ -83,9 +156,34 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
         // 비치발리볼의 창 둘(코트·공). 본문은 `pet_bridge/volleyball.rs`에 있다.
         let mut volley_view = VolleyView::default();
         let mut mismatch_since: HashMap<PetId, u64> = HashMap::new();
+        let mut click_view: HashMap<PetId, ClickThroughView> = HashMap::new();
+        // 화면 배율과 그걸 **읽어 본** 시각. 실패도 시각을 남긴다 — 안 그러면
+        // 못 읽는 동안 매 틱 비싼 `current_monitor()`를 두드린다.
+        let mut scale: (Option<f64>, u64) = (None, 0);
         loop {
-            let ids = app.state::<PetState>().pets.lock().unwrap().ids();
+            let ids = 잠금(&app.state::<PetState>().pets).ids();
             let now = now_ms();
+
+            // 0) 클릭 통과의 커서 — **락을 하나도 쥐지 않은 채, 통과 중이거나
+            //    요청이 있을 때만, 마릿수와 무관하게 한 번 읽는다.**
+            //    `cursor_position()`은 메인 스레드를 왕복하는 블로킹 getter라
+            //    (`current_monitor()`와 같은 부류, KTD5) 락을 쥔 채 부르면
+            //    커맨드와 서로를 붙든다. 아래 `.clone()`이 가드를 그 자리에서 놓는다.
+            //
+            //    **캐시하지 않는 것은 의도적 예외다.** KTD5가 `current_monitor()`를
+            //    캐시하라는 근거는 그 값이 거의 안 변한다는 것인데, 커서는 정반대다 —
+            //    낡은 값이 곧 오판이고, 오판의 방향이 "펭귄 위인데 통과 중"이다.
+            //    대신 **부르는 횟수 자체를 좁혔다**: 요청이 살아 있는 동안에만 돌고,
+            //    위치 판정으로 되돌리는 순간 요청이 지워져 폴이 멎는다([`Verdict`]).
+            let requests: HashMap<PetId, bool> =
+                잠금(&app.state::<PetState>().click_through).clone();
+            let 볼_일이_있다 = requests.values().any(|w| *w)
+                || click_view.values().any(|v| v.applied == Some(true));
+            let cursor_px = if 볼_일이_있다 {
+                app.cursor_position().ok().map(|p| (p.x, p.y))
+            } else {
+                None
+            };
 
             let mut orphan_windows: HashMap<PetId, WebviewWindow> = HashMap::new();
             for (label, window) in app.webview_windows() {
@@ -111,12 +209,22 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 if let Some(window) = orphan_windows.get(&id) {
                     let _ = window.close();
                 } else {
-                    app.state::<PetState>().pets.lock().unwrap().forget(id);
+                    잠금(&app.state::<PetState>().pets).forget(id);
                 }
                 mismatch_since.remove(&id);
                 worlds.remove(&id);
                 last_look.remove(&id);
+                click_view.remove(&id);
             }
+
+            // 사라진 마리의 통과 요청은 아무도 안 본다. 남겨 두면 다음에 같은
+            // id가 재사용될 때 아무도 요청하지 않은 통과가 켜진 채로 시작한다.
+            {
+                let state = app.state::<PetState>();
+                let mut req = 잠금(&state.click_through);
+                req.retain(|id, _| ids.contains(id));
+            }
+            click_view.retain(|id, _| ids.contains(id));
 
             if ids.is_empty() {
                 // 펭귄을 전부 껐거나 마지막 마리가 사라졌다. 공만 남겨 두면
@@ -155,11 +263,36 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 ready.insert(*id, (window, rescued));
             }
 
+            // 커서(물리 px)를 창 좌표(논리 px)로 옮길 배율. 경계와 같은 주기로
+            // 캐시한다 — `current_monitor()`가 이벤트 루프를 왕복하는 탓이다.
+            // **읽을 일이 있을 때만 읽는다** — 통과가 안 걸린 동안에는 이 값을
+            // 아무도 안 본다.
+            //
+            // **못 읽으면 `None`으로 두고 낡은 값을 안 붙든다.** `None`이면
+            // 커서도 `None`이 되어 통과가 통째로 꺼진다 — 안전한 쪽이다 (KTD6).
+            // 실패해도 다음 갱신 주기까지는 다시 안 읽는다(비싼 호출이다).
+            //
+            // **한 마리에서만 읽는다** — 커서는 화면 하나에 있고 세계도 화면
+            // 하나다 (PRD §5.2). 배율이 다른 화면이 섞이면 이 변환이 어긋나는데,
+            // 그건 이 앱의 범위 밖이다. `ids` 순서로 골라 마리마다 흔들리지
+            // 않게 한다 — `HashMap` 순서로 뽑으면 갱신마다 기준이 바뀐다.
+            if 볼_일이_있다 && now.saturating_sub(scale.1) >= BOUNDS_REFRESH_MS {
+                scale = (
+                    ids.iter()
+                        .find_map(|id| ready.get(id))
+                        .and_then(|(window, _)| current_scale(window)),
+                    now,
+                );
+            }
+            let cursor = cursor_px
+                .zip(scale.0)
+                .map(|((px, py), s)| (px / s, py / s));
+
             // 2) 코어를 한 번에 진행시킨다. **락을 마리마다 잡지 않는다** — 틱 하나가
             //    전 마리에 대해 원자적이어야 서로를 보는 판정을 여기에 얹을 수 있다.
             let (stepped, ball, board_alive, volley) = {
                 let state = app.state::<PetState>();
-                let mut pets = state.pets.lock().unwrap();
+                let mut pets = 잠금(&state.pets);
                 let stepped = pets.step_all(now, |id| {
                     if !ready.contains_key(&id) {
                         return None;
@@ -187,10 +320,25 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             //    재 보면 틱당 0.5µs → 1.1µs로 50ms 틱의 0.002%다(release, 1회 측정).
             //    판정에 IPC나 마릿수를 넘는 순회가 붙으면 그때 다시 본다.
             let mut any_moves = false;
+            let mut any_click_through = false;
+            let mut withdraw: Vec<PetId> = Vec::new();
             for (id, snapshot) in stepped {
                 let Some((window, rescued)) = ready.get(&id) else {
                     continue;
                 };
+                let requested = requests.get(&id).copied().unwrap_or(false);
+                let verdict = apply_click_through(
+                    window,
+                    &snapshot,
+                    requested,
+                    cursor,
+                    click_view.entry(id).or_default(),
+                );
+                any_click_through |= verdict.through();
+                // 되돌린 이유가 위치 판정일 때만 요청을 지운다 ([`Verdict`]).
+                if requested && verdict.latches() {
+                    withdraw.push(id);
+                }
                 let moves = should_move(snapshot.behavior.moves_window(), *rescued);
                 any_moves |= snapshot.behavior.moves_window();
                 let look = look_of(&snapshot);
@@ -202,12 +350,23 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 );
                 last_look.insert(id, look);
             }
+            if !withdraw.is_empty() {
+                let state = app.state::<PetState>();
+                let mut req = 잠금(&state.click_through);
+                for id in withdraw {
+                    req.remove(&id);
+                }
+            }
+
             any_moves |= ball.is_some_and(|b| b.rolling);
             any_moves |= volley.is_some();
             apply_ball(&app, board_alive, ball, &mut ball_view);
             apply_volley(&app, volley, &mut volley_view);
 
-            std::thread::sleep(Duration::from_millis(tick_interval(any_moves)));
+            std::thread::sleep(Duration::from_millis(tick_interval(
+                any_moves,
+                any_click_through,
+            )));
         }
     });
 }

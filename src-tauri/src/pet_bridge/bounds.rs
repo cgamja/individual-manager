@@ -50,6 +50,18 @@ pub(super) fn primary_bounds(window: &WebviewWindow) -> Option<Bounds> {
         .and_then(|m| monitor_bounds(&m))
 }
 
+/// 이 창이 선 화면의 배율. 커서는 **물리 px**, 창 좌표는 **논리 px**이라
+/// 둘을 견주려면 필요하다. **못 읽으면 `None`이고 부르는 쪽은 클릭 통과를
+/// 아예 안 한다** — 어림한 배율로 판정하면 통과가 안 풀린다.
+pub(super) fn current_scale(window: &WebviewWindow) -> Option<f64> {
+    window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten())
+        .map(|m| m.scale_factor())
+}
+
 /// 모니터 하나에서 펭귄이 다닐 수 있는 범위를 낸다.
 pub(super) fn monitor_bounds(monitor: &tauri::Monitor) -> Option<Bounds> {
     let area = monitor.work_area();

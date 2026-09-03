@@ -4,6 +4,12 @@ import { cleanup, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Penguin } from "../assets/penguin";
+import {
+  PENGUIN_HIT_ARM_RATIO,
+  PENGUIN_HIT_BOX,
+  PENGUIN_HIT_HYSTERESIS_RATIO,
+  PENGUIN_VIEWBOX,
+} from "../assets/penguin/hit";
 import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../lib/pet";
 
 /** 동작이 CSS에 실제로 그려져 있는지 확인한다. */
@@ -42,13 +48,17 @@ const cssFiles = [
 const css = 코드만_css(
   cssFiles.map((n) => readFileSync(resolve(`${CSS_DIR}/${n}.css`), "utf8")).join("\n"),
 );
-const petRs =
-  readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
-  readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
-  readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8");
 /** 주석을 걷어낸다 — 지운 클래스가 주석에 남아 "아직 쓰인다"로 집계된다.
  * `docs/solutions/best-practices/source-text-tests-pass-on-comments.md` */
 const 코드만 = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/.*/g, " ");
+/** 대조 대상이 되는 Rust 소스 전부. **주석을 걷어내고 본다** — 안 그러면 주석에
+ * 적힌 옛 값이 상수로 읽혀 갈라진 것을 못 잡는다. */
+const petRs = 코드만(
+  readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
+    readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
+    readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8") +
+    readFileSync(resolve("src-tauri/src/pet_bridge/hit.rs"), "utf8"),
+);
 const petApp = 코드만(
   readFileSync(resolve("src/pet/PetApp.tsx"), "utf8") +
     PENGUIN_ALL.map((p) => readFileSync(resolve(p), "utf8")).join("\n"),
@@ -184,6 +194,59 @@ describe("창 여백 상수 동기화", () => {
     expect(a, `CSS에서 --${cssName}를 못 찾았다`).not.toBeNull();
     expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
     expect(a).toBe(b);
+  });
+});
+
+describe("히트 박스 상수 동기화", () => {
+  // 판정이 두 곳에 있다 — Rust가 창의 클릭 통과를, 웹뷰가 통과 요청을 정한다.
+  // 갈라지면 "웹뷰는 통과를 요청했는데 Rust는 그 자리를 펭귄으로 아는" 진동이
+  // 생기고, 두 러너도 타입 검사도 아무 말을 안 한다.
+  it.each([
+    ["l", "PET_HIT_L"],
+    ["t", "PET_HIT_T"],
+    ["r", "PET_HIT_R"],
+    ["b", "PET_HIT_B"],
+  ])("PENGUIN_HIT_BOX.%s 가 Rust의 %s 와 같다", (key, rustName) => {
+    const b = rustConst(rustName);
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(PENGUIN_HIT_BOX[key as keyof typeof PENGUIN_HIT_BOX]).toBe(b);
+  });
+
+  it.each([
+    ["w", "PET_VIEWBOX_W"],
+    ["h", "PET_VIEWBOX_H"],
+  ])("PENGUIN_VIEWBOX.%s 가 Rust의 %s 와 같다", (key, rustName) => {
+    const b = rustConst(rustName);
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(PENGUIN_VIEWBOX[key as keyof typeof PENGUIN_VIEWBOX]).toBe(b);
+  });
+
+  // **비율도 빠짐없이 본다.** 셋 중 하나만 갈라져도 `요청 ⊃ 되돌리기 ⊃ 히트`가
+  // 깨지는데, 그러면 그 띠에서 통과가 50ms마다 켜졌다 꺼진다 — 두 러너도 타입
+  // 검사도 아무 말을 안 한다.
+  it.each([
+    [PENGUIN_HIT_ARM_RATIO, "PET_HIT_ARM_RATIO"],
+    [PENGUIN_HIT_HYSTERESIS_RATIO, "PET_HIT_HYSTERESIS_RATIO"],
+  ])("비율 %s 가 Rust의 %s 와 같다", (ts, rustName) => {
+    const b = rustConst(rustName);
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(ts).toBe(b);
+  });
+
+  it("히트_박스가_그림과_같은_좌표계다", () => {
+    // 상자는 viewBox 단위다. viewBox가 바뀌면 상자가 통째로 어긋나는데,
+    // 상수만 대조하면 둘이 사이좋게 틀린 채로 통과한다.
+    const { container } = render(createElement(Penguin));
+    expect(container.querySelector("svg")?.getAttribute("viewBox")).toBe(
+      `0 0 ${PENGUIN_VIEWBOX.w} ${PENGUIN_VIEWBOX.h}`,
+    );
+  });
+
+  it("히트_박스가_viewBox_안에_들어간다", () => {
+    expect(PENGUIN_HIT_BOX.l).toBeGreaterThanOrEqual(0);
+    expect(PENGUIN_HIT_BOX.t).toBeGreaterThanOrEqual(0);
+    expect(PENGUIN_HIT_BOX.r).toBeLessThanOrEqual(PENGUIN_VIEWBOX.w);
+    expect(PENGUIN_HIT_BOX.b).toBeLessThanOrEqual(PENGUIN_VIEWBOX.h);
   });
 });
 
@@ -479,6 +542,69 @@ describe("비치발리볼", () => {
     ] as const) {
       expect(본문, `${이름}에 pg-straw가 남아 있다`).not.toContain("pg-straw");
     }
+  });
+});
+
+describe("클릭은 칠해진 자리에서만 받는다", () => {
+  /** 선택자 목록에서 `pointer-events` 값을 꺼낸다. */
+  function 포인터규칙(): { sel: string; value: string }[] {
+    const found: { sel: string; value: string }[] = [];
+    for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (m[1].includes("@")) continue;
+      const v = m[2].match(/pointer-events:\s*([\w-]+)/);
+      if (v) found.push({ sel: m[1].trim(), value: v[1] });
+    }
+    return found;
+  }
+
+  it("펭귄_루트가_클릭을_안_받는다", () => {
+    // 루트는 한 변 --pg-size인 사각형이라 그대로 두면 무대 안 빈 자리가
+    // 전부 펭귄이 된다. 사용자가 겪은 "안 눌렀는데 눌린다"가 이것이다.
+    const rule = 포인터규칙().find((r) => /^\.penguin$/m.test(r.sel));
+    expect(rule, ".penguin 에 pointer-events 규칙이 없다").toBeDefined();
+    expect(rule?.value).toBe("none");
+  });
+
+  it("도형이_클릭을_되살린다", () => {
+    // 루트에서만 끄면 펭귄을 아예 못 누른다.
+    const rule = 포인터규칙().find(
+      (r) => r.sel.startsWith(".penguin ") && /\bpath\b/.test(r.sel),
+    );
+    expect(rule, "도형에 pointer-events를 되살리는 규칙이 없다").toBeDefined();
+    expect(rule?.value).not.toBe("none");
+  });
+
+  /** 네이티브 히트 상자(`pet_bridge/hit.rs`) 밖으로 나가거나 안 보이는 채로
+   * 클릭을 먹는 것들. 한쪽 층만 빼면 "웹뷰는 반응하는데 창은 통과시키는"
+   * 갈래가 생긴다. */
+  const 클릭_없는_부위 = ["pg-bat", "pg-rod", "pg-line", "pg-float", "pg-fish", "pg-hole"];
+
+  it("바닥_그림자는_클릭을_받는다", () => {
+    // 그림자는 히트 상자 **안**이다. 빼면 창은 클릭을 먹는데 아무도 반응하지
+    // 않는 띠가 발밑에 생긴다 — 사용자가 겪은 것과 같은 증상이다.
+    const 뺀_규칙 = 포인터규칙().filter(
+      (r) => /\.pg-shadow(?![\w-])/.test(r.sel) && r.value === "none",
+    );
+    expect(뺀_규칙, ".pg-shadow 가 클릭에서 빠져 있다").toHaveLength(0);
+  });
+
+  it.each(클릭_없는_부위.map((c) => [c] as const))("%s 는 클릭을 안 받는다", (cls) => {
+    const 규칙 = 포인터규칙().filter(
+      (r) => new RegExp(`\\.${cls}(?![\\w-])`).test(r.sel) && r.value === "none",
+    );
+    expect(
+      규칙.length,
+      `.${cls} 를 클릭에서 빼는 pointer-events: none 규칙이 없다`,
+    ).toBeGreaterThan(0);
+  });
+
+  it("방망이는_opacity가_아니라_pointer_events로_뺀다", () => {
+    // `.pg-bat`은 `opacity: 0`으로 감춰지는데 **opacity는 히트 테스트를 안 막는다**
+    // (`visiblePainted`가 보는 것은 visibility다). 이 검사가 그 착각을 막는다.
+    const 규칙 = 포인터규칙().filter(
+      (r) => /\.pg-bat(?![\w-])/.test(r.sel) && r.value === "none",
+    );
+    expect(규칙.length).toBeGreaterThan(0);
   });
 });
 

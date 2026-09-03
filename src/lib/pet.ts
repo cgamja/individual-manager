@@ -242,6 +242,13 @@ export const shouldRestart = (prev: RestartKey | null, next: RestartKey): boolea
 /** 자기 창의 펭귄 상태. 펫 창이 아닌 곳에서 부르면 `null`이다. */
 export const getPetState = (): Promise<PetSnapshot | null> => invoke("pet_get_state");
 
+/** 포인터가 펭귄 밖이니 창을 통과시켜 달라고 알린다 (`on = false`면 거둔다).
+ *
+ * **요청일 뿐이다** — 실제로 플래그를 걸고 되돌리는 것은 Rust 틱이다. 통과
+ * 중에는 이 창에 포인터 이벤트가 안 오므로 웹뷰는 스스로 되돌릴 수 없다. */
+export const setPetClickThrough = (on: boolean): Promise<void> =>
+  invoke("pet_set_click_through", { on });
+
 /** 팝오버가 버튼 상태를 정하는 데 쓰는 요약. */
 export interface PetSummary {
   count: number;

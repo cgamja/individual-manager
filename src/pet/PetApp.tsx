@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Penguin } from "../assets/penguin";
+import { shouldClickThrough } from "../assets/penguin/hit";
 import { advance, newDragTrack, pushSample, type DragTrack } from "../lib/drag";
 import { loadPetSettings, loadTaunts } from "../lib/settings";
 import { SoundPlayer, soundsFor } from "./sound";
@@ -18,6 +19,7 @@ import {
   onPetSound,
   onPetState,
   openPetPopover,
+  setPetClickThrough,
   startPetDrag,
   tauntFor,
   DEFAULT_TAUNTS,
@@ -32,7 +34,14 @@ interface PetDragTrack extends DragTrack {
   /** 누른 지점을 펭귄 기준으로 정규화한 값(-0.5~0.5). */
   hitX: number;
   hitY: number;
+  /** 포인터를 잡아 둔 요소 — 놓을 때 같은 것에서 풀어야 한다. */
+  captured: Element | null;
 }
+
+/** 통과 요청을 다시 보내기까지의 최소 간격. 창이 아직 안 바뀐 채 커서가 여백을
+ * 헤매는 동안 IPC가 쌓이는 것만 막는다 — 정상 경로에서는 창이 곧 통과로 바뀌어
+ * 포인터 이벤트가 끊긴다. */
+const CLICK_THROUGH_RESEND_MS = 200;
 
 /** 눈동자가 흰자를 벗어나지 않을 만큼만 움직인다 (SVG 좌표 단위). */
 const GAZE_LIMIT = 1.6;
@@ -61,6 +70,10 @@ export function PetApp() {
   const lastRestartRef = useRef<RestartKey | null>(null);
   /** 눈동자가 커서를 향해 밀리는 양 (SVG 좌표, R7). */
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
+  /** 무대의 실제 자리 — 창 전역 리스너가 포인터를 여기 기준으로 정규화한다. */
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  /** 통과 요청을 마지막으로 보낸 시각. 재전송 묶기에만 쓴다. */
+  const clickThroughAtRef = useRef(0);
   /** 사용자가 팝오버에서 고칠 수 있으므로 저장소가 원천이다. */
   const [taunts, setTaunts] = useState<readonly string[]>(DEFAULT_TAUNTS);
   /** 이 창의 소리 전부 — 켜짐/꺼짐·쿨다운·컨텍스트 수명을 소유한다. */
@@ -130,12 +143,20 @@ export function PetApp() {
       return;
     }
     if (dragRef.current) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    // **루트가 아니라 눌린 도형을 잡는다** — 루트는 `pointer-events: none`이고,
+    // 히트 테스트에서 빠진 요소로 캡처가 계속 오는지는 확실하지 않다.
+    const captured = (e.target as Element | null) ?? e.currentTarget;
+    try {
+      captured.setPointerCapture(e.pointerId);
+    } catch {
+      // 못 걸어도 드래그는 진행한다 — 창을 벗어나면 끊길 뿐이다.
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     const track: PetDragTrack = {
       ...newDragTrack(e.pointerId, e.screenX, e.screenY),
       hitX: rect.width > 0 ? (e.clientX - rect.left) / rect.width - 0.5 : 0,
       hitY: rect.height > 0 ? (e.clientY - rect.top) / rect.height - 0.5 : 0,
+      captured,
     };
     dragRef.current = track;
     armedRef.current = false;
@@ -155,15 +176,8 @@ export function PetApp() {
 
   const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     const track = dragRef.current;
-    if (!track) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        const nx = (e.clientX - rect.left) / rect.width - 0.5;
-        const ny = (e.clientY - rect.top) / rect.height - 0.5;
-        setGaze({ x: clampGaze(nx * 4), y: clampGaze(ny * 4) });
-      }
-      return;
-    }
+    // 시선은 창 전역 리스너가 본다 — 여기는 드래그만 맡는다.
+    if (!track) return;
     if (track.pointerId !== e.pointerId) return;
     const moved = advance(track, e.screenX, e.screenY);
     if (!moved) return;
@@ -183,7 +197,7 @@ export function PetApp() {
     dragRef.current = null;
     armedRef.current = false;
     try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+      track.captured?.releasePointerCapture(e.pointerId);
     } catch {
     }
 
@@ -211,8 +225,59 @@ export function PetApp() {
     return () => document.body.classList.remove("pg-pinball-mode");
   }, [snapshot?.pinball]);
 
-  const handlePointerLeave = useCallback(() => {
-    setGaze({ x: 0, y: 0 });
+  /** 시선 추적(R7)과 클릭 통과 요청 — **창 전역에서 듣는다.** 실루엣만 포인터를
+   * 받게 되면서(`base.css`) SVG에 걸면 시선이 펭귄 몸 위에서만 움직이고, 통과
+   * 요청은 애초에 여백에서 나야 한다. 드래그만 캡처를 써서 SVG에 남는다.
+   *
+   * **커서가 창 밖으로 나갈 때는 요청하지 않는다** — 안전한 쪽으로 틀린다. */
+  useEffect(() => {
+    const stage = stageRef.current;
+    const onMove = (e: PointerEvent) => {
+      if (dragRef.current) return;
+      const rect = stage?.getBoundingClientRect();
+      if (!rect || rect.width === 0 || rect.height === 0) return;
+      const nx = (e.clientX - rect.left) / rect.width - 0.5;
+      const ny = (e.clientY - rect.top) / rect.height - 0.5;
+
+      // 무대의 실제 자리에서 치수를 뽑는다 — CSS 변수를 파싱하지 않는다.
+      // 무대가 커지거나 여백이 바뀌어도 저절로 따라간다.
+      const want = shouldClickThrough(e.clientX, e.clientY, {
+        size: rect.width,
+        padX: rect.left,
+        padTop: rect.top,
+      });
+      // **이 리스너가 불렸다는 것 자체가 창이 클릭을 먹고 있다는 뜻이다** —
+      // 통과 중이면 포인터 이벤트가 아예 안 온다. Rust는 되돌릴 때 요청까지
+      // 지우므로(걸쇠), 여기서 "이미 보냈다"를 믿으면 다시는 못 켠다.
+      // 그래서 보낸 기억이 아니라 **관측**으로 다시 판단한다.
+      if (!want) {
+        clickThroughAtRef.current = 0;
+        setGaze({ x: clampGaze(nx * 4), y: clampGaze(ny * 4) });
+        return;
+      }
+      // **통과가 걸리면 이 리스너가 조용해진다** — 커서가 창을 나가도
+      // `pointerleave`가 안 온다. 시선을 지금 가운데로 돌려놓지 않으면 눈동자가
+      // 마지막 표본(대개 ±1.6 최대치)에 얼어붙어 계속 한쪽을 노려본다 (R7).
+      setGaze({ x: 0, y: 0 });
+      // 켜지지 않은 채 커서가 여백을 헤매면 매 이동마다 IPC가 나가므로 묶는다.
+      // 정상 경로에서는 창이 곧 통과로 바뀌어 이 리스너가 조용해진다.
+      const now = performance.now();
+      if (now - clickThroughAtRef.current < CLICK_THROUGH_RESEND_MS) return;
+      clickThroughAtRef.current = now;
+      void setPetClickThrough(true).catch(() => {
+        clickThroughAtRef.current = 0;
+      });
+    };
+    // `pointerout`은 도형 사이를 지날 때마다 터져 시선이 계속 0으로 튄다.
+    // `pointerleave`는 이 요소의 subtree를 **정말 벗어날 때만** 온다.
+    const onLeave = () => setGaze({ x: 0, y: 0 });
+    const root = document.documentElement;
+    window.addEventListener("pointermove", onMove);
+    root.addEventListener("pointerleave", onLeave);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      root.removeEventListener("pointerleave", onLeave);
+    };
   }, []);
 
   // 창 라벨에서 결정적으로 뽑는다 — 렌더마다 다시 계산해도 같은 값이다.
@@ -238,7 +303,7 @@ export function PetApp() {
           {tauntFor(speech.roll, taunts)}
         </div>
       )}
-      <div className={stageClass}>
+      <div className={stageClass} ref={stageRef}>
         <Penguin
         key={restartKey}
         className={petClass}
@@ -246,7 +311,6 @@ export function PetApp() {
         style={
           { "--gaze-x": `${gaze.x}px`, "--gaze-y": `${gaze.y}px` } as React.CSSProperties
         }
-        onPointerLeave={handlePointerLeave}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

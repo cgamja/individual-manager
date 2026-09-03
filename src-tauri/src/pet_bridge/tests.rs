@@ -11,6 +11,92 @@ fn 경계(right: f64) -> Bounds {
     }
 }
 
+/// 자세 판정만 보는 최소 스냅샷.
+fn 스냅샷(behavior: crate::pet::Behavior, air: bool) -> Snapshot {
+    Snapshot {
+        x: 0.0,
+        y: 0.0,
+        facing: crate::pet::Facing::Right,
+        vertical: crate::pet::Vertical::Level,
+        air,
+        speech: None,
+        whack_seq: 0,
+        pinball: false,
+        behavior,
+    }
+}
+
+#[test]
+fn 서_있는_국면은_상자_안이다() {
+    use crate::pet::Behavior::*;
+    for b in [Walk, Sleep, Swing, Squawk] {
+        assert!(pose_of(&스냅샷(b, false)).in_box(), "{b:?}");
+    }
+}
+
+#[test]
+fn 그림이_상자를_넘는_국면은_통과를_접는다() {
+    // 이 목록이 비면 슬라이딩·굴러떨어지기 중에 그려진 펭귄을 눌렀는데 클릭이
+    // 아래 앱으로 샌다 — 이 설계가 없애려던 갈래다.
+    //
+    // **판·경기 동작도 여기 든다.** 코어 좌표는 바닥에 두고 CSS로만 그리므로
+    // 스파이크(`translateY(-26px)`)나 핀 자세(`rotate(48deg)`)가 되돌리기
+    // 여유(`PET_SIZE * 0.1`)를 넘는다.
+    use crate::pet::Behavior::*;
+    for b in [
+        Slide,
+        Tumble,
+        Splat,
+        Sprawl,
+        Thrown,
+        Dragged,
+        Land,
+        Falling,
+        Volleyball {
+            volley: crate::pet::VolleyPhase::Bump,
+        },
+        Volleyball {
+            volley: crate::pet::VolleyPhase::Chase,
+        },
+        Bowling {
+            bowling: crate::pet::BowlingPhase::Ready,
+        },
+    ] {
+        assert!(!pose_of(&스냅샷(b, false)).in_box(), "{b:?}");
+    }
+}
+
+#[test]
+fn 모르는_동작은_통과를_접는다() {
+    // 목록을 **뒤집어** 뒀다: 상자 안이 확인된 국면만 통과를 허락한다.
+    // 모션은 일곱 자리에 흩어져 있어서(`behavior.rs`) 새 동작을 얹을 때 이
+    // 목록을 빠뜨리기 쉬운데, 빠뜨린 쪽이 안전한 기본값(= 오늘까지의 동작)이
+    // 되어야 한다. 이 테스트가 그 방향을 못 박는다.
+    use crate::pet::{Behavior::*, FreakoutPhase};
+    assert!(!pose_of(&스냅샷(
+        Freakout {
+            freakout: FreakoutPhase::Dash
+        },
+        false
+    ))
+    .in_box());
+    assert!(!pose_of(&스냅샷(Swim, false)).in_box());
+}
+
+#[test]
+fn 공중에_있으면_동작과_무관하게_통과를_접는다() {
+    // 헤엄은 오르내릴 때 SVG 루트가 통째로 기운다(`air.css`).
+    assert!(!pose_of(&스냅샷(crate::pet::Behavior::Swim, true)).in_box());
+}
+
+#[test]
+fn 시작할_때는_아무도_클릭을_통과시키지_않는다() {
+    // 통과는 근거가 있을 때만 켜지는 상태다. 기본이 "클릭을 먹는다"여야
+    // 어떤 실패에서든 펭귄을 누를 수 있다 (R6).
+    let state = PetState::new(crate::pet::Pets::new());
+    assert!(state.click_through.lock().unwrap().is_empty());
+}
+
 #[test]
 fn 경계를_못_읽으면_주_모니터로_떨어진다() {
     let 주 = World::single(경계(1_440.0));
@@ -588,12 +674,19 @@ fn 움직이는_동작은_구조가_아니어도_창을_옮긴다() {
 
 #[test]
 fn 한_마리라도_움직이면_틱이_빨라진다() {
-    assert_eq!(tick_interval(true), TICK_MS);
+    assert_eq!(tick_interval(true, false), TICK_MS);
 }
 
 #[test]
 fn 전부_멈춰_있으면_틱이_느려진다() {
-    assert_eq!(tick_interval(false), SLEEP_TICK_MS);
+    assert_eq!(tick_interval(false, false), SLEEP_TICK_MS);
+}
+
+#[test]
+fn 클릭을_통과_중이면_자는_펭귄도_빠르게_돈다() {
+    // 통과를 되돌리는 유일한 눈이 이 틱이다. 500ms로 늘어지면 커서를 펭귄
+    // 위로 옮기고 그 안에 누른 클릭이 아래 앱으로 샌다.
+    assert_eq!(tick_interval(false, true), TICK_MS);
 }
 
 // ── 여럿 만들기: 전부 아니면 하나도 ────────────────────────────

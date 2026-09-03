@@ -37,15 +37,16 @@
 
 ```text
 src/
-  assets/             **그림과 색은 전부 여기 있다** — 로직 파일에 SVG를 두지 않는다
+  assets/             **그림·색·음원은 전부 여기 있다** — 로직 파일에 SVG를 두지 않는다
     palette.ts        모든 색. 부위별 이름 하나씩
+    sounds/           음원. 안물 하나뿐이고 나머지 일곱 소리는 합성이다
     penguin/          index(조립·겹침 순서) · body · hula(훌라 차림) · gear(방망이·낚시)
     props/            소품 — bat(커서 방망이) · bowling-ball · beach-ball · court
                       **React를 쓰지 않는다** (바닐라 창이 쓴다)
     assets.test.ts    그림 렌더 스냅샷 + props의 React 무의존 검사
   pet/                펭귄 창 웹뷰 — PetApp.tsx, sound·synth
     css/              동작별 스타일 (base·ground·air·react·pinball·drag·
-                      fishing·freakout·rest·speech·bowling·volleyball)
+                      fishing·freakout·dont-ask·rest·speech·bowling·volleyball)
                       — index.css가 묶는다
   pinball/            핀볼 판 창 — 화면을 덮는 투명 창, 커서만 방망이
   ball/               볼링 공 창 — 집어서 굴린다
@@ -58,7 +59,7 @@ src-tauri/src/
     behavior.rs       동작 목록(Behavior) + 국면 enum
     world.rs          펭귄이 다닐 영역
     motion/           동작 하나가 파일 하나 (ground·air·react·drag·
-                      pinball·fishing·freakout·bowling·volleyball)
+                      pinball·fishing·freakout·bowling·volleyball·dont_ask)
     mod.rs            Pet·Pets·step 디스패치·pick_next·enter·clamp·난수
   pet_bridge/         Tauri 연결 — settings·window·pinball·ball_window·
                       volleyball·bounds·tick·popover·commands

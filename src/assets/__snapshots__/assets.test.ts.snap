@@ -117,8 +117,6 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 <g class="pg-glam">
 <ellipse cx="43.5" cy="34.5" rx="4.6" ry="3" fill="#f7a8bb" opacity="0.42">
 </ellipse>
-<path class="pg-lash" d="M53.4 22.6 L51.4 20.4 M56.4 21.2 L55.6 18.6 M59.4 21.6 L59.6 18.9" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
-</path>
 <path class="pg-lip" d="M64 32.4 L74.4 33 L64 35.4 Z" fill="#e0466b">
 </path>
 </g>
@@ -199,16 +197,24 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 </g>
 </g>
 <g class="pg-belt">
-<rect x="64" y="84" width="34" height="8" rx="3" fill="#3a2a1a">
+<rect x="28.5" y="81" width="43" height="12" rx="3" fill="#a8842c">
 </rect>
-<ellipse cx="83" cy="88" rx="10" ry="8.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+<ellipse cx="50" cy="87" rx="11.5" ry="10" fill="#e8c15a">
 </ellipse>
-<ellipse cx="83" cy="88" rx="5.6" ry="4.6" fill="#a8842c" opacity="0.5">
+<ellipse cx="50" cy="87" rx="6.5" ry="5.4" fill="#a8842c" opacity="0.5">
 </ellipse>
 </g>
 <g class="pg-anger">
-<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+<g transform="translate(86 30) scale(0.6)" fill="#e03131">
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z">
 </path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(90)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(180)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(270)">
+</path>
+</g>
 </g>
 </g>
 </g>
@@ -258,8 +264,6 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 <g class="pg-glam">
 <ellipse cx="43.5" cy="34.5" rx="4.6" ry="3" fill="#f7a8bb" opacity="0.42">
 </ellipse>
-<path class="pg-lash" d="M53.4 22.6 L51.4 20.4 M56.4 21.2 L55.6 18.6 M59.4 21.6 L59.6 18.9" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
-</path>
 <path class="pg-lip" d="M64 32.4 L74.4 33 L64 35.4 Z" fill="#e0466b">
 </path>
 </g>
@@ -340,16 +344,24 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 </g>
 </g>
 <g class="pg-belt">
-<rect x="64" y="84" width="34" height="8" rx="3" fill="#3a2a1a">
+<rect x="28.5" y="81" width="43" height="12" rx="3" fill="#a8842c">
 </rect>
-<ellipse cx="83" cy="88" rx="10" ry="8.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+<ellipse cx="50" cy="87" rx="11.5" ry="10" fill="#e8c15a">
 </ellipse>
-<ellipse cx="83" cy="88" rx="5.6" ry="4.6" fill="#a8842c" opacity="0.5">
+<ellipse cx="50" cy="87" rx="6.5" ry="5.4" fill="#a8842c" opacity="0.5">
 </ellipse>
 </g>
 <g class="pg-anger">
-<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+<g transform="translate(86 30) scale(0.6)" fill="#e03131">
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z">
 </path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(90)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(180)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(270)">
+</path>
+</g>
 </g>
 </g>
 </svg>"
@@ -404,8 +416,6 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 <g class="pg-glam">
 <ellipse cx="43.5" cy="34.5" rx="4.6" ry="3" fill="#f7a8bb" opacity="0.42">
 </ellipse>
-<path class="pg-lash" d="M53.4 22.6 L51.4 20.4 M56.4 21.2 L55.6 18.6 M59.4 21.6 L59.6 18.9" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
-</path>
 <path class="pg-lip" d="M64 32.4 L74.4 33 L64 35.4 Z" fill="#e0466b">
 </path>
 </g>
@@ -486,16 +496,24 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 </g>
 </g>
 <g class="pg-belt">
-<rect x="64" y="84" width="34" height="8" rx="3" fill="#3a2a1a">
+<rect x="28.5" y="81" width="43" height="12" rx="3" fill="#a8842c">
 </rect>
-<ellipse cx="83" cy="88" rx="10" ry="8.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+<ellipse cx="50" cy="87" rx="11.5" ry="10" fill="#e8c15a">
 </ellipse>
-<ellipse cx="83" cy="88" rx="5.6" ry="4.6" fill="#a8842c" opacity="0.5">
+<ellipse cx="50" cy="87" rx="6.5" ry="5.4" fill="#a8842c" opacity="0.5">
 </ellipse>
 </g>
 <g class="pg-anger">
-<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+<g transform="translate(86 30) scale(0.6)" fill="#e03131">
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z">
 </path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(90)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(180)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(270)">
+</path>
+</g>
 </g>
 </g>
 </g>
@@ -545,8 +563,6 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 <g class="pg-glam">
 <ellipse cx="43.5" cy="34.5" rx="4.6" ry="3" fill="#f7a8bb" opacity="0.42">
 </ellipse>
-<path class="pg-lash" d="M53.4 22.6 L51.4 20.4 M56.4 21.2 L55.6 18.6 M59.4 21.6 L59.6 18.9" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
-</path>
 <path class="pg-lip" d="M64 32.4 L74.4 33 L64 35.4 Z" fill="#e0466b">
 </path>
 </g>
@@ -627,16 +643,24 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 </g>
 </g>
 <g class="pg-belt">
-<rect x="64" y="84" width="34" height="8" rx="3" fill="#3a2a1a">
+<rect x="28.5" y="81" width="43" height="12" rx="3" fill="#a8842c">
 </rect>
-<ellipse cx="83" cy="88" rx="10" ry="8.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+<ellipse cx="50" cy="87" rx="11.5" ry="10" fill="#e8c15a">
 </ellipse>
-<ellipse cx="83" cy="88" rx="5.6" ry="4.6" fill="#a8842c" opacity="0.5">
+<ellipse cx="50" cy="87" rx="6.5" ry="5.4" fill="#a8842c" opacity="0.5">
 </ellipse>
 </g>
 <g class="pg-anger">
-<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+<g transform="translate(86 30) scale(0.6)" fill="#e03131">
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z">
 </path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(90)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(180)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(270)">
+</path>
+</g>
 </g>
 </g>
 </svg>"
@@ -691,8 +715,6 @@ exports[`펭귄 그림 > 화장한_미녀_펭귄_그림이_그대로다 1`] = `
 <g class="pg-glam">
 <ellipse cx="43.5" cy="34.5" rx="4.6" ry="3" fill="#f7a8bb" opacity="0.42">
 </ellipse>
-<path class="pg-lash" d="M53.4 22.6 L51.4 20.4 M56.4 21.2 L55.6 18.6 M59.4 21.6 L59.6 18.9" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
-</path>
 <path class="pg-lip" d="M64 32.4 L74.4 33 L64 35.4 Z" fill="#e0466b">
 </path>
 </g>
@@ -773,16 +795,24 @@ exports[`펭귄 그림 > 화장한_미녀_펭귄_그림이_그대로다 1`] = `
 </g>
 </g>
 <g class="pg-belt">
-<rect x="64" y="84" width="34" height="8" rx="3" fill="#3a2a1a">
+<rect x="28.5" y="81" width="43" height="12" rx="3" fill="#a8842c">
 </rect>
-<ellipse cx="83" cy="88" rx="10" ry="8.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+<ellipse cx="50" cy="87" rx="11.5" ry="10" fill="#e8c15a">
 </ellipse>
-<ellipse cx="83" cy="88" rx="5.6" ry="4.6" fill="#a8842c" opacity="0.5">
+<ellipse cx="50" cy="87" rx="6.5" ry="5.4" fill="#a8842c" opacity="0.5">
 </ellipse>
 </g>
 <g class="pg-anger">
-<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+<g transform="translate(86 30) scale(0.6)" fill="#e03131">
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z">
 </path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(90)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(180)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(270)">
+</path>
+</g>
 </g>
 </g>
 </g>
@@ -832,8 +862,6 @@ exports[`펭귄 그림 > 화장한_미녀_펭귄_그림이_그대로다 1`] = `
 <g class="pg-glam">
 <ellipse cx="43.5" cy="34.5" rx="4.6" ry="3" fill="#f7a8bb" opacity="0.42">
 </ellipse>
-<path class="pg-lash" d="M53.4 22.6 L51.4 20.4 M56.4 21.2 L55.6 18.6 M59.4 21.6 L59.6 18.9" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
-</path>
 <path class="pg-lip" d="M64 32.4 L74.4 33 L64 35.4 Z" fill="#e0466b">
 </path>
 </g>
@@ -914,16 +942,24 @@ exports[`펭귄 그림 > 화장한_미녀_펭귄_그림이_그대로다 1`] = `
 </g>
 </g>
 <g class="pg-belt">
-<rect x="64" y="84" width="34" height="8" rx="3" fill="#3a2a1a">
+<rect x="28.5" y="81" width="43" height="12" rx="3" fill="#a8842c">
 </rect>
-<ellipse cx="83" cy="88" rx="10" ry="8.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+<ellipse cx="50" cy="87" rx="11.5" ry="10" fill="#e8c15a">
 </ellipse>
-<ellipse cx="83" cy="88" rx="5.6" ry="4.6" fill="#a8842c" opacity="0.5">
+<ellipse cx="50" cy="87" rx="6.5" ry="5.4" fill="#a8842c" opacity="0.5">
 </ellipse>
 </g>
 <g class="pg-anger">
-<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+<g transform="translate(86 30) scale(0.6)" fill="#e03131">
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z">
 </path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(90)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(180)">
+</path>
+<path d="M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z" transform="rotate(270)">
+</path>
+</g>
 </g>
 </g>
 </svg>"

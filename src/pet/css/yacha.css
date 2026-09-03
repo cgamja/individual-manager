@@ -1,4 +1,9 @@
-/* ── 단체 야차 — 한가운데 뭉쳐 복싱 장갑으로 치고받는다 ── */
+/* ── 단체 야차 — 한가운데 모여 복싱 장갑으로 치고받는다 ── */
+
+:root {
+  /* 막힌 주먹의 화남 표시. 성한 것은 `palette.ts`의 `ANGER`가 쥔다. */
+  --pg-anger-blocked: #93a0b0;
+}
 
 /* 국면 일곱 (`YachaPhase`). **경기장을 그리지 않는다** — 판도 바닥도 없고,
    화면에 있는 것은 뭉친 펭귄들뿐이다 (2026-09-03 사용자 지시).
@@ -79,15 +84,15 @@
    그림은 **미녀가 든 것과 한 벌**이라(`gear.tsx`), 허리에 찰 때는 자리를 옮긴다. */
 .pg--yacha-champ .pg-belt {
   display: block;
-  transform: translate(-33px, 8px) scale(0.86);
 }
 
-/* 미녀가 **팔로 든** 벨트. 도형이 이미 날개 끝 앞(74,89)에 그려져 있으므로
-   자리를 옮기지 않고 **날개와 같은 변환만** 받는다 — 그래야 걸을 때 함께
-   흔들리고 채울 때 함께 뻗는다. 몸에 그냥 띄우면 금색 덩어리가 떠 있는 것으로
-   보인다 (2026-09-03 사용자). */
+/* 미녀가 **팔로 든** 벨트. 도형은 허리 가운데에 그려져 있으므로 **날개 끝
+   앞으로 옮기고** 날개와 같은 결로 흔든다 — 몸에 그냥 띄우면 금색 덩어리가 떠
+   있는 것으로 보인다 (2026-09-03 사용자). */
 .pg-belt--held .pg-belt {
   display: block;
+  transform: translate(33px, 1px);
+  transform-origin: 66px 52px;
 }
 
 /* ── X자 눈 — 쓰러졌을 때 ────────────────────────────────── */
@@ -114,24 +119,45 @@
   display: none;
 }
 
-.pg--yacha-hurt .pg-anger {
-  display: block;
-  animation: pg-yacha-anger-pop 0.14s ease-out 1;
-  transform-origin: 90px 28px;
+/* **후광에서는 뺀다.** 후광(`pg-halo`)은 검은 몸통이 어두운 배경에 묻히는 것을
+   막으려고 같은 도형을 밝게 한 벌 더 그리는 장치인데, 화남 표시는 몸이 아니라
+   **효과**라 그 사본이 붉은 표시를 회색 X로 덮어 버린다. 실제로 그렇게 났다 —
+   사용자가 본 "빨간색 이펙트가 이상해"의 절반이 이것이다. */
+.pg-halo .pg-anger {
+  display: none !important;
 }
 
+.pg--yacha-hurt .pg-anger {
+  display: block;
+  animation: pg-yacha-anger-pop 0.23s ease-out 1 forwards;
+  transform-origin: 88px 28px;
+}
+
+/* 막힌 주먹은 **회색이고 작다** — 가드가 실제로 막았다는 것이 색으로 읽힌다. */
+.pg--yacha-guard .pg-anger {
+  display: block;
+  fill: var(--pg-anger-blocked);
+  animation: pg-yacha-anger-pop 0.23s ease-out 1 forwards;
+  transform-origin: 88px 28px;
+}
+
+.pg--yacha-guard .pg-anger path {
+  fill: var(--pg-anger-blocked);
+}
+
+/* 230ms 동안 **위로 12px 오르며 커지고 사라진다.** */
 @keyframes pg-yacha-anger-pop {
   0% {
     opacity: 0;
-    transform: scale(0.4);
+    transform: translateY(0) scale(0.55);
   }
-  40% {
+  35% {
     opacity: 1;
-    transform: scale(1.25);
+    transform: translateY(-4px) scale(1.1);
   }
   100% {
-    opacity: 0.9;
-    transform: scale(1);
+    opacity: 0;
+    transform: translateY(-12px) scale(1.35);
   }
 }
 
@@ -231,21 +257,35 @@
   }
 }
 
-/* 다운 — 뒤로 넘어가 눕는다. 판이 끝날 때까지 이 자세로 있으므로 마지막
-   프레임을 붙든다(`forwards`). */
+/* 다운 — 뒤로 넘어가 눕는다. 판이 끝날 때까지 이 자세라 마지막 프레임을
+   붙든다(`forwards`).
+
+   **회전축을 발밑에서 몸 가운데로 옮긴다.** `.pg-all`의 기본 축은 발밑(50,120)인데
+   — 눌릴 때 바닥으로 내려앉아야 하니 그게 맞다 — 그 축으로 86도를 돌리면 머리가
+   축에서 **106단위** 뻗어 나간다. 펫 창의 좌우 여백(`PET_PAD_X`)은 **52**뿐이라
+   한쪽으로 도는 절반이 **창 밖으로 잘린다** (*"누웠을 때 펭귄 몸이 잘려있어"*,
+   2026-09-03 사용자).
+
+   몸 가운데(67)를 축으로 하면 좌우로 **53씩만** 뻗어 지금 창에 그대로 들어간다.
+   **창을 키워서 풀지 않는다** — 그러면 클릭 판정(`hit.rs`의 상자)과 어긋나고
+   `pose_of` 허락 목록의 전제도 흔들린다.
+
+   축을 올린 만큼 몸이 떠오르므로 `translateY`로 도로 내려 바닥에 눕힌다. 변환
+   순서가 중요하다: `translateY` 뒤에 `rotate`라야 내림이 **화면 세로**로 걸린다. */
 .pg--yacha-down .pg-all {
+  transform-origin: 50px 67px;
   animation: pg-yacha-fall 0.5s ease-in 1 forwards;
 }
 
 @keyframes pg-yacha-fall {
   0% {
-    transform: rotate(0deg) translateY(0);
+    transform: translateY(0) rotate(0deg);
   }
   60% {
-    transform: rotate(-72deg) translateY(14px);
+    transform: translateY(29px) rotate(-72deg);
   }
   100% {
-    transform: rotate(-86deg) translateY(20px);
+    transform: translateY(49px) rotate(-86deg);
   }
 }
 
@@ -351,6 +391,7 @@
 
   /* 쓰러진 자세는 애니메이션이 아니라 **결과**다 — 끄면 서 있는 채로 죽는다. */
   .pg--yacha-down .pg-all {
-    transform: rotate(-86deg) translateY(20px);
+    transform-origin: 50px 67px;
+    transform: translateY(49px) rotate(-86deg);
   }
 }

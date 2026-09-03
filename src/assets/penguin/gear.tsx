@@ -14,7 +14,6 @@ import {
   BAT_WOOD,
   BELT_GOLD,
   BELT_GOLD_DARK,
-  BELT_LEATHER,
   FISH,
   FLOAT,
   GLOVE,
@@ -89,49 +88,45 @@ function BoxingGloves() {
   );
 }
 
-/** 챔피언 벨트 — 띠 + 큰 판 + 가운데 장식 **세 겹**.
+/** 챔피언 벨트 — 띠 + 판 + 가운데 장식 **세 겹**.
+ *
+ * **몸통 가운데에 그린다.** 몸통 외곽이 local x 29~71이라 띠가 그 폭을 다 덮고
+ * 판이 정중앙(50)에 온다. 흰 배(`cx=47`)를 기준으로 잡으면 한쪽으로 쏠린다 —
+ * 실제로 그렇게 났다 (2026-09-03 사용자). 좌우 대칭이라 `.pg-stage--flip`으로
+ * 뒤집혀도 가운데를 지킨다.
  *
  * **두 곳에서 쓴다.** 챔피언의 허리(`.pg--yacha-champ`)와 미녀가 **팔로 든**
- * 벨트(`.pg-belt--held`). 그림은 한 벌이고 자리만 CSS가 옮긴다.
- *
- * 든 자리는 **가까운 날개 끝(74, 89) 바로 앞**이다 — 몸에 그냥 띄우면 금색
- * 덩어리가 떠 있는 것으로 보인다 (2026-09-03 사용자). 그래서 `.pg-belt--held`가
- * 날개(`pg-wing-near`)와 **같은 변환**을 받아 걸을 때 함께 흔들리고 채울 때
- * 함께 뻗는다.
+ * 벨트(`.pg-belt--held`). 그림은 한 벌이고, 든 자리로 옮기는 것은 CSS다.
  */
 function ChampionBelt() {
   return (
     <g className="pg-belt">
-      <rect x="64" y="84" width="34" height="8" rx="3" fill={BELT_LEATHER} />
-      <ellipse
-        cx="83"
-        cy="88"
-        rx="10"
-        ry="8.5"
-        fill={BELT_GOLD}
-        stroke={BELT_GOLD_DARK}
-        strokeWidth="1.4"
-      />
-      <ellipse cx="83" cy="88" rx="5.6" ry="4.6" fill={BELT_GOLD_DARK} opacity="0.5" />
+      <rect x="28.5" y="81" width="43" height="12" rx="3" fill={BELT_GOLD_DARK} />
+      <ellipse cx="50" cy="87" rx="11.5" ry="10" fill={BELT_GOLD} />
+      <ellipse cx="50" cy="87" rx="6.5" ry="5.4" fill={BELT_GOLD_DARK} opacity="0.5" />
     </g>
   );
 }
 
-/** 화남 표시(💢) — 만화의 분노 핏줄. 십자로 모인 갈매기꼴 넷.
+/** 화남 표시(💢) — 만화의 분노 핏줄. **채운 갈매기꼴 넷**을 0°·90°·180°·270°로.
  *
- * **맞은 마리의 보는 쪽 가장자리에 뜬다.** 뭉쳐 싸우므로 그 자리가 곧 때린 놈과
- * 맞은 놈 사이라, 선도 화살표도 없이 짝이 읽힌다. 자리는 CSS가 정한다. */
+ * **가는 선으로 그리면 타격이 아니라 "번쩍임"으로 읽힌다.** 그래서 채움만 쓴다
+ * (`stroke` 없음). 그리고 **가운데가 비어 있는 것이 핵심이다** — 꼭짓점을 중심
+ * 쪽으로 밀면 넷이 겹쳐 메워져 그냥 X 표시가 된다 (실제로 한 번 그렇게 났다).
+ *
+ * **때린 놈과 맞은 놈 사이에 뜬다** (맞은 쪽에 가깝게 0.36:0.64). 뭉쳐 싸우므로
+ * 그 자리가 곧 둘 사이라, 선도 화살표도 없이 짝이 읽힌다. 자리는 CSS가 정한다.
+ */
 function AngryMark() {
+  const 갈매기 = "M-10 -19 L0 -10 L10 -19 L10 -12.5 L0 -3.5 L-10 -12.5 Z";
   return (
     <g className="pg-anger">
-      <path
-        d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34"
-        stroke={ANGER}
-        strokeWidth="3.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
+      <g transform="translate(86 30) scale(0.6)" fill={ANGER}>
+        <path d={갈매기} />
+        <path d={갈매기} transform="rotate(90)" />
+        <path d={갈매기} transform="rotate(180)" />
+        <path d={갈매기} transform="rotate(270)" />
+      </g>
     </g>
   );
 }

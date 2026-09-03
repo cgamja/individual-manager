@@ -24,6 +24,7 @@
 
 use tauri::{AppHandle, Manager};
 
+use super::QUEEN_LABEL;
 use crate::pet::{PetId, MAX_PETS};
 
 /// 평소 펭귄 창의 레벨 (`always_on_top`이 주는 값).
@@ -42,12 +43,16 @@ pub const MENU_BAR_LEVEL: isize = 24;
 #[derive(Default)]
 pub struct DepthView {
     order: Vec<PetId>,
+    /// 미녀 창에 레벨을 걸어 뒀는가. **창이 생긴 뒤에 걸어야 하므로** 순서와
+    /// 따로 기억한다.
+    queen: bool,
 }
 
 impl DepthView {
     /// 판이 끝났다 — 다음 판에서 반드시 다시 걸도록 잊는다.
     pub fn forget(&mut self) {
         self.order.clear();
+        self.queen = false;
     }
 
     /// 지금 레벨이 걸려 있는 마리들. 판이 끝날 때 되돌릴 대상이다.
@@ -57,30 +62,50 @@ impl DepthView {
 }
 
 /// `order`는 **뒤에서 앞** 순서다 (먼 마리가 앞).
+///
+/// **미녀는 이 순서에 안 낀다.** 정렬에 섞이면 y에 따라 3~10 중 하나를 받아
+/// 앞에 있는 펭귄에게 덮인다 — 특히 **쓰러진 마리**가 위험하다: 넘어지면 y가
+/// 바뀌어 순서가 다시 계산되기 때문이다. 그래서 미녀만 정렬 밖의 고정 레벨
+/// (`QUEEN_DEPTH_LEVEL`)을 받는다. 아티팩트가 정렬한 뒤 미녀를 **마지막에**
+/// 붙이는 것과 같은 규칙이다.
+///
+/// **한 번 걸고 끝내지 않는다.** 창 순서는 클릭할 때마다 바뀌므로 매 틱
+/// 순서가 달라질 때마다 다시 건다 — 미녀도 같은 자리에서 함께 건다
+/// (`docs/solutions/ui-bugs/macos-window-order-is-not-stable-level-is.md`).
 #[cfg(target_os = "macos")]
 pub fn apply_depth(app: &AppHandle, order: &[PetId], view: &mut DepthView) {
-    if view.order == order {
+    let 미녀 = app.get_webview_window(QUEEN_LABEL).is_some();
+    if view.order == order && view.queen == 미녀 {
         return;
     }
     view.order = order.to_vec();
+    view.queen = 미녀;
     let app = app.clone();
     let order = order.to_vec();
     let _ = app.clone().run_on_main_thread(move || {
-        use objc2_app_kit::NSWindow;
         for (k, id) in order.iter().enumerate() {
-            let Some(window) = app.get_webview_window(&format!("pet-{id}")) else {
-                continue;
-            };
-            let ptr = match window.ns_window() {
-                Ok(ptr) if !ptr.is_null() => ptr,
-                _ => continue,
-            };
-            unsafe {
-                let ns = &*(ptr as *const NSWindow);
-                ns.setLevel(depth_level(k));
-            }
+            set_level(&app, &format!("pet-{id}"), depth_level(k));
         }
+        // **미녀는 늘 맨 위다.** 벨트를 채우는 배우가 쓰러진 놈에게 가려지면
+        // 세레모니가 안 보인다.
+        set_level(&app, QUEEN_LABEL, QUEEN_DEPTH_LEVEL);
     });
+}
+
+#[cfg(target_os = "macos")]
+fn set_level(app: &AppHandle, label: &str, level: isize) {
+    use objc2_app_kit::NSWindow;
+    let Some(window) = app.get_webview_window(label) else {
+        return;
+    };
+    let ptr = match window.ns_window() {
+        Ok(ptr) if !ptr.is_null() => ptr,
+        _ => return,
+    };
+    unsafe {
+        let ns = &*(ptr as *const NSWindow);
+        ns.setLevel(level);
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -97,19 +122,8 @@ pub fn reset_depth(app: &AppHandle, ids: &[PetId], view: &mut DepthView) {
     let app = app.clone();
     let ids = ids.to_vec();
     let _ = app.clone().run_on_main_thread(move || {
-        use objc2_app_kit::NSWindow;
         for id in ids {
-            let Some(window) = app.get_webview_window(&format!("pet-{id}")) else {
-                continue;
-            };
-            let ptr = match window.ns_window() {
-                Ok(ptr) if !ptr.is_null() => ptr,
-                _ => continue,
-            };
-            unsafe {
-                let ns = &*(ptr as *const NSWindow);
-                ns.setLevel(PET_DEPTH_BASE);
-            }
+            set_level(&app, &format!("pet-{id}"), PET_DEPTH_BASE);
         }
     });
 }

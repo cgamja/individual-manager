@@ -15,13 +15,27 @@
   animation: pg-queen-step 0.42s ease-in-out infinite;
 }
 
-/* 든 벨트는 가까운 날개에 매달린 것처럼 같이 흔들린다. */
-.pg-belt--held.pg--queen-walk-in .pg-belt,
-.pg-belt--held.pg--queen-walk-out .pg-belt,
+/* 든 벨트는 가까운 날개에 매달린 것처럼 같이 흔들린다. **옮긴 자리를 유지한
+   채로** 흔들어야 하므로 keyframes가 `translate`를 함께 들고 있다. */
 .pg--queen-walk-in .pg-wing-near,
 .pg--queen-walk-out .pg-wing-near {
   animation: pg-queen-carry 0.42s ease-in-out infinite;
   transform-origin: 66px 52px;
+}
+
+.pg-belt--held.pg--queen-walk-in .pg-belt,
+.pg-belt--held.pg--queen-walk-out .pg-belt {
+  animation: pg-queen-carry-belt 0.42s ease-in-out infinite;
+}
+
+@keyframes pg-queen-carry-belt {
+  0%,
+  100% {
+    transform: translate(33px, 1px) rotate(-7deg);
+  }
+  50% {
+    transform: translate(33px, 1px) rotate(-13deg);
+  }
 }
 
 @keyframes pg-queen-carry {
@@ -85,10 +99,22 @@
 
 /* **벨트가 날개와 같은 변환을 받는다** — 팔로 든 것이라야 "들고 온다"로 읽힌다.
    걸을 때 함께 흔들리고 채울 때 함께 뻗는다. */
-.pg--queen-belting .pg-wing-near,
-.pg-belt--held.pg--queen-belting .pg-belt {
+.pg--queen-belting .pg-wing-near {
   animation: pg-queen-reach 1.2s ease-in-out 1 forwards;
   transform-origin: 66px 52px;
+}
+
+.pg-belt--held.pg--queen-belting .pg-belt {
+  animation: pg-queen-reach-belt 1.2s ease-in-out 1 forwards;
+}
+
+@keyframes pg-queen-reach-belt {
+  0% {
+    transform: translate(33px, 1px) rotate(0deg);
+  }
+  100% {
+    transform: translate(33px, 1px) rotate(-34deg);
+  }
 }
 
 @keyframes pg-queen-reach {

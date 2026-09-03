@@ -127,6 +127,9 @@ pub struct Pet {
     /// 지금 하는 얼음낚시 한 판이 끝나는 시각. **절대 시각 하나로 갖는다** —
     /// 국면마다 남은 시간을 빼 나가면 국면이 늘 때마다 계산이 갈라진다.
     fishing_until_ms: u64,
+    /// 야차에서 지금까지 맞은 횟수. **쓰러질 마리를 고르는 유일한 기준이다**
+    /// (KTD5) — 고정 임계값이 아니라 다운 시각의 **최댓값**으로 정한다.
+    yacha_hits: u32,
     /// 야차에서 대표 타격으로 뽑힌 횟수 (`Snapshot::punch_seq`).
     punch_seq: u64,
     /// 그 대표 타격이 쓰러뜨린 한 방이었는가 (`Snapshot::punch_down`).
@@ -936,6 +939,7 @@ impl Pet {
             swim_descending: false,
             freakout_until_ms: 0,
             fishing_until_ms: 0,
+            yacha_hits: 0,
             punch_seq: 0,
             punch_down: false,
             rng: if seed == 0 {
@@ -1052,6 +1056,7 @@ impl Pet {
             Behavior::IceFishing { fishing } => self.tick_fishing(now_ms, fishing),
             Behavior::Bowling { bowling } => self.tick_bowling(now_ms, bowling, bounds, dt),
             Behavior::Volleyball { volley } => self.tick_volley(now_ms, volley, bounds, dt),
+            Behavior::Yacha { yacha } => self.tick_yacha(now_ms, yacha, bounds, dt),
             Behavior::Idle { .. } | Behavior::Sleep => {
                 if now_ms >= self.behavior_until_ms {
                     self.pick_next(now_ms, bounds);

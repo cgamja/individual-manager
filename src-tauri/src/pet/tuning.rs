@@ -613,6 +613,12 @@ pub(super) const YACHA_GATHER_SPEED: f64 = 420.0;
 const _: () = assert!(YACHA_GATHER_SPEED > SWIM_SPEED);
 const _: () = assert!(YACHA_GATHER_SPEED < FREAKOUT_SPEED);
 
+/// 이웃이 쓰러졌을 때 **가운데로 다시 붙는** 속도. 걷기보다 빠르되 뛰는
+/// 것으로는 안 보여야 한다 — 자리를 고쳐 서는 것이지 도망가는 게 아니다.
+pub(super) const YACHA_CLOSE_SPEED: f64 = 150.0;
+const _: () = assert!(YACHA_CLOSE_SPEED > WALK_SPEED);
+const _: () = assert!(YACHA_CLOSE_SPEED < YACHA_GATHER_SPEED);
+
 /// 난투 한 라운드의 주기. 이 주기마다 **서 있는 마리의 절반**이 이웃을 친다.
 pub(super) const YACHA_ROUND_MS: u64 = 340;
 

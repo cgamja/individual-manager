@@ -601,8 +601,8 @@ impl Yacha {
             }
             Act::Back => {
                 let f = self.fighters.get_mut(&id).unwrap();
-                f.x -= ux * step * 1.25;
-                f.y -= uy * step * 0.9;
+                f.x -= ux * step * 1.4;
+                f.y -= uy * step * 1.0;
             }
             Act::Swing => self.try_hit(id, tgt, t),
             _ => {}
@@ -706,9 +706,17 @@ impl Yacha {
                 return; // 덜 맞았다 — 다음 걸음으로 미룬다
             }
             self.fighters.get_mut(&who).unwrap().down_at = Some(t);
-            for f in self.fighters.values_mut() {
-                if f.target == Some(who) {
-                    f.target = None;
+            // **한 놈이 넘어가면 남은 놈들이 상대를 다시 고른다.** 쓰러진 놈을
+            // 노리던 놈은 반드시, 나머지는 절반. 판을 가로지르는 이동이 여기서
+            // 나온다 — 안 그러면 붙어 있던 짝이 그대로 굳는다.
+            let 남은: Vec<PetId> = self.standing();
+            for id in 남은 {
+                let 노리던 = self.fighters[&id].target == Some(who);
+                let 다시 = 노리던 || self.fraction() < YACHA_P_RESHUFFLE_ON_DOWN;
+                if 다시 {
+                    self.fighters.get_mut(&id).unwrap().target = None;
+                    // 다음 걸음에 새로 고르도록 상태도 만료시킨다.
+                    self.fighters.get_mut(&id).unwrap().until_ms = t;
                 }
             }
             self.down_k += 1;

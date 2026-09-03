@@ -1,15 +1,11 @@
 /* 미녀 펭귄 창 — 걸어 들어와 벨트를 채우고 박수를 치고 걸어 나간다.
    자리는 Rust 틱이 창을 옮겨 정하고, 여기서 그리는 것은 자세뿐이다. */
 
-html,
-body {
-  margin: 0;
-  background: transparent;
-  overflow: hidden;
-  /* 창 자체가 클릭을 통과시키지만(`set_ignore_cursor_events`), 웹뷰가 커서를
-     바꾸거나 선택 하이라이트를 그리는 것도 막는다. */
+/* 창 크기·여백·배율은 `base.css`의 `#pet-root`가 쥔다 — 미녀 창은 펫 창과
+   같은 모양이라 같은 규칙을 그대로 탄다. 여기서는 커서만 덮어쓴다:
+   이 창은 클릭을 통과시키므로 잡는 손 모양이 뜰 이유가 없다. */
+.penguin {
   cursor: default;
-  user-select: none;
 }
 
 /* 걷기 — 다른 마리들이 날아온 것과 대비되어야 "다른 자리에서 온 배우"로
@@ -17,6 +13,25 @@ body {
 .pg--queen-walk-in .pg-all,
 .pg--queen-walk-out .pg-all {
   animation: pg-queen-step 0.42s ease-in-out infinite;
+}
+
+/* 든 벨트는 가까운 날개에 매달린 것처럼 같이 흔들린다. */
+.pg-belt--held.pg--queen-walk-in .pg-belt,
+.pg-belt--held.pg--queen-walk-out .pg-belt,
+.pg--queen-walk-in .pg-wing-near,
+.pg--queen-walk-out .pg-wing-near {
+  animation: pg-queen-carry 0.42s ease-in-out infinite;
+  transform-origin: 66px 52px;
+}
+
+@keyframes pg-queen-carry {
+  0%,
+  100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(-13deg);
+  }
 }
 
 @keyframes pg-queen-step {
@@ -68,7 +83,10 @@ body {
   }
 }
 
-.pg--queen-belting .pg-wing-near {
+/* **벨트가 날개와 같은 변환을 받는다** — 팔로 든 것이라야 "들고 온다"로 읽힌다.
+   걸을 때 함께 흔들리고 채울 때 함께 뻗는다. */
+.pg--queen-belting .pg-wing-near,
+.pg-belt--held.pg--queen-belting .pg-belt {
   animation: pg-queen-reach 1.2s ease-in-out 1 forwards;
   transform-origin: 66px 52px;
 }
@@ -136,6 +154,7 @@ body {
   .pg--queen-walk-out .pg-foot--far,
   .pg--queen-belting .pg-all,
   .pg--queen-belting .pg-wing-near,
+  .pg-belt--held .pg-belt,
   .pg--queen-clap .pg-all,
   .pg--queen-clap .pg-wing-near,
   .pg--queen-clap .pg-wing-far {

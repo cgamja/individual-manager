@@ -89,30 +89,30 @@ function BoxingGloves() {
   );
 }
 
-/** 챔피언 벨트 — 허리를 두르는 가죽 띠 + 가운데 금빛 원판.
+/** 챔피언 벨트 — 띠 + 큰 판 + 가운데 장식 **세 겹**.
  *
- * **그림이 한 벌이다.** 챔피언의 허리와 미녀가 든 벨트가 같은 도형을 쓰고,
- * 자리만 CSS가 옮긴다 (`pg-belt--held`). */
+ * **두 곳에서 쓴다.** 챔피언의 허리(`.pg--yacha-champ`)와 미녀가 **팔로 든**
+ * 벨트(`.pg-belt--held`). 그림은 한 벌이고 자리만 CSS가 옮긴다.
+ *
+ * 든 자리는 **가까운 날개 끝(74, 89) 바로 앞**이다 — 몸에 그냥 띄우면 금색
+ * 덩어리가 떠 있는 것으로 보인다 (2026-09-03 사용자). 그래서 `.pg-belt--held`가
+ * 날개(`pg-wing-near`)와 **같은 변환**을 받아 걸을 때 함께 흔들리고 채울 때
+ * 함께 뻗는다.
+ */
 function ChampionBelt() {
   return (
     <g className="pg-belt">
-      {/* 띠 */}
-      <path
-        d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z"
-        fill={BELT_LEATHER}
-      />
-      {/* 큰 타원 판 — 작고 동그란 원판이면 "금색 덩어리"로 보인다 */}
+      <rect x="64" y="84" width="34" height="8" rx="3" fill={BELT_LEATHER} />
       <ellipse
-        cx="50"
-        cy="96.5"
-        rx="11"
-        ry="8.4"
+        cx="83"
+        cy="88"
+        rx="10"
+        ry="8.5"
         fill={BELT_GOLD}
         stroke={BELT_GOLD_DARK}
-        strokeWidth="1.6"
+        strokeWidth="1.4"
       />
-      {/* 가운데 장식 */}
-      <ellipse cx="50" cy="96.5" rx="4.6" ry="3.4" fill={BELT_GOLD_DARK} opacity="0.5" />
+      <ellipse cx="83" cy="88" rx="5.6" ry="4.6" fill={BELT_GOLD_DARK} opacity="0.5" />
     </g>
   );
 }

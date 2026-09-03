@@ -585,11 +585,12 @@ pub(super) const YACHA_DT_MS: u64 = 20;
 const _: () = assert!(YACHA_DT_MS < MAX_STEP_MS);
 
 /// 다니는 가로 반폭. **닿는 거리와 따로다** — 판을 넓히면 쫓아다니는 그림이
-/// 늘고 주먹은 그대로라 붙어야만 맞는다.
-pub(super) const YACHA_ARENA_HALF: f64 = 408.0;
+/// 늘고 주먹은 그대로라 붙어야만 맞는다. v7에서 넓혔다 (*"좀 더 넓게 움직이고
+/// 싸우게 해줘"*, 2026-09-03 사용자).
+pub(super) const YACHA_ARENA_HALF: f64 = 430.0;
 
 /// 다니는 세로 범위 (발밑 기준). 위로 갈수록 멀고 작다.
-pub(super) const YACHA_ARENA_Y: (f64, f64) = (-214.0, 96.0);
+pub(super) const YACHA_ARENA_Y: (f64, f64) = (-244.0, 112.0);
 const _: () = assert!(YACHA_ARENA_Y.0 < YACHA_ARENA_Y.1);
 
 /// 주먹이 닿는 거리. **판을 넓혀도 이건 안 건드린다.**
@@ -638,16 +639,21 @@ pub(super) const YACHA_P_HUNT: f64 = 0.78;
 pub(super) const YACHA_P_SWING: (f64, f64) = (0.52, 0.64);
 const _: () = assert!(YACHA_P_SWING.0 < YACHA_P_SWING.1);
 /// 칠 확률 위로 얹히는 몫 — 가드, 그다음 빼기. 나머지가 맴돌기다.
-pub(super) const YACHA_P_GUARD_ADD: f64 = 0.15;
-pub(super) const YACHA_P_BACK_ADD: f64 = 0.29;
+pub(super) const YACHA_P_GUARD_ADD: f64 = 0.12;
+pub(super) const YACHA_P_BACK_ADD: f64 = 0.32;
 const _: () = assert!(YACHA_P_GUARD_ADD < YACHA_P_BACK_ADD);
 const _: () = assert!(YACHA_P_SWING.1 + YACHA_P_BACK_ADD < 1.0);
 /// 상대를 다시 고를 확률.
-pub(super) const YACHA_P_RETARGET: f64 = 0.32;
+pub(super) const YACHA_P_RETARGET: f64 = 0.42;
 
 /// 상태 지속 — 멀 때 / 붙었을 때 (`lo`, `범위`).
-pub(super) const YACHA_HOLD_FAR_MS: (u64, u64) = (200, 320);
+pub(super) const YACHA_HOLD_FAR_MS: (u64, u64) = (260, 420);
 pub(super) const YACHA_HOLD_NEAR_MS: (u64, u64) = (140, 280);
+
+/// 한 놈이 넘어갔을 때 **나머지가 상대를 다시 고를 확률**. 쓰러진 놈을 노리던
+/// 놈은 반드시 다시 고르고, 나머지는 이 확률로 고른다 — **판을 가로지르는
+/// 이동이 여기서 나온다.**
+pub(super) const YACHA_P_RESHUFFLE_ON_DOWN: f64 = 0.5;
 
 /// 이만큼은 맞아야 쓰러진다 — 한 대도 안 맞고 넘어가는 그림을 막는다.
 pub(super) const YACHA_MIN_HITS: u32 = 2;

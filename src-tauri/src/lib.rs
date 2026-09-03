@@ -123,6 +123,7 @@ pub fn run() {
                 hidden_at: Mutex::new(None),
             });
 
+
             let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit])?;
 

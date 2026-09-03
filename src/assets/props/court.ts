@@ -1,29 +1,18 @@
 /** 비치발리볼 코트 — 모래사장과 네트. React를 쓰지 않는다 (KTD7).
  *
- * 치수는 Rust 상수(`VOLLEY_*`)와 `court.css`가 함께 정한다 —
+ * 치수는 Rust 상수(`VOLLEY_*`)·`court.css`와 맞아야 한다 —
  * `volley.test.ts`의 `코트 CSS가 Rust 상수와 같다`가 셋을 대조한다.
  */
 
 import { NET_MESH, NET_POST, SAND_BOTTOM, SAND_FOAM, SAND_TOP } from "../palette";
 
-/**
- * 모래사장. **가로로만 늘어난다**(`preserveAspectRatio="none"`) — 세로는 CSS가
- * 고정하므로 화면이 넓어져도 모래가 두꺼워지지 않는다.
+/** 모래사장. 가로로만 늘어난다 — 세로는 CSS가 고정한다.
  *
- * `viewBox` 세로 88 = 물결 여유 8(`--vb-sand-wave`) + 발밑 선 아래 두께
- * 80(`VOLLEY_SAND_DEPTH`).
+ * `viewBox` 세로 88 = 물결 여유 8 + 발밑 선 아래 두께 80(`VOLLEY_SAND_DEPTH`).
+ * **물결의 한가운데(y=8)가 공이 떨어지는 표면이자 펭귄의 발밑이다.**
  *
- * **물결의 한가운데(y=8)가 공이 떨어지는 모래 표면이자 펭귄의 발밑이다.**
- *
- * 아랫단은 가운데가 가장 두껍다(y=88 = 창 바닥). 가장자리는 그보다 얇아 단면이
- * 아래로 볼록한 모래톱으로 읽힌다 — `VOLLEY_SAND_DEPTH`는 그 **가장 두꺼운 데**를
- * 기준으로 창을 잡는다.
- * 물결을 전부 그 아래에 두면 공이 모래 위에 떠 보인다 — 실제로 1~18px 떠 있었다.
- *
- * **`T`(이어지는 매끄러운 곡선)를 안 쓴다.** 제어점이 반사돼 누적되면서 실제
- * 곡선이 앵커가 말하는 범위를 훌쩍 넘는다 — 3~12로 적어 두고 1~18로 그려졌다.
- * 구간마다 `Q`로 제어점을 직접 준다.
- */
+ * 구간마다 `Q`로 제어점을 직접 준다 — `T`는 제어점이 반사·누적돼 실제 곡선이
+ * 앵커가 말하는 범위를 넘는다. */
 export const SAND_SVG = `
 <svg class="vb-sand" viewBox="0 0 1000 88" preserveAspectRatio="none"
      xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -40,13 +29,10 @@ export const SAND_SVG = `
         stroke="${SAND_FOAM}" stroke-width="3" fill="none" opacity="0.8" />
 </svg>`;
 
-/**
- * 네트. **모래에 발을 딛는다** — 그물 꼭대기가 펭귄 머리 바로 밑이고, 아래끝이
- * 모래 표면에 닿는다 (모래도 판과 함께 화면 세로 중앙에 뜬다).
+/** 네트. 그물 꼭대기가 펭귄 머리 밑, 아래끝이 모래 표면에 닿는다.
  *
- * `viewBox` 96×85가 `VOLLEY_NET_HALF_W * 2` × `VOLLEY_NET_HEIGHT`와 같고,
- * CSS가 같은 값을 px로 고정한다 — 어긋나면 `volley.test.ts`가 잡는다.
- */
+ * `viewBox` 96×85 = `VOLLEY_NET_HALF_W * 2` × `VOLLEY_NET_HEIGHT`. CSS가 같은
+ * 값을 px로 고정한다. */
 export const NET_SVG = `
 <svg class="vb-net" viewBox="0 0 96 85"
      xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

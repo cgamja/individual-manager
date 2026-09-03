@@ -13,11 +13,8 @@ body {
 }
 
 /* 창 전체를 채워야 커서가 구석까지 바뀐다 — 높이를 안 주면 내용이 없어서 0이다.
-   **그림은 CSS에 없다** — `src/assets/props/bat.ts`가 만들고 `main.ts`가 심는다.
-   **맨 키워드는 프로퍼티 안에 있다** — 여기에 `, default`를 덧붙이면 프로퍼티가
-   안 심겼을 때 `cursor: default, default`가 되어 무효라 선언이 통째로 죽는다
-   (`cursor` 문법은 키워드를 목록 맨 끝에만 허용한다). 심는 쪽이 같은 키워드를
-   넣는다 — `installBatCursor("default")`. */
+   그림은 `assets/props/bat.ts`가 만들고 `main.ts`가 심는다. `var()` 뒤에
+   키워드를 덧붙이지 않는다 — 없을 때 선언이 통째로 죽는다. */
 #pinball-root {
   width: 100%;
   height: 100%;

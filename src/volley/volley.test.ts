@@ -25,10 +25,8 @@ vi.mock("../lib/pet", () => ({
 const courtCss = readFileSync(resolve("src/volley/court.css"), "utf8");
 const ballCss = readFileSync(resolve("src/volley/ball.css"), "utf8");
 const ballTs = readFileSync(resolve("src/volley/ball.ts"), "utf8");
-/** **주석을 걷어낸다.** 이 레포는 주석에 근거를 길게 남기므로, 안 걷어내면
- * 마크업에서 지운 것이 주석에 남아 검사를 통과시킨다 — 실제로 `court.ts`의
- * 머리말 주석에 `preserveAspectRatio="none"`이 그대로 적혀 있어서 SVG에서
- * 지워도 통과했다.
+/** 주석을 걷어낸다 — `court.ts` 머리말에 `preserveAspectRatio="none"`이 적혀
+ * 있어서 SVG에서 지워도 통과했다.
  * `docs/solutions/best-practices/source-text-tests-pass-on-comments.md` */
 const 코드만 = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/.*/g, " ");
 /** **마운트 파일**. 그림은 여기 없다 — 구독하지 않는다는 것만 여기서 본다. */
@@ -232,10 +230,8 @@ describe("웹뷰 규약", () => {
   it("코트는_구독하지_않는다", () => {
     // 코트는 판이 도는 동안 안 변한다 — 창의 존재 자체가 상태다.
     expect(courtTs).not.toContain("onVolleyState");
-    // **전역 `listen(`도 막는다.** 이름 하나만 보면 `@tauri-apps/api/event`의
-    // `listen`을 직접 쓰는 길이 열려 있는데, 그건 대상을 `Any`로 등록해
-    // emit 대상과 무관하게 전부 호출된다 (바로 위 `공은_자기_창에만_묶인다`가
-    // 공에 대해 막는 것과 같은 위험이다).
+    // 전역 `listen(`도 막는다 — 대상을 `Any`로 등록해 emit 대상과 무관하게
+    // 전부 호출된다 (위 `공은_자기_창에만_묶인다`와 같은 위험).
     expect(courtTs).not.toMatch(/\blisten\(/);
   });
 

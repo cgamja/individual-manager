@@ -1250,13 +1250,25 @@ impl Pet {
         self.last_step_ms = now_ms;
         let dt = elapsed as f64 / 1000.0;
         self.last_y = self.y;
-        if self.speech.is_some() && now_ms >= self.speech_until_ms {
+        if self.behavior.silences_speech() {
+            // **판이 도는 동안은 조용하다.** 떠 있던 말풍선도 지운다 — 안 지우면
+            // 집결 중에 하나가 남아 화면 가운데에 떠 있다.
             self.speech = None;
-        }
-        if self.speech.is_none() && now_ms >= self.next_taunt_ms {
-            self.say(now_ms);
-            let gap = self.range(TAUNT_GAP_MS);
-            self.next_taunt_ms = now_ms + SPEECH_MS + gap;
+            // **밀린 대사를 몰아서 뱉지 않는다.** 판이 끝나는 순간 한마디가
+            // 튀어나오지 않게 다음 시각을 앞으로 민다. 난수를 안 쓰므로 판에
+            // 참여한 마리의 동작 시퀀스가 밀리지 않는다.
+            if now_ms >= self.next_taunt_ms {
+                self.next_taunt_ms = now_ms + SPEECH_MS;
+            }
+        } else {
+            if self.speech.is_some() && now_ms >= self.speech_until_ms {
+                self.speech = None;
+            }
+            if self.speech.is_none() && now_ms >= self.next_taunt_ms {
+                self.say(now_ms);
+                let gap = self.range(TAUNT_GAP_MS);
+                self.next_taunt_ms = now_ms + SPEECH_MS + gap;
+            }
         }
 
         match self.behavior {
@@ -1420,3 +1432,7 @@ mod tests;
 #[cfg(test)]
 #[path = "yacha_pets_tests.rs"]
 mod yacha_pets_tests;
+
+#[cfg(test)]
+#[path = "speech_tests.rs"]
+mod speech_tests;

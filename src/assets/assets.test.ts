@@ -2,7 +2,7 @@ import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { cleanup, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Penguin } from "../pet/Penguin";
+import { Penguin } from "./penguin/penguin";
 import { BALL_SVG as VOLLEY_BALL_SVG } from "../volley/ball";
 import { NET_SVG, SAND_SVG } from "../volley/court";
 

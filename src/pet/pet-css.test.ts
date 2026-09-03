@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../lib/pet";
 
 /** 동작이 CSS에 실제로 그려져 있는지 확인한다. */
+
+/** 펭귄 그림의 소스. **아래에서 여러 번 읽으므로 한 곳에 둔다** — 그림이 옮겨질 때
+ * 여기 하나만 고치면 된다. */
+const PENGUIN_SRC = "src/assets/penguin/penguin.tsx";
+
 /** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
 const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout","bowling","volleyball"]
   .map((n) => readFileSync(resolve(`src/pet/css/${n}.css`), "utf8"))
@@ -14,7 +19,7 @@ const petRs =
   readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8");
 const petApp =
   readFileSync(resolve("src/pet/PetApp.tsx"), "utf8") +
-  readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+  readFileSync(resolve(PENGUIN_SRC), "utf8");
 
 /** `--이름: 123px;` 에서 숫자만 꺼낸다. */
 function cssVar(name: string): number | null {
@@ -272,7 +277,7 @@ describe("비치발리볼", () => {
 
   it("훌라_차림은_pg_all_안에_있다", () => {
     // 밖에 두면 착지 포즈에서 몸만 눌리고 옷이 허공에 남는다.
-    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
     const all = svg.indexOf('className="pg-all"');
     const luau = svg.indexOf('className="pg-luau"');
     expect(all).toBeGreaterThan(-1);
@@ -289,7 +294,7 @@ describe("비치발리볼", () => {
     // **덮개형으로 갔다가 "갑바"로 읽혀 비키니로 돌아왔다** (2026-09-02 사용자).
     // 문제는 노출량이 아니라 **옷으로 읽히느냐**였다 — 색이 몸에 가깝고 경계가
     // 없으면 아무리 덮어도 살로 보인다. 그래서 셋을 못 박는다.
-    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
     const 상의 = svg.slice(
       svg.indexOf('<g className="pg-luau-top">'),
       svg.indexOf("</g>", svg.indexOf('<g className="pg-luau-top">')),
@@ -327,7 +332,7 @@ describe("비치발리볼", () => {
     // **"둘 다 얇게"가 지시다.** 깊게 그리면 다시 덮개가 되고, 덮개는 갑바로
     // 읽혔다. 배(`SNOW` 타원, cy=82 ry=26 → y 56~108)의 위쪽 3분의 1 안에서
     // 끝나야 한다.
-    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
     const 상의 = svg.slice(
       svg.indexOf('<g className="pg-luau-top">'),
       svg.indexOf("</g>", svg.indexOf('<g className="pg-luau-top">')),
@@ -348,7 +353,7 @@ describe("비치발리볼", () => {
 
   it("옷_색이_몸_색과_대비된다", () => {
     // 배가 흰색이라 옅은 살구·크림 계열을 쓰면 옷이 아니라 살로 읽힌다.
-    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
     const 색 = (name: string) => {
       const m = svg.match(new RegExp(`const ${name} = "(#[0-9a-fA-F]{6})"`));
       return m ? m[1] : null;
@@ -371,10 +376,10 @@ describe("비치발리볼", () => {
 
   it("중간에_썼던_이름이_안_남아있다", () => {
     // `pg-straw`는 덮개형으로 가던 시절의 이름이다.
-    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
     const volley = readFileSync(resolve("src/pet/css/volleyball.css"), "utf8");
     for (const [이름, 본문] of [
-      ["Penguin.tsx", svg],
+      [PENGUIN_SRC, svg],
       ["volleyball.css", volley],
     ] as const) {
       expect(본문, `${이름}에 pg-straw가 남아 있다`).not.toContain("pg-straw");

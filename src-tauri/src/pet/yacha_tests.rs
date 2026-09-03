@@ -9,13 +9,13 @@ const 세계: Bounds = Bounds {
     floor_y: 800.0,
 };
 
-fn 링() -> Ring {
-    Ring::new(세계).expect("이 세계에는 링이 들어간다")
+fn 자리들() -> Huddle {
+    Huddle::new(세계).expect("이 세계에는 뭉칠 자리가 있다")
 }
 
 fn 판(n: usize, seed: u64) -> Yacha {
     let ids: Vec<PetId> = (1..=n as PetId).collect();
-    Yacha::new(ids, 링(), 0, seed)
+    Yacha::new(ids, 자리들(), 0, seed)
 }
 
 /// 서 있는 마리를 스탠스 순서대로 (id, 몸통 가운데 x)로 만든다.
@@ -61,21 +61,21 @@ fn 난투를_끝까지(board: &mut Yacha, n: usize) -> (PetId, u64) {
 }
 
 #[test]
-fn 세계가_좁으면_링이_안_열린다() {
+fn 세계가_좁으면_판이_안_열린다() {
     let 좁다 = Bounds {
         left: 0.0,
         right: 100.0,
         top: 0.0,
         floor_y: 800.0,
     };
-    assert!(Ring::new(좁다).is_none());
+    assert!(Huddle::new(좁다).is_none());
     let 낮다 = Bounds {
         left: 0.0,
         right: 1_440.0,
         top: 0.0,
         floor_y: 100.0,
     };
-    assert!(Ring::new(낮다).is_none());
+    assert!(Huddle::new(낮다).is_none());
 }
 
 #[test]
@@ -198,30 +198,116 @@ fn 최다_피격이_같으면_id가_작은_쪽이_쓰러진다() {
 
 #[test]
 fn 이웃은_항상_사정거리_안이다() {
-    // 종료 증명 ② — 서 있는 마리가 둘 이상이면 피격 수가 반드시 는다.
-    let ring = 링();
+    // 종료 증명 ② — 뭉쳐 있으므로 누구든 칠 수 있고, 서 있는 마리가 둘 이상인
+    // 동안 피격 수가 반드시 는다.
     for n in 2..=8 {
-        for k in 0..n - 1 {
-            let a = ring.stance_of(k, n).0;
-            let b = ring.stance_of(k + 1, n).0;
-            assert!(
-                (b - a).abs() < YACHA_REACH_X,
-                "{n}마리에서 {k}번과 {}번이 {}px 떨어져 사정거리 밖이다",
-                k + 1,
-                (b - a).abs()
-            );
+        for seed in [1u64, 42, 7_777] {
+            let board = 판(n, seed);
+            let 자리: Vec<f64> = board
+                .participants()
+                .iter()
+                .map(|id| board.stance_for(*id).unwrap().0 + PET_SIZE / 2.0)
+                .collect();
+            for (i, a) in 자리.iter().enumerate() {
+                let 가장_가까운 = 자리
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != i)
+                    .map(|(_, b)| (a - b).abs())
+                    .fold(f64::INFINITY, f64::min);
+                assert!(
+                    가장_가까운 <= YACHA_REACH_X,
+                    "{n}마리 시드 {seed}: {i}번의 가장 가까운 이웃이 {가장_가까운}px다"
+                );
+            }
         }
     }
 }
 
 #[test]
-fn 여덟_마리가_링_안에_선다() {
-    let ring = 링();
-    let (rx, _, rw, _) = ring.rect();
-    for k in 0..8 {
-        let x = ring.stance_of(k, 8).0;
-        assert!(x >= rx, "{k}번이 링 왼쪽 밖이다");
-        assert!(x + PET_SIZE <= rx + rw, "{k}번이 링 오른쪽 밖이다");
+fn 대형을_만들지_않는다() {
+    // 사용자 지시 — 줄 세우면 안 된다. 간격이 전부 같으면 그게 대형이다.
+    let board = 판(6, 31);
+    let mut x: Vec<f64> = board
+        .participants()
+        .iter()
+        .map(|id| board.stance_for(*id).unwrap().0)
+        .collect();
+    x.sort_by(f64::total_cmp);
+    let 간격: Vec<f64> = x.windows(2).map(|w| w[1] - w[0]).collect();
+    let 최대 = 간격.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let 최소 = 간격.iter().cloned().fold(f64::INFINITY, f64::min);
+    assert!(최대 - 최소 > 8.0, "간격이 고르다 — 줄을 세우고 있다: {간격:?}");
+}
+
+#[test]
+fn 서로_겹친다() {
+    // "얽히고 섥히는 느낌" — 마리마다 실루엣이 물리는 이웃이 하나는 있어야 한다.
+    for n in [2usize, 4, 6, 8] {
+        for seed in [1u64, 5, 42, 90_210] {
+            let board = 판(n, seed);
+            let 자리: Vec<f64> = board
+                .participants()
+                .iter()
+                .map(|id| board.stance_for(*id).unwrap().0)
+                .collect();
+            for (i, a) in 자리.iter().enumerate() {
+                let 가장_가까운 = 자리
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != i)
+                    .map(|(_, b)| (a - b).abs())
+                    .fold(f64::INFINITY, f64::min);
+                assert!(
+                    가장_가까운 < PET_SIZE,
+                    "{n}마리 시드 {seed}: {i}번이 이웃과 {가장_가까운}px 떨어져 안 겹친다"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn 완전히_포개지지는_않는다() {
+    for n in 2..=8 {
+        for seed in [1u64, 42, 7_777, 90_210] {
+            let board = 판(n, seed);
+            let 자리: Vec<(f64, f64)> = board
+                .participants()
+                .iter()
+                .map(|id| board.stance_for(*id).unwrap())
+                .collect();
+            for i in 0..자리.len() {
+                for j in (i + 1)..자리.len() {
+                    let d = (자리[i].0 - 자리[j].0).hypot(자리[i].1 - 자리[j].1);
+                    assert!(d > 1.0, "{n}마리 시드 {seed}: {i}번과 {j}번이 같은 자리다");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn 깊게_겹친_둘은_y가_다르다() {
+    // 창 z 순서를 제어할 수 없으므로 깊이는 y로만 말한다 (KTD9c).
+    for seed in [1u64, 42, 7_777, 90_210, 5] {
+        let board = 판(8, seed);
+        let 자리: Vec<(f64, f64)> = board
+            .participants()
+            .iter()
+            .map(|id| board.stance_for(*id).unwrap())
+            .collect();
+        for i in 0..자리.len() {
+            for j in (i + 1)..자리.len() {
+                if (자리[i].0 - 자리[j].0).abs() > PET_SIZE / 2.0 {
+                    continue;
+                }
+                assert!(
+                    (자리[i].1 - 자리[j].1).abs() >= YACHA_HUDDLE_MIN_DY,
+                    "시드 {seed}: 깊게 겹친 {i}·{j}번의 y가 같다"
+                );
+            }
+        }
     }
 }
 

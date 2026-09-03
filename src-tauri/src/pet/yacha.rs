@@ -1,4 +1,4 @@
-//! 단체 야차 판 — 링 기하, 스탠스, 난투 라운드, 다운 일정, 세레모니.
+//! 단체 야차 판 — 뭉침 배치, 난투 라운드, 다운 일정, 세레모니.
 //!
 //! **볼링·비치발리볼에 이은 셋째 "집결형 한 판"이고, 앞의 둘과 갈리는 지점이
 //! 하나 있다: 여기서는 마리끼리 서로를 친다.** 그래서 이 모듈이 절대 하지 않는
@@ -6,6 +6,10 @@
 //! 피격 수뿐이라 밀어낼 방법 자체가 없다 (R7). 튕겨 나가는 것은 핀볼의 일이다.
 //!
 //! **판은 `Pets`가 소유하고 난수는 판이 갖는다** — 볼링·발리볼과 같은 근거다.
+//!
+//! **경기장을 그리지 않는다.** 볼링·발리볼은 판을 깔았지만 여기서는 화면 한가운데에
+//! **대형 없이 뭉치고 서로 겹친다** (2026-09-03 사용자 지시). 그래서 이 판이 만드는
+//! 창은 미녀 펭귄 하나뿐이다.
 //!
 //! 설계 이력과 "왜 이렇게 나눴나"는 `MOTIONS.md`의 단체 야차 절에 있다.
 
@@ -16,7 +20,7 @@ use super::*;
 /// 판 전체가 거쳐 가는 국면.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RingPhase {
-    /// 펭귄들이 링의 자기 자리로 날아가는 중.
+    /// 펭귄들이 한가운데의 자기 자리로 날아가는 중.
     Gathering,
     /// 난투. 다운 일정이 굴러간다.
     Brawl,
@@ -29,7 +33,7 @@ pub enum RingPhase {
     Belting,
     /// 챔피언 + 미녀 세레모니.
     Ceremony,
-    /// 미녀가 오른쪽으로 걸어 나가고 링이 걷힌다.
+    /// 미녀가 오른쪽으로 걸어 나가고 쓰러진 놈들이 일어난다.
     Exiting,
     /// 끝났다. `Pets`가 이걸 보고 판을 접는다.
     Done,
@@ -62,85 +66,55 @@ pub struct QueenSnapshot {
 /// 브릿지가 한 번에 받아 가는 판의 겉모습. 락을 한 번만 잡으려고 묶었다.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct YachaSnapshot {
-    /// 링 창이 덮을 사각형.
-    pub ring: (f64, f64, f64, f64),
     /// 지금 화면에 있어야 하는 미녀. 난투 중에는 없다.
+    /// **판이 만드는 창은 이것 하나뿐이다** — 경기장을 안 그린다.
     pub queen: Option<QueenSnapshot>,
 }
 
-/// 링 — 판이 열릴 때 경계에서 **한 번** 재고, 판이 도는 동안은 이게 세계다.
-/// 도중에 경계가 바뀌어도 펭귄과 링이 서로 다른 좌표계를 보지 않게 한다
-/// (볼링의 `lane`·발리볼의 `Court`와 같은 이유).
+/// 뭉치는 자리 — 판이 열릴 때 경계에서 **한 번** 재고, 판이 도는 동안은 이게
+/// 세계다 (볼링의 `lane`·발리볼의 `Court`와 같은 이유).
+///
+/// **그림이 없다.** 경기장을 안 그리므로 창도 사각형도 없고, 이 값이 하는 일은
+/// "어디에 뭉치나"를 정하는 것뿐이다.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct Ring {
-    /// 링 가운데의 세계 x.
+pub struct Huddle {
+    /// 뭉치는 자리의 가운데 x.
     cx: f64,
-    /// 가운데에서 링 끝까지.
+    /// 가로 반폭 (화면에 맞춰 줄어들 수 있다).
     half: f64,
-    /// **펭귄 좌상단** y — 화면 세로 중앙이다. 볼링·발리볼과 같은 자리이고,
-    /// 링 매트도 여기 함께 뜬다.
+    /// **펭귄 좌상단** y의 가운데 — 화면 세로 중앙이다. 볼링·발리볼과 같은 자리다.
     play_y: f64,
     /// 세계 오른쪽 — 미녀가 여기 **밖에서** 걸어 들어온다.
     world_right: f64,
-    /// 판이 열릴 때 잰 경계. 판이 도는 동안 이게 세계다 — 마리를 내려보낼 때
-    /// 바닥이 어디인지 알아야 하고, 도중에 경계가 바뀌어도 판 안에서는 한
-    /// 좌표계만 본다 (볼링의 `lane`·발리볼의 `Court`와 같은 이유).
+    /// 판이 열릴 때 잰 경계. 마리를 내려보낼 때 바닥이 어디인지 알아야 한다.
     bounds: Bounds,
 }
 
-impl Ring {
-    /// 경계에서 링을 낸다. **너무 좁으면 `None`** — 판을 아예 안 연다.
-    pub(super) fn new(bounds: Bounds) -> Option<Ring> {
+impl Huddle {
+    /// 경계에서 자리를 낸다. **너무 좁으면 `None`** — 판을 아예 안 연다.
+    pub(super) fn new(bounds: Bounds) -> Option<Huddle> {
         let width = bounds.right - bounds.left;
         let height = bounds.floor_y - bounds.top;
         if width < YACHA_MIN_WORLD_WIDTH || height < YACHA_MIN_WORLD_HEIGHT {
             return None;
         }
         let top = bounds.top.min(bounds.floor_y);
-        Some(Ring {
+        Some(Huddle {
             cx: (bounds.left + bounds.right) / 2.0,
-            // 링이 화면보다 넓으면 화면에 맞춘다.
-            half: YACHA_RING_HALF.min(width / 2.0),
+            half: YACHA_HUDDLE_HALF.min(width / 2.0 - PET_SIZE / 2.0),
             play_y: (top + bounds.floor_y) / 2.0,
             world_right: bounds.right,
             bounds,
         })
     }
 
-    /// `n`마리 중 `k`번째가 설 자리 (**좌상단**, `Pet::x`와 같은 관례).
-    ///
-    /// 가운데를 기준으로 좌우 대칭이라 같은 마릿수는 늘 같은 배치를 낳는다.
-    /// 간격은 링을 벗어나지 않도록 눌러 잡는다 — 여덟 마리 × 기본 간격이
-    /// 링에 들어가는 것은 `tuning.rs`의 `const assert!`가 보장하지만, 링이
-    /// 화면에 맞춰 줄어들면 그 보장이 깨지므로 여기서 한 번 더 잡는다.
-    pub(super) fn stance_of(&self, k: usize, n: usize) -> (f64, f64) {
-        let n = n.max(1);
-        let gap = if n > 1 {
-            YACHA_STANCE_GAP.min((2.0 * self.half - PET_SIZE) / (n - 1) as f64)
-        } else {
-            YACHA_STANCE_GAP
-        };
-        let 전체 = gap * (n - 1) as f64;
-        let x = self.cx - 전체 / 2.0 - PET_SIZE / 2.0 + gap * k as f64;
-        (x, self.play_y)
-    }
-
-    /// 링 창이 덮을 사각형 (좌상단 x, y, 폭, 높이).
-    ///
-    /// 매트는 펭귄의 **발밑**에 깔린다 — 좌상단에서 `PET_SIZE`만큼 아래가
-    /// 매트 윗면이다.
-    pub fn rect(&self) -> (f64, f64, f64, f64) {
-        (
-            self.cx - self.half,
-            self.play_y + PET_SIZE - YACHA_RING_DEPTH / 2.0,
-            self.half * 2.0,
-            YACHA_RING_DEPTH,
-        )
-    }
-
-    /// 펭귄 좌상단이 놓이는 y.
+    /// 펭귄 좌상단이 놓이는 y의 가운데.
     pub(super) fn play_y(&self) -> f64 {
         self.play_y
+    }
+
+    pub(super) fn cx(&self) -> f64 {
+        self.cx
     }
 
     /// 판이 열릴 때 잰 경계.
@@ -162,7 +136,10 @@ pub struct RoundOutcome {
 /// 한 판.
 pub struct Yacha {
     phase: RingPhase,
-    ring: Ring,
+    huddle: Huddle,
+    /// 마리별 자리 (좌상단). **판이 열릴 때 시드로 뽑고 이후 안 바뀐다** —
+    /// 대형이 아니라 뭉침이라 규칙으로 다시 계산할 수 없다.
+    spots: std::collections::BTreeMap<PetId, (f64, f64)>,
     /// 참여 마리를 **선 순서대로**. 시드로 섞으므로 같은 마릿수라도 매번 다른
     /// 대진이 나온다.
     order: Vec<PetId>,
@@ -188,10 +165,11 @@ pub struct Yacha {
 }
 
 impl Yacha {
-    pub(super) fn new(ids: Vec<PetId>, ring: Ring, now_ms: u64, seed: u64) -> Self {
+    pub(super) fn new(ids: Vec<PetId>, huddle: Huddle, now_ms: u64, seed: u64) -> Self {
         let mut board = Yacha {
             phase: RingPhase::Gathering,
-            ring,
+            huddle,
+            spots: std::collections::BTreeMap::new(),
             order: ids,
             downed: Vec::new(),
             champion: None,
@@ -201,8 +179,8 @@ impl Yacha {
             next_round_ms: now_ms + YACHA_ROUND_MS,
             brawl_until_ms: 0,
             phase_until_ms: 0,
-            queen_x: ring.world_right + PET_SIZE,
-            queen_target_x: ring.world_right + PET_SIZE,
+            queen_x: huddle.world_right + PET_SIZE,
+            queen_target_x: huddle.world_right + PET_SIZE,
             belt_on_champion: false,
             deadline_ms: now_ms + YACHA_MAX_MS,
             // 시드가 0이면 xorshift가 0에 갇힌다 (`Pet::new_at`과 같은 방어).
@@ -213,6 +191,7 @@ impl Yacha {
             },
         };
         board.shuffle_order();
+        board.scatter_spots();
         let 예산 = board.range(YACHA_BRAWL_MS);
         board.brawl_until_ms = now_ms + 예산;
         board.plan_downs(now_ms, 예산);
@@ -258,8 +237,8 @@ impl Yacha {
         self.phase
     }
 
-    pub fn ring(&self) -> Ring {
-        self.ring
+    pub fn huddle(&self) -> Huddle {
+        self.huddle
     }
 
     pub fn champion(&self) -> Option<PetId> {
@@ -284,18 +263,51 @@ impl Yacha {
             .collect()
     }
 
-    /// `id`가 **지금** 서야 하는 자리 (좌상단). 쓰러진 마리는 `None` —
-    /// 쓰러진 자리에 그대로 누워 있는다.
-    ///
-    /// **서 있는 마리만으로 다시 잡는다.** 그래야 한 마리가 쓰러질 때마다 남은
-    /// 놈들이 가운데로 붙어 **이웃이 늘 사정거리 안**에 있다 — 안 그러면 여덟
-    /// 마리 판의 끝에서 양 끝 둘만 남아 600px 떨어진 채 허공에 주먹질하고,
-    /// 아무도 안 맞아 판이 영영 안 끝난다 (종료 증명 ②가 여기 걸려 있다).
-    /// 붙는 그림 자체도 "하나 쓰러졌다"를 눈에 보이게 한다.
+    /// `id`가 설 자리 (좌상단). 판이 열릴 때 뽑아 둔 것을 그대로 준다.
     pub(super) fn stance_for(&self, id: PetId) -> Option<(f64, f64)> {
-        let st = self.standing();
-        let k = st.iter().position(|x| *x == id)?;
-        Some(self.ring.stance_of(k, st.len()))
+        self.spots.get(&id).copied()
+    }
+
+    /// **자리를 뿌린다 — 대형이 아니라 뭉침이다** (2026-09-03 사용자 지시).
+    ///
+    /// 가운데 좁은 범위에 불규칙하게 놓아 **서로 겹치게** 한다. 규칙은 둘뿐이다:
+    /// 완전히 포개지지 않을 만큼은 떨어지고(`MIN_GAP`), 겹친 둘의 y는 서로
+    /// 다르다(`MIN_DY`) — 앞뒤를 y로만 말하기 때문이다 (창 z 순서는 제어할 수
+    /// 없다). 여덟 마리를 좁은 데 넣으므로 **뽑기 실패는 정상**이고, 예산을 다
+    /// 쓰면 그때까지 중 가장 먼 후보를 쓴다.
+    fn scatter_spots(&mut self) {
+        let ids = self.order.clone();
+        // 반폭은 마릿수를 따라 자란다 — 두 마리는 붙어야 1대1로 읽힌다.
+        let half = (YACHA_HUDDLE_BASE
+            + YACHA_HUDDLE_PER_PET * ids.len().saturating_sub(2) as f64)
+            .min(self.huddle.half);
+        let (cx, cy) = (self.huddle.cx, self.huddle.play_y);
+        let mut 놓인: Vec<(f64, f64)> = Vec::new();
+        for id in ids {
+            let mut best = (cx, cy);
+            let mut best_d = -1.0;
+            for _ in 0..YACHA_HUDDLE_TRIES {
+                let x = cx + (self.fraction() * 2.0 - 1.0) * half;
+                let y = cy + (self.fraction() * 2.0 - 1.0) * YACHA_HUDDLE_DEPTH;
+                let d = 놓인
+                    .iter()
+                    .map(|(px, py)| (x - px).hypot(y - py))
+                    .fold(f64::INFINITY, f64::min);
+                let dy_ok = 놓인
+                    .iter()
+                    .all(|(px, py)| (x - px).abs() > PET_SIZE / 2.0 || (y - py).abs() >= YACHA_HUDDLE_MIN_DY);
+                if d >= YACHA_HUDDLE_MIN_GAP && dy_ok {
+                    best = (x, y);
+                    break;
+                }
+                if d > best_d {
+                    best_d = d;
+                    best = (x, y);
+                }
+            }
+            놓인.push(best);
+            self.spots.insert(id, (best.0 - PET_SIZE / 2.0, best.1));
+        }
     }
 
     #[cfg(test)]
@@ -315,6 +327,7 @@ impl Yacha {
     pub(super) fn leave(&mut self, id: PetId) {
         self.order.retain(|x| *x != id);
         self.downed.retain(|x| *x != id);
+        self.spots.remove(&id);
         if self.champion == Some(id) {
             self.champion = None;
         }
@@ -399,11 +412,11 @@ impl Yacha {
         self.phase = RingPhase::Victory;
         self.phase_until_ms = now_ms + YACHA_WIN_MS;
         // 미녀는 **화면 오른쪽 밖**에서 출발한다.
-        self.queen_x = self.ring.world_right + PET_SIZE;
+        self.queen_x = self.huddle.world_right + PET_SIZE;
         let 챔프_x = self
             .stance_for(champion)
             .map(|(x, _)| x)
-            .unwrap_or(self.ring.cx);
+            .unwrap_or(self.huddle.cx);
         self.queen_target_x = 챔프_x + YACHA_QUEEN_STOP_GAP;
     }
 
@@ -439,7 +452,7 @@ impl Yacha {
             RingPhase::Ceremony => {
                 self.phase = RingPhase::Exiting;
                 self.phase_until_ms = now_ms + YACHA_EXIT_MS;
-                self.queen_target_x = self.ring.world_right + PET_SIZE;
+                self.queen_target_x = self.huddle.world_right + PET_SIZE;
             }
             RingPhase::Exiting => self.phase = RingPhase::Done,
             _ => {}
@@ -458,10 +471,9 @@ impl Yacha {
 
     pub fn snapshot(&self) -> YachaSnapshot {
         YachaSnapshot {
-            ring: self.ring.rect(),
             queen: self.queen_pose().map(|pose| QueenSnapshot {
                 x: self.queen_x,
-                y: self.ring.play_y(),
+                y: self.huddle.play_y(),
                 // 걸어 들어올 때는 왼쪽(챔피언 쪽)을 보고, 나갈 때는 오른쪽.
                 facing: if self.phase == RingPhase::Exiting {
                     Facing::Right
@@ -504,6 +516,10 @@ impl Yacha {
         x ^= x << 17;
         self.rng = x;
         x
+    }
+
+    fn fraction(&mut self) -> f64 {
+        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }
 
     fn range(&mut self, (lo, hi): (u64, u64)) -> u64 {

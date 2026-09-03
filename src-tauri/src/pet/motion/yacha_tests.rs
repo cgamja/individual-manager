@@ -23,7 +23,7 @@ fn 링에_선_펭귄() -> (Pet, World) {
 fn 펀치를_맞아도_x가_변하지_않는다() {
     let (mut pet, world) = 링에_선_펭귄();
     let 처음 = pet.snapshot().x;
-    pet.yacha_hurt(1_000);
+    pet.yacha_hurt(1_000, Facing::Left);
     assert_eq!(pet.snapshot().x, 처음, "맞자마자 밀렸다");
     // 휘청이는 내내도 그대로여야 한다.
     let mut now = 1_000;
@@ -48,11 +48,21 @@ fn 펀치를_뻗어도_x가_변하지_않는다() {
 }
 
 #[test]
+fn 맞으면_때린_쪽을_본다() {
+    // 화남 표시가 둘 사이에 뜨게 하는 유일한 장치다 (KTD9d).
+    let (mut pet, _) = 링에_선_펭귄();
+    pet.yacha_hurt(1_000, Facing::Left);
+    assert_eq!(pet.snapshot().facing, Facing::Left);
+    pet.yacha_hurt(1_200, Facing::Right);
+    assert_eq!(pet.snapshot().facing, Facing::Right);
+}
+
+#[test]
 fn 맞으면_피격_수가_는다() {
     let (mut pet, _) = 링에_선_펭귄();
     assert_eq!(pet.yacha_hits(), 0);
-    pet.yacha_hurt(1_000);
-    pet.yacha_hurt(1_400);
+    pet.yacha_hurt(1_000, Facing::Left);
+    pet.yacha_hurt(1_400, Facing::Left);
     assert_eq!(pet.yacha_hits(), 2);
 }
 
@@ -206,7 +216,7 @@ fn 들려_있으면_판에_안_들어간다() {
 fn 대표_타격만_소리_신호를_올린다() {
     let (mut pet, _) = 링에_선_펭귄();
     assert_eq!(pet.snapshot().punch_seq, 0);
-    pet.yacha_hurt(1_000);
+    pet.yacha_hurt(1_000, Facing::Left);
     assert_eq!(pet.snapshot().punch_seq, 0, "맞았다고 소리가 나면 안 된다");
     pet.yacha_thud(false);
     assert_eq!(pet.snapshot().punch_seq, 1);

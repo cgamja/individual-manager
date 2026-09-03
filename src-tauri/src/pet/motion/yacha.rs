@@ -95,8 +95,13 @@ impl Pet {
     }
 
     /// 맞는다. **좌표를 안 건드린다** — 이 한 줄의 부재가 R7이다.
-    pub(in crate::pet) fn yacha_hurt(&mut self, now_ms: u64) {
+    ///
+    /// `from`은 **때린 놈이 있는 쪽**이다. 맞은 마리가 그쪽을 보면 화남 표시가
+    /// 그 가장자리에 뜨고, 뭉쳐 있으므로 그 자리가 곧 **둘 사이**다 — 선도
+    /// 화살표도 없이 누가 누구를 쳤는지 읽힌다 (KTD9d).
+    pub(in crate::pet) fn yacha_hurt(&mut self, now_ms: u64, from: Facing) {
         self.yacha_hits += 1;
+        self.facing = from;
         self.enter_yacha(YachaPhase::Hurt, now_ms);
     }
 

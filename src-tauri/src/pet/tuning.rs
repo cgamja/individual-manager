@@ -576,14 +576,34 @@ const _: () = assert!(VOLLEY_MAX_MS > VOLLEY_SESSION_MS.1 + VOLLEY_POINT_MS);
 pub(super) const YACHA_MIN_PETS: usize = 2;
 const _: () = assert!(YACHA_MIN_PETS >= 2);
 
-/// 링 가운데에서 링 끝까지 (가로).
-pub(super) const YACHA_RING_HALF: f64 = 460.0;
+/// **뭉치는 반폭은 마릿수를 따라 자란다.** 고정으로 두면 두 마리가 양 끝에 놓여
+/// 232px 떨어진 채 "1대1인데 안 붙은" 그림이 나온다 (실제로 그렇게 났다).
+/// 두 마리는 몸통 반폭, 마리가 늘 때마다 조금씩 넓어진다.
+pub(super) const YACHA_HUDDLE_BASE: f64 = PET_SIZE / 2.0;
+/// 한 마리 늘 때마다 넓어지는 양.
+pub(super) const YACHA_HUDDLE_PER_PET: f64 = 12.0;
 
-/// 링 매트의 세로 두께. 펭귄이 딛는 면이 이 안에 있다.
-pub(super) const YACHA_RING_DEPTH: f64 = 120.0;
+/// 뭉치는 범위의 가로 반폭 **상한**. **대형을 만들지 않는다** — 중앙 좁은 데 몰아넣어
+/// 서로 겹치게 한다 (2026-09-03 사용자 지시). `PET_SIZE`보다 조금 넓을 뿐이라
+/// 여덟 마리면 반드시 물린다.
+pub(super) const YACHA_HUDDLE_HALF: f64 = 130.0;
 
-/// 이웃과의 가로 간격 (몸통 가운데 기준).
-pub(super) const YACHA_STANCE_GAP: f64 = 96.0;
+/// 뭉치는 범위의 세로 반폭. **깊이를 만드는 값이다** — 아래에 있는 마리가 앞으로
+/// 읽힌다. 창 z 순서는 제어할 수 없으므로 앞뒤는 y로만 말한다.
+pub(super) const YACHA_HUDDLE_DEPTH: f64 = 46.0;
+
+/// 두 마리가 이보다 가까우면 한 마리로 보인다 — 자리를 다시 뽑는다.
+pub(super) const YACHA_HUDDLE_MIN_GAP: f64 = 38.0;
+const _: () = assert!(YACHA_HUDDLE_MIN_GAP < YACHA_HUDDLE_HALF);
+
+/// 겹친 둘의 y가 이만큼은 달라야 "붙어 있다"로 읽힌다. 같으면 한 마리가 다른
+/// 마리를 뚫고 나온 것처럼 보인다.
+pub(super) const YACHA_HUDDLE_MIN_DY: f64 = 12.0;
+const _: () = assert!(YACHA_HUDDLE_MIN_DY < YACHA_HUDDLE_DEPTH);
+
+/// 자리 뽑기를 몇 번까지 다시 하나. **여덟 마리를 좁은 데 넣으므로 실패가
+/// 정상이다** — 다 쓰면 그때까지 중 가장 먼 후보를 쓴다.
+pub(super) const YACHA_HUDDLE_TRIES: u32 = 24;
 
 /// 펀치가 닿는 가로 거리 (몸통 가운데 사이).
 ///
@@ -591,22 +611,24 @@ pub(super) const YACHA_STANCE_GAP: f64 = 96.0;
 /// 서 있는 마리가 둘 이상인 동안 이웃은 **항상** 사정거리 안이므로 피격 수가
 /// 매 라운드 반드시 늘고, 그래서 다운이 반드시 일어난다. 뒤집히면 아무도 안
 /// 맞아 판이 예산이 다 될 때까지 헛돈다.
-pub(super) const YACHA_REACH_X: f64 = 150.0;
-const _: () = assert!(YACHA_STANCE_GAP < YACHA_REACH_X);
+pub(super) const YACHA_REACH_X: f64 = 360.0;
+/// **뭉친 범위를 통째로 덮어야 한다.** 두 마리가 양 끝에 놓여도 `2 × HALF`이므로
+/// 사정거리가 그보다 짧으면 서로 못 친다. 뭉쳐 있으니 누구든 칠 수 있는 것이 맞고,
+/// 그래서 서 있는 마리가 둘 이상인 동안 피격 수가 매 라운드 반드시 는다 —
+/// **종료 증명 ②가 이 한 줄에 걸려 있다.**
+const _: () = assert!(YACHA_REACH_X >= 2.0 * YACHA_HUDDLE_HALF);
 
-/// **여덟 마리가 링 안에 들어간다.** 안 들어가면 바깥 두 마리가 링 밖에 서서
-/// 허공에서 주먹질하는 그림이 된다.
-const _: () = assert!(YACHA_STANCE_GAP * 7.0 + PET_SIZE <= 2.0 * YACHA_RING_HALF);
+/// **실제로 겹쳐야 한다.** 가장 먼 두 마리가 몸통 둘보다 좁게 놓여야 "얽혔다"로
+/// 읽힌다 — 넓으면 그냥 흩어져 선 것이다.
+const _: () = assert!(2.0 * YACHA_HUDDLE_HALF < 2.0 * PET_SIZE);
 
-/// 이보다 좁은 세계에서는 판을 열지 않는다 — 두 마리가 사정거리 안에 못 선다.
-pub(super) const YACHA_MIN_WORLD_WIDTH: f64 = 2.0 * (YACHA_STANCE_GAP + PET_SIZE);
-/// 가장 좁은 세계에서도 두 마리가 서고 양옆에 여유가 남아야 한다.
-const _: () = assert!(YACHA_MIN_WORLD_WIDTH > YACHA_STANCE_GAP + PET_SIZE);
+/// 이보다 좁은 세계에서는 판을 열지 않는다 — 뭉칠 자리가 안 나온다.
+pub(super) const YACHA_MIN_WORLD_WIDTH: f64 = 2.0 * (YACHA_HUDDLE_HALF + PET_SIZE);
 
 /// 세로로도 이만큼은 있어야 한다 — 링이 화면 세로 중앙에 뜨고 그 위에서
 /// 쓰러지는 그림에 여유가 필요하다.
 pub(super) const YACHA_MIN_WORLD_HEIGHT: f64 = 360.0;
-const _: () = assert!(YACHA_MIN_WORLD_HEIGHT > YACHA_RING_DEPTH + PET_SIZE);
+const _: () = assert!(YACHA_MIN_WORLD_HEIGHT > YACHA_HUDDLE_DEPTH * 2.0 + PET_SIZE);
 
 /// 링으로 **날아가는** 속도. 볼링·발리볼과 같은 값·같은 이유다.
 pub(super) const YACHA_GATHER_SPEED: f64 = 420.0;
@@ -615,6 +637,7 @@ const _: () = assert!(YACHA_GATHER_SPEED < FREAKOUT_SPEED);
 
 /// 이웃이 쓰러졌을 때 **가운데로 다시 붙는** 속도. 걷기보다 빠르되 뛰는
 /// 것으로는 안 보여야 한다 — 자리를 고쳐 서는 것이지 도망가는 게 아니다.
+/// 뭉쳐 있으므로 옮기는 거리는 짧다.
 pub(super) const YACHA_CLOSE_SPEED: f64 = 150.0;
 const _: () = assert!(YACHA_CLOSE_SPEED > WALK_SPEED);
 const _: () = assert!(YACHA_CLOSE_SPEED < YACHA_GATHER_SPEED);

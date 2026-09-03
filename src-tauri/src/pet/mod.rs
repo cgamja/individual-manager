@@ -25,7 +25,7 @@ use bowling::{dist2_to_segment, pin_positions};
 
 pub use volleyball::{Court, CourtPhase, Side, VolleyBallSnapshot, VolleySnapshot, Volleyball};
 
-pub use yacha::{QueenPose, QueenSnapshot, Ring, RingPhase, Yacha, YachaSnapshot};
+pub use yacha::{Huddle, QueenPose, QueenSnapshot, RingPhase, Yacha, YachaSnapshot};
 use volleyball::{assign_sides, both_sides_present};
 
 pub use behavior::{
@@ -708,7 +708,7 @@ impl Pets {
         if self.yacha.is_some() || self.bowling.is_some() || self.volleyball.is_some() {
             return Err(YachaRefusal::BoardBusy);
         }
-        let Some(ring) = Ring::new(bounds) else {
+        let Some(huddle) = Huddle::new(bounds) else {
             return Err(YachaRefusal::NoRoom);
         };
         let ids = self.ids();
@@ -716,7 +716,7 @@ impl Pets {
             return Err(YachaRefusal::TooFew);
         }
 
-        let board = Yacha::new(ids, ring, now_ms, seed);
+        let board = Yacha::new(ids, huddle, now_ms, seed);
         let 참가: Vec<PetId> = board
             .participants()
             .into_iter()
@@ -725,7 +725,7 @@ impl Pets {
                     return false;
                 };
                 // 가운데를 보고 선다 — 등을 지고 서면 누구를 치는지 안 읽힌다.
-                let face = if spot.0 < ring.rect().0 + ring.rect().2 / 2.0 {
+                let face = if spot.0 + PET_SIZE / 2.0 < huddle.cx() {
                     Facing::Right
                 } else {
                     Facing::Left
@@ -786,7 +786,7 @@ impl Pets {
             }
         }
 
-        let bounds = board.ring().bounds();
+        let bounds = board.huddle().bounds();
 
         // 2) 아무도 안 남았으면 접는다. **세레모니 중에는 안 접는다** — 그때는
         //    챔피언이 `Champ`이라 참여자에서 빠지므로, 접었다가는 벨트 수여가
@@ -852,8 +852,16 @@ impl Pets {
                             };
                             pet.yacha_punch(now_ms, toward);
                         }
-                        if let Some(pet) = pets.get_mut(맞은놈) {
-                            pet.yacha_hurt(now_ms);
+                        // 맞은 놈은 **때린 쪽을 본다** — 화남 표시가 둘 사이에
+                        // 뜨게 하는 유일한 장치다 (KTD9d).
+                        let 때린_x = pets.get(때린놈).map(Pet::center_x);
+                        if let Some((pet, ax)) = pets.get_mut(맞은놈).zip(때린_x) {
+                            let from = if ax >= pet.center_x() {
+                                Facing::Right
+                            } else {
+                                Facing::Left
+                            };
+                            pet.yacha_hurt(now_ms, from);
                         }
                     }
                     // **대표 타격 하나만 소리를 낸다** (KTD7).

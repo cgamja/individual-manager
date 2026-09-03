@@ -21,6 +21,21 @@ export interface PetSettings {
   size: number;
 }
 
+/** Rust가 창을 만들 때 심어 준 배율 (`scale_init_script`). 저장소를 읽어 오기
+ * 전에 쓰는 값이라, 없으면 1이다. */
+declare global {
+  interface Window {
+    __PG_SCALE?: number;
+  }
+}
+
+/** 첫 페인트에 쓸 배율. 저장소 왕복을 기다리면 창은 작은데 그림은 배율 1로
+ * 한 프레임 그려져 잘린 펭귄이 번쩍인다. */
+export function initialScale(): number {
+  const v = typeof window !== "undefined" ? window.__PG_SCALE : undefined;
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 1;
+}
+
 /** 크기 슬라이더의 범위·단계. Rust의 `SIZE_MIN`·`SIZE_MAX`·`SIZE_STEP`과 짝이다. */
 export const SIZE_MIN = 50;
 export const SIZE_MAX = 150;

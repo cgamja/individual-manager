@@ -1,6 +1,6 @@
 import { NET_SVG, SAND_SVG } from "../assets/props/court";
 import { onPetScale } from "../lib/pet";
-import { loadPetSettings } from "../lib/settings";
+import { initialScale, loadPetSettings } from "../lib/settings";
 import "./court.css";
 
 /**
@@ -25,6 +25,7 @@ import "./court.css";
 function 배율(size: number) {
   document.documentElement.style.setProperty("--pg-scale", String(size / 100));
 }
+배율(initialScale() * 100);
 void loadPetSettings()
   .then((s) => 배율(s.size))
   .catch(() => {});

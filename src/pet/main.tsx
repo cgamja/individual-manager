@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { installBatCursor } from "../assets/props/bat";
 import { onPetScale } from "../lib/pet";
-import { loadPetSettings } from "../lib/settings";
+import { initialScale, loadPetSettings } from "../lib/settings";
 import { PetApp } from "./PetApp";
 import "./css/index.css";
 
@@ -15,7 +15,9 @@ function 배율(size: number) {
   installBatCursor("grab", document, s);
 }
 
-installBatCursor("grab");
+// **첫 페인트부터 배율을 안다** — Rust가 창을 만들며 `window.__PG_SCALE`을 심는다.
+document.documentElement.style.setProperty("--pg-scale", String(initialScale()));
+installBatCursor("grab", document, initialScale());
 void loadPetSettings()
   .then((s) => 배율(s.size))
   .catch(() => {});

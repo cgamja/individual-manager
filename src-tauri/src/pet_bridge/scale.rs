@@ -72,6 +72,14 @@ pub fn pet_box_in_window(scale: f64) -> (f64, f64, f64, f64) {
     (PET_PAD_X * scale, PET_PAD_TOP * scale, side, side)
 }
 
+/// 첫 페인트 전에 배율을 웹뷰에 심는 스크립트.
+///
+/// **저장소를 읽어 올 때까지 기다리면 안 된다** — 창은 이미 배율만큼 작은데 그림은
+/// 배율 1로 한 프레임 그려져 잘린 펭귄이 번쩍인다. 창을 만들 때마다 보인다.
+pub fn scale_init_script(scale: f64) -> String {
+    format!("window.__PG_SCALE = {scale};")
+}
+
 /// 코어 좌표 → 화면 논리 px.
 pub fn to_screen(v: f64, scale: f64) -> f64 {
     v * scale

@@ -25,6 +25,7 @@ vi.mock("../lib/pet", () => ({
 
 vi.mock("../lib/settings", () => ({
   loadPetSettings: () => Promise.resolve({ size: 100 }),
+  initialScale: () => 1,
 }));
 
 const courtCss = readFileSync(resolve("src/volley/court.css"), "utf8");

@@ -87,9 +87,11 @@ fn 그림_창(
     url: &str,
     at: (f64, f64),
     size: (f64, f64),
+    scale: f64,
 ) -> tauri::Result<WebviewWindow> {
     let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
         .title("Beach Volleyball")
+        .initialization_script(&scale_init_script(scale))
         .inner_size(size.0, size.1)
         .position(at.0, at.1)
         .transparent(true)
@@ -128,6 +130,7 @@ fn 그림_창(
 pub fn create_court_window(
     app: &AppHandle,
     rect: (f64, f64, f64, f64),
+    scale: f64,
 ) -> tauri::Result<WebviewWindow> {
     if let Some(existing) = court_window(app) {
         return Ok(existing);
@@ -138,6 +141,7 @@ pub fn create_court_window(
         "volley-court.html",
         (rect.0, rect.1),
         (rect.2, rect.3),
+        scale,
     )?;
     sink_court_below_pets(app);
     Ok(window)
@@ -154,7 +158,7 @@ pub fn create_vball_window(
         return Ok(existing);
     }
     let side = vball_window_size(scale);
-    그림_창(app, VBALL_LABEL, "volley-ball.html", at, (side, side))
+    그림_창(app, VBALL_LABEL, "volley-ball.html", at, (side, side), scale)
 }
 
 /// 코트를 펭귄보다 **한 레벨 아래**로 내린다. 핀볼 판과 같은 이유·같은 방법이다.
@@ -264,7 +268,7 @@ pub(super) fn apply_volley(
                 view.court_rect = Some(court);
             }
         }
-        None => match create_court_window(app, court) {
+        None => match create_court_window(app, court, scale) {
             Ok(_) => {
                 view.fails = 0;
                 view.court_rect = Some(court);

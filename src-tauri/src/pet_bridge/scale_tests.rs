@@ -98,3 +98,13 @@ fn 배율은_언제나_0보다_크다() {
         assert!(scale_of(percent) > 0.0, "{percent}%에서 배율이 0 이하다");
     }
 }
+
+#[test]
+fn 배율을_첫_페인트_전에_심는_스크립트가_수를_담는다() {
+    // 저장소 왕복을 기다리면 창은 작은데 그림은 배율 1로 한 프레임 그려진다.
+    let script = scale_init_script(0.6);
+    assert!(script.contains("0.6"), "배율이 안 들어갔다: {script}");
+    assert!(script.contains("__PG_SCALE"), "웹뷰가 읽는 이름이 없다: {script}");
+    // 웹뷰가 `Number.isFinite`로 거르므로 수여야 한다 — 따옴표가 붙으면 안 된다.
+    assert!(!script.contains('"'), "값이 문자열이 됐다: {script}");
+}

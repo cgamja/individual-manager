@@ -127,6 +127,7 @@ pub fn create_pet_window(
     let (w, h) = pet_window_size(scale);
     WebviewWindowBuilder::new(app, pet_label(id), WebviewUrl::App("pet.html".into()))
         .title("Penguin Pet")
+        .initialization_script(&scale_init_script(scale))
         .inner_size(w, h)
         .position(at.0, at.1)
         .transparent(true)

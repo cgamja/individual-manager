@@ -5,10 +5,6 @@ import "./pinball.css";
 
 /** 핀볼 판 — 화면 전체를 덮는 투명 창의 웹뷰. */
 
-// **커서 방망이를 심는다.** 펭귄 창과 같은 그림을 같은 이름으로 받지만,
-// 창끼리 CSS를 공유하지 않으므로(KTD8) 각자 심는다.
-installBatCursor();
-
 /** 핀볼을 끈다 — **거는 것과 저장을 둘 다** 한다. */
 async function turnOff(): Promise<void> {
   await savePetSettings({ pinball: false }).catch(() => {});
@@ -21,3 +17,12 @@ window.addEventListener("keydown", (e) => {
   e.preventDefault();
   void turnOff();
 });
+
+// **커서 방망이를 심는다.** 펭귄 창과 같은 그림을 같은 이름으로 받지만,
+// 창끼리 CSS를 공유하지 않으므로(KTD8) 각자 심는다. 인자 "default"는 CSS의
+// `var()` 대체값과 같아야 한다.
+//
+// **Esc 등록보다 뒤다.** 판은 화면 전체의 클릭을 먹으므로 나가는 문이 둘 있어야
+// 하는데(Esc와 트레이), 이게 앞에 있으면 여기서 던졌을 때 모듈이 멈춰 Esc가
+// 영영 안 걸린다. 커서가 안 예뻐지는 것과 갇히는 것은 급이 다르다.
+installBatCursor("default");

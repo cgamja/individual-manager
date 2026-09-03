@@ -4,23 +4,27 @@
  * `src/pet/main.tsx`가 `:root`에 심는다 — 예전에는 같은 data-URI가 이 파일에
  * 네 번, `src/pinball/pinball.css`에 두 번 복붙돼 있었다.
  *
- * **대체값(`grab`)을 반드시 남긴다.** 프로퍼티가 아직 안 심겼거나 심는 데
- * 실패하면 `var()`가 무효가 되어 `cursor` 선언이 통째로 죽는다. */
+ * **맨 키워드는 프로퍼티 안에 들어 있다.** `cursor` 문법은 키워드를 목록 맨
+ * 끝에만 허용하므로(`[<url> [<x> <y>]?,]* <keyword>`) 여기에 `, grab`을 덧붙이면
+ * 프로퍼티가 안 심겼을 때 `cursor: grab, grab`이 되어 **선언이 통째로 죽는다.**
+ * 처음에 그렇게 썼다가 리뷰에서 잡혔다 — `var()`의 대체 경로는 맨 키워드
+ * 하나여야 그 자체로 유효하다. 심는 쪽도 같은 키워드를 넣는다
+ * (`installBatCursor("grab")`). */
 .penguin.pg-pinball {
-  cursor: var(--pg-bat-cursor, grab), grab;
+  cursor: var(--pg-bat-cursor, grab);
 }
 
 /* **아래에서 위로 휘두른다.** 커서 이미지에는 CSS 애니메이션이 안 걸리므로
    프레임 두 장으로 흉내 낸다. */
 .penguin.pg-pinball:active {
-  cursor: var(--pg-bat-swing, grab), grab;
+  cursor: var(--pg-bat-swing, grab);
 }
 
 /* **핀볼 중에는 창 전체가 방망이다.** */
 body.pg-pinball-mode {
-  cursor: var(--pg-bat-cursor, grab), grab;
+  cursor: var(--pg-bat-cursor, grab);
 }
 
 body.pg-pinball-mode:active {
-  cursor: var(--pg-bat-swing, grab), grab;
+  cursor: var(--pg-bat-swing, grab);
 }

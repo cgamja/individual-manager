@@ -37,6 +37,12 @@ export function Penguin({ className = "penguin", female = false, ...rest }: Peng
 
 /** 펭귄을 이루는 도형들. 본체와 후광이 같은 것을 그린다.
  *
+ * **한 문서에 두 벌이 들어간다** — `Penguin`이 `<g class="pg-halo">` 안에 한 번,
+ * 밖에 한 번 렌더한다. 그래서 **`body`·`hula`·`gear`에 `id`를 쓰면 안 된다**:
+ * `<linearGradient id="...">` 같은 것을 넣으면 같은 id가 둘이 되고 `url(#...)`은
+ * 먼저 나온 후광 쪽을 집는다. 이 레포가 이미 쓰는 관용구라(`props/court.ts`의
+ * 모래 그러데이션) 실수하기 쉽다. 소품 쪽은 창마다 한 벌이라 괜찮다.
+ *
  * **`<Hula/>`가 `<BodyBack/>`과 `<WingNear/>` 사이에 있는 것이 핵심이다.**
  * 몸통 위여야 옷으로 읽히고, 날개 아래여야 날개를 저을 때 어깨끈이 안 덮인다. */
 function Shapes() {

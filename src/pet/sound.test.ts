@@ -396,15 +396,43 @@ describe("안물 — 유일한 음원 파일", () => {
     return fetches;
   }
 
-  it("우클릭이_음원을_미리_받는다", async () => {
-    // 설정 창을 여는 유일한 길이 펭귄 우클릭이라 버튼보다 반드시 앞선다.
+  it("소리를_켜면_그때_음원을_받는다", async () => {
+    // 켜는 순간이 재생보다 반드시 앞서므로 첫 판이 디코드를 기다리지 않는다.
     const ctx = stubContext();
     const fetches = 음원을_심는다(ctx);
     const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
     player.setEnabled(true);
-    player.nudge();
     await Promise.resolve();
     expect(fetches).toEqual(["/음원.m4a"]);
+  });
+
+  it("켤_때_받기가_실패하면_다음_클릭이_다시_받는다", async () => {
+    // `nudge()`의 warm은 프리페치가 아니라 **재시도**다. 이 테스트가 없으면
+    // `nudge()`에서 그 호출을 지워도 아무도 모른다.
+    const ctx = stubContext();
+    const buffer = { duration: 5.673 } as unknown as AudioBuffer;
+    (ctx as unknown as { decodeAudioData: unknown }).decodeAudioData = () =>
+      Promise.resolve(buffer);
+    const fetches: string[] = [];
+    let 실패시킬까 = true;
+    vi.stubGlobal("fetch", (url: string) => {
+      fetches.push(url);
+      if (실패시킬까) return Promise.reject(new Error("네트워크"));
+      return Promise.resolve({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+    });
+
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetches).toHaveLength(1);
+
+    실패시킬까 = false;
+    player.nudge();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetches).toHaveLength(2);
+
+    player.play("dont_ask", 0);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(1);
   });
 
   it("꺼져_있으면_음원을_안_받는다", () => {

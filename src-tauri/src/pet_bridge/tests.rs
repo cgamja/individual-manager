@@ -272,10 +272,25 @@ fn 모든_펫_커맨드가_invoke_handler에_등록되어_있다() {
             bridge.push('\n');
         }
     }
-    // **줄 주석을 걷어낸다.** 등록 줄을 주석 처리해도 이름이 남아 통과했다 —
+    // **주석을 걷어낸다.** 등록 줄을 주석 처리해도 이름이 남아 통과했다 —
     // 지우는 것만 잡고 주석은 못 잡던 사각지대다
     // (docs/solutions/best-practices/source-text-tests-pass-on-comments.md).
-    let lib: String = include_str!("../lib.rs")
+    // 블록 주석을 먼저 지운다 — 줄 주석만 자르면 `/* ... */`가 그대로 통과한다.
+    let 블록_없음 = {
+        let src = include_str!("../lib.rs");
+        let mut out = String::with_capacity(src.len());
+        let mut rest = src;
+        while let Some(start) = rest.find("/*") {
+            out.push_str(&rest[..start]);
+            rest = match rest[start + 2..].find("*/") {
+                Some(end) => &rest[start + 2 + end + 2..],
+                None => "",
+            };
+        }
+        out.push_str(rest);
+        out
+    };
+    let lib: String = 블록_없음
         .lines()
         .map(|line| line.split("//").next().unwrap_or(""))
         .collect::<Vec<_>>()

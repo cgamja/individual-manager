@@ -170,8 +170,8 @@ export class SoundPlayer {
   /** 효과음 설정. 꺼지면 어떤 상황에서도 소리가 나지 않는다 (R1). */
   setEnabled(on: boolean): void {
     this.enabled = on;
-    // 켠 직후에 눌러도 첫 판이 들리게 미리 받는다 — 켜기는 설정 창에서
-    // 일어나므로 펭귄 창에는 그 뒤로 우클릭이 안 올 수 있다.
+    // **음원을 미리 받는 곳은 여기다.** 켜는 순간이 재생보다 반드시 앞서므로
+    // 첫 판이 디코드를 기다리지 않는다.
     if (on) this.warmVoice();
   }
 
@@ -184,14 +184,13 @@ export class SoundPlayer {
     }
   }
 
-  /** 사용자 제스처에서 부른다 — suspended 컨텍스트를 깨울 유일한 기회다.
-   *
-   * 안물 음원도 여기서 미리 받는다. 설정 창을 여는 유일한 길이 **펭귄 우클릭**
-   * 이라 버튼보다 이 호출이 반드시 앞선다 — 첫 재생이 디코드를 기다리지 않는다. */
+  /** 사용자 제스처에서 부른다 — suspended 컨텍스트를 깨울 유일한 기회다. */
   nudge(): void {
     if (this.ctx && this.ctx.state !== "running") {
       this.ctx.resume().catch(() => {});
     }
+    // 프리페치가 아니라 **재시도**다 — 켤 때 받는 것이 정상 경로이고,
+    // 그게 실패했을 때 다음 클릭에서 다시 받는다.
     this.warmVoice();
   }
 

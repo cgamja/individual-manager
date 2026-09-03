@@ -168,6 +168,10 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
     std::thread::spawn(move || {
         let mut worlds: HashMap<PetId, (World, u64, f64)> = HashMap::new();
         let mut last_look: HashMap<PetId, Look> = HashMap::new();
+        // 창에 마지막으로 건 크기. **`apply_ball`의 `view.side`와 같은 장치다** —
+        // 커맨드가 한 번 걸고 마는 것에 기대면 그 호출이 실패했을 때 그림은 새 배율인데
+        // 창은 옛 크기로 **재시작할 때까지** 남는다.
+        let mut last_size: HashMap<PetId, (f64, f64)> = HashMap::new();
         let mut ball_view = BallView::default();
         // 비치발리볼의 창 둘(코트·공). 본문은 `pet_bridge/volleyball.rs`에 있다.
         let mut volley_view = VolleyView::default();
@@ -237,6 +241,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 worlds.remove(&id);
                 last_look.remove(&id);
                 click_view.remove(&id);
+                last_size.remove(&id);
             }
 
             // 사라진 마리의 통과 요청은 아무도 안 본다. 남겨 두면 다음에 같은
@@ -344,6 +349,16 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 let Some((window, rescued)) = ready.get(&id) else {
                     continue;
                 };
+                // **크기를 자리보다 먼저 건다.** 자리는 창 좌상단이라 크기가 바뀌면
+                // 같은 좌상단이라도 덮는 영역이 달라진다 — 순서가 뒤집히면 한 프레임
+                // 어긋난 사각형이 보인다.
+                // 부동소수 동등 비교가 안전한 이유: 양쪽 다 같은 순수 함수에
+                // 같은 배율을 넣은 결과라 비트까지 같다.
+                let want = pet_window_size(scale);
+                if last_size.get(&id) != Some(&want) {
+                    let _ = window.set_size(LogicalSize::new(want.0, want.1));
+                    last_size.insert(id, want);
+                }
                 let requested = requests.get(&id).copied().unwrap_or(false);
                 let verdict = apply_click_through(
                     window,

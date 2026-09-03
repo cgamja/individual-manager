@@ -23,9 +23,15 @@ window.addEventListener("keydown", (e) => {
 //
 // 판에는 그림이 없어 `--pg-scale`을 걸 것이 없다. 커서만 배율을 탄다.
 installBatCursor("default", document, initialScale());
+// 저장소 왕복이 방송보다 늦게 오면 옛 배율이 새 배율을 덮는다 (펭귄 창과 같은 장치).
+let 세대 = 0;
+const 부팅_세대 = 세대;
 void loadPetSettings()
-  .then((s) => installBatCursor("default", document, s.size / 100))
+  .then((s) => {
+    if (부팅_세대 === 세대) installBatCursor("default", document, s.size / 100);
+  })
   .catch(() => {});
-void onPetScale(({ size }) => installBatCursor("default", document, size / 100)).catch(
-  () => {},
-);
+void onPetScale(({ size }) => {
+  세대 += 1;
+  installBatCursor("default", document, size / 100);
+}).catch(() => {});

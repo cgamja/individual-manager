@@ -14,13 +14,24 @@ function 배율(s: number) {
   installBatCursor("grab", document, s);
 }
 
+/** 지금까지 본 배율 소식의 세대. **저장소 왕복이 방송보다 늦게 도착하면 옛 배율이
+ * 새 배율을 덮는다** — 부팅 직후 사용자가 슬라이더를 밀면 걸린다. 방송이 세대를
+ * 올리므로, 자기 세대가 밀린 로드는 아무것도 안 한다. */
+let 세대 = 0;
+
 // **첫 페인트부터 배율을 안다** — Rust가 창을 만들며 `window.__PG_SCALE`을 심는다.
 installBatCursor("grab", document, initialScale());
 배율(initialScale());
+const 부팅_세대 = 세대;
 void loadPetSettings()
-  .then((s) => 배율(s.size / 100))
+  .then((s) => {
+    if (부팅_세대 === 세대) 배율(s.size / 100);
+  })
   .catch(() => {});
-void onPetScale(({ size }) => 배율(size / 100)).catch(() => {});
+void onPetScale(({ size }) => {
+  세대 += 1;
+  배율(size / 100);
+}).catch(() => {});
 
 ReactDOM.createRoot(document.getElementById("pet-root") as HTMLElement).render(
   <React.StrictMode>

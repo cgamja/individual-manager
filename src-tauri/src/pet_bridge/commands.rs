@@ -171,17 +171,21 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
     Ok(())
 }
 
-/// 펭귄 크기 배율을 바꾼다 (R2). **창을 다시 만들지 않는다** — 창 크기만 다시
-/// 걸고 자리를 잡는다. 그림을 줄이는 것은 웹뷰(`--pg-scale`)의 몫이다
-/// (PRINCIPLE 4: Rust는 "어디에", 웹뷰는 "어떻게 보이는지").
-/// 저장은 웹뷰가 담당한다 (`pet_set_pinball`과 같은 규약).
+/// **저장된** 크기 배율을 지금 떠 있는 창에 건다 (R2). 창을 다시 만들지 않는다.
 ///
-/// 공·코트 창은 틱(`apply_ball`·`apply_volley`)이 따라온다 — 멎어 있는 볼링 공은
+/// **인자를 받지 않는다.** 크기도 자리도 진실 원천은 저장소 하나여야 한다 — 크기는
+/// 커맨드 인자, 자리는 `flush`를 통해 저장소로 갈리면 둘이 어긋나는 갈래가 생긴다.
+/// 웹뷰는 저장한 **뒤에** 부른다 (`handleSizeChange`).
+///
+/// 여기서 거는 것은 **즉시 반영**일 뿐이고 진짜 화해는 틱이 한다 — 이 호출이 실패해도
+/// 다음 틱이 창 크기를 다시 맞춘다(`last_size`). 그림을 줄이는 것은 웹뷰(`--pg-scale`)의
+/// 몫이다 (PRINCIPLE 4: Rust는 "어디에", 웹뷰는 "어떻게 보이는지").
+///
+/// 공·코트 창도 틱(`apply_ball`·`apply_volley`)이 따라온다 — 멎어 있는 볼링 공은
 /// 틱이 느린 대기(`SLEEP_TICK_MS`)로 떨어져 있어 최대 그만큼 늦다.
 #[tauri::command]
-pub fn pet_set_size(size: u32, state: State<'_, PetState>, app: AppHandle) {
-    let scale = scale_of(size);
-    let (w, h) = pet_window_size(scale);
+pub fn pet_apply_size(state: State<'_, PetState>, app: AppHandle) {
+    let (w, h) = pet_window_size(pet_scale(&app));
     // **id를 먼저 꺼내 가드를 떨군다** — `flush`가 같은 락을 다시 잡아 자기 데드락이다
     // (docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md).
     let ids = state.pets.lock().unwrap().ids();

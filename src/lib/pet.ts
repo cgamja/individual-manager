@@ -406,9 +406,9 @@ export const setPetEnabled = (enabled: boolean): Promise<void> =>
 export const setPetPinball = (on: boolean): Promise<void> =>
   invoke("pet_set_pinball", { on });
 
-/** 펭귄 크기 배율(퍼센트)을 지금 떠 있는 창에 건다. 저장은 웹뷰가 따로 한다. */
-export const setPetSize = (size: number): Promise<void> =>
-  invoke("pet_set_size", { size });
+/** **저장된** 크기를 지금 떠 있는 창에 건다. 값을 안 넘기는 이유는 크기도 자리도
+ * 진실 원천이 저장소 하나여야 해서다 — 반드시 저장한 **뒤에** 부른다. */
+export const applyPetSize = (): Promise<void> => invoke("pet_apply_size");
 
 /** 자기 창의 펭귄 상태만 구독한다. */
 export const onPetState = (cb: (snapshot: PetSnapshot) => void): Promise<UnlistenFn> =>

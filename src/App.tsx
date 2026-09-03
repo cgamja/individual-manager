@@ -15,7 +15,7 @@ import {
   removePet,
   setPetEnabled,
   setPetPinball,
-  setPetSize,
+  applyPetSize,
   setPetTheme,
   slidePet,
   squawkPet,
@@ -246,7 +246,7 @@ function App() {
       // `#pet-root`의 `overflow: hidden`이 아직 큰 그림을 잘라 낸다 — 슬라이더를
       // 끌면 눈금마다 깜빡인다. 키울 때는 반대다.
       const 그림_먼저 = next < prev;
-      const 창 = () => setPetSize(next).catch((err) => console.error("크기 적용 실패:", err));
+      const 창 = () => applyPetSize().catch((err) => console.error("크기 적용 실패:", err));
       const 그림 = () => emitPetScale(next).catch((err) => console.error("크기 방송 실패:", err));
       if (그림_먼저) {
         await 그림();

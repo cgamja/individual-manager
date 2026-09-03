@@ -26,10 +26,18 @@ function 배율(s: number) {
   document.documentElement.style.setProperty("--pg-scale", String(s));
 }
 배율(initialScale());
+// 저장소 왕복이 방송보다 늦게 오면 옛 배율이 새 배율을 덮는다 (펭귄 창과 같은 장치).
+let 세대 = 0;
+const 부팅_세대 = 세대;
 void loadPetSettings()
-  .then((s) => 배율(s.size / 100))
+  .then((s) => {
+    if (부팅_세대 === 세대) 배율(s.size / 100);
+  })
   .catch(() => {});
-void onPetScale(({ size }) => 배율(size / 100)).catch(() => {});
+void onPetScale(({ size }) => {
+  세대 += 1;
+  배율(size / 100);
+}).catch(() => {});
 
 const root = document.getElementById("court-root");
 if (root) {

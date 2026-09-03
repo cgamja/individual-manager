@@ -170,7 +170,14 @@ fn 모든_펫_커맨드가_invoke_handler에_등록되어_있다() {
             bridge.push('\n');
         }
     }
-    let lib = include_str!("../lib.rs");
+    // **줄 주석을 걷어낸다.** 등록 줄을 주석 처리해도 이름이 남아 통과했다 —
+    // 지우는 것만 잡고 주석은 못 잡던 사각지대다
+    // (docs/solutions/best-practices/source-text-tests-pass-on-comments.md).
+    let lib: String = include_str!("../lib.rs")
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let mut commands = Vec::new();
     let mut lines = bridge.lines().peekable();

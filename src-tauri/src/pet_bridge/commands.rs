@@ -313,6 +313,27 @@ pub fn pet_freakout(
     Ok(())
 }
 
+/// 설정 창의 "안물". 대상 규칙은 [`pet_fish`]와 같다.
+#[tauri::command]
+pub fn pet_dont_ask(
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let id = target_pet(&window, &state).ok_or("안 물어봤다고 할 펭귄을 우클릭해서 열어 주세요")?;
+    let started = state
+        .pets
+        .lock()
+        .unwrap()
+        .get_mut(id)
+        .is_some_and(|pet| pet.start_dont_ask(now_ms()));
+    if !started {
+        return Err("이미 안 물어봤다고 하는 중이거나 들고 계세요".into());
+    }
+    flush(&app, id);
+    Ok(())
+}
+
 /// 우클릭한 펭귄을 삭제한다. **마지막 한 마리는 거부한다** (PRD §5.5).
 #[tauri::command]
 pub fn pet_remove(

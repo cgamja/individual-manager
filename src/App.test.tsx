@@ -23,7 +23,14 @@ function mockSettings(summary = { count: 1, max: 8, focused: 3 }) {
     if (cmd === "plugin:event|listen") return 1;
     if (cmd === "plugin:event|unlisten") return undefined;
     if (cmd === "pet_summary") return summary;
-    if (cmd === "pet_fish" || cmd === "pet_slide" || cmd === "pet_squawk" || cmd === "pet_freakout") return null;
+    if (
+      cmd === "pet_fish" ||
+      cmd === "pet_slide" ||
+      cmd === "pet_squawk" ||
+      cmd === "pet_freakout" ||
+      cmd === "pet_dont_ask"
+    )
+      return null;
     if (cmd.startsWith("plugin:store|")) return null;
     return undefined;
   });
@@ -33,7 +40,15 @@ describe("설정 창", () => {
   it("카드가_전부_그려진다", async () => {
     mockSettings();
     render(<App />);
-    for (const name of ["펭귄 추가", "이 펭귄 삭제", "얼음낚시", "슬라이딩", "빽빽거리기", "발작"]) {
+    for (const name of [
+      "펭귄 추가",
+      "이 펭귄 삭제",
+      "얼음낚시",
+      "슬라이딩",
+      "빽빽거리기",
+      "발작",
+      "안물",
+    ]) {
       expect(await screen.findByRole("button", { name }), name).toBeInTheDocument();
     }
     expect(screen.getByLabelText("바탕화면 펭귄")).toBeInTheDocument();
@@ -195,6 +210,23 @@ describe("설정 창", () => {
     });
   });
 
+  it("안물_버튼이_pet_dont_ask를_부른다", async () => {
+    const calls: string[] = [];
+    mockWindow();
+    mockIPC((cmd) => {
+      if (cmd === "plugin:event|listen") return 1;
+      if (cmd === "plugin:event|unlisten") return undefined;
+      if (cmd === "pet_summary") return { count: 1, max: 8, focused: 0, bowling: false, volleyball: false };
+      if (cmd.startsWith("plugin:store|")) return null;
+      calls.push(cmd);
+      return null;
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "안물" }));
+
+    await waitFor(() => expect(calls).toContain("pet_dont_ask"));
+  });
+
   it("우클릭_대상이_없으면_낚시와_삭제가_함께_잠긴다", async () => {
     mockSettings({ count: 2, max: 8, focused: null as unknown as number });
     render(<App />);
@@ -202,6 +234,7 @@ describe("설정 창", () => {
     expect(screen.getByRole("button", { name: "슬라이딩" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "빽빽거리기" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "발작" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "안물" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "이 펭귄 삭제" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "펭귄 추가" })).toBeEnabled();
   });

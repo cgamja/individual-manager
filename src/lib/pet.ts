@@ -52,6 +52,7 @@ export type Behavior =
   | { kind: "sassy"; sassy: SassyKind }
   | { kind: "swing" }
   | { kind: "squawk" }
+  | { kind: "dont_ask" }
   | { kind: "freakout"; freakout: FreakoutPhase }
   | { kind: "dragged" }
   | { kind: "falling" }
@@ -292,6 +293,9 @@ export const squawkPet = (): Promise<void> => invoke("pet_squawk");
 
 /** 우클릭해서 연 그 펭귄을 발작시킨다. */
 export const freakoutPet = (): Promise<void> => invoke("pet_freakout");
+
+/** 우클릭해서 연 그 펭귄에게 안물을 시킨다. */
+export const dontAskPet = (): Promise<void> => invoke("pet_dont_ask");
 
 /** 볼링 한 판을 연다. **우클릭한 한 마리가 아니라 화면의 펭귄 전부**가
  * 참여한다 (R1) — 그래서 다른 동작들과 달리 대상을 안 고른다. */

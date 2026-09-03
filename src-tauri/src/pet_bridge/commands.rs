@@ -176,7 +176,8 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
 /// (PRINCIPLE 4: Rust는 "어디에", 웹뷰는 "어떻게 보이는지").
 /// 저장은 웹뷰가 담당한다 (`pet_set_pinball`과 같은 규약).
 ///
-/// 공·코트 창은 틱(`apply_ball`·`apply_volley`)이 50ms 안에 따라온다.
+/// 공·코트 창은 틱(`apply_ball`·`apply_volley`)이 따라온다 — 멎어 있는 볼링 공은
+/// 틱이 느린 대기(`SLEEP_TICK_MS`)로 떨어져 있어 최대 그만큼 늦다.
 #[tauri::command]
 pub fn pet_set_size(size: u32, state: State<'_, PetState>, app: AppHandle) {
     let scale = scale_of(size);

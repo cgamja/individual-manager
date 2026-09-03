@@ -19,7 +19,7 @@ fn area((l, t, r, b): Rect) -> f64 {
 
 #[test]
 fn 히트_박스는_창_안에_들어간다() {
-    let (hl, ht, hr, hb) = hit_rect(AT.0, AT.1);
+    let (hl, ht, hr, hb) = hit_rect(AT.0, AT.1, 1.0);
     let (wl, wt, wr, wb) = window_rect(AT);
     assert!(hl >= wl, "왼쪽이 창 밖이다: {hl} < {wl}");
     assert!(ht >= wt, "위쪽이 창 밖이다: {ht} < {wt}");
@@ -29,7 +29,7 @@ fn 히트_박스는_창_안에_들어간다() {
 
 #[test]
 fn 히트_박스는_창_면적의_4분의_1보다_작다() {
-    let ratio = area(hit_rect(AT.0, AT.1)) / area(window_rect(AT));
+    let ratio = area(hit_rect(AT.0, AT.1, 1.0)) / area(window_rect(AT));
     assert!(
         ratio < 0.25,
         "죽은 클릭 영역이 안 줄었다 — 창의 {:.1}%",
@@ -40,7 +40,7 @@ fn 히트_박스는_창_면적의_4분의_1보다_작다() {
 #[test]
 fn 펭귄_가운데는_히트_박스_안이다() {
     let (cx, cy) = (AT.0 + PET_SIZE / 2.0, AT.1 + PET_SIZE / 2.0);
-    assert!(contains(hit_rect(AT.0, AT.1), cx, cy));
+    assert!(contains(hit_rect(AT.0, AT.1, 1.0), cx, cy));
 }
 
 #[test]
@@ -48,16 +48,16 @@ fn 방망이_여백은_히트_박스_밖이다() {
     // 창 왼쪽 끝에서 10px 안쪽 — 방망이가 휘둘러질 자리다.
     let x = AT.0 - PET_PAD_X + 10.0;
     let y = AT.1 + PET_SIZE / 2.0;
-    assert!(!contains(hit_rect(AT.0, AT.1), x, y));
-    assert!(!contains(request_rect(AT.0, AT.1), x, y));
+    assert!(!contains(hit_rect(AT.0, AT.1, 1.0), x, y));
+    assert!(!contains(request_rect(AT.0, AT.1, 1.0), x, y));
 }
 
 #[test]
 fn 말풍선_자리는_히트_박스_밖이다() {
     let x = AT.0 + PET_SIZE / 2.0;
     let y = AT.1 - PET_PAD_TOP + 10.0;
-    assert!(!contains(hit_rect(AT.0, AT.1), x, y));
-    assert!(!contains(request_rect(AT.0, AT.1), x, y));
+    assert!(!contains(hit_rect(AT.0, AT.1, 1.0), x, y));
+    assert!(!contains(request_rect(AT.0, AT.1, 1.0), x, y));
 }
 
 #[test]
@@ -66,15 +66,15 @@ fn 무대_안이어도_실루엣_옆은_히트_박스_밖이다() {
     let x = AT.0 + 5.0;
     let y = AT.1 + PET_SIZE / 2.0;
     assert!(
-        !contains(hit_rect(AT.0, AT.1), x, y),
+        !contains(hit_rect(AT.0, AT.1, 1.0), x, y),
         "무대 안이라고 다 펭귄은 아니다"
     );
 }
 
 #[test]
 fn 요청_박스가_히트_박스를_포함한다() {
-    let (hl, ht, hr, hb) = hit_rect(AT.0, AT.1);
-    let (rl, rt, rr, rb) = request_rect(AT.0, AT.1);
+    let (hl, ht, hr, hb) = hit_rect(AT.0, AT.1, 1.0);
+    let (rl, rt, rr, rb) = request_rect(AT.0, AT.1, 1.0);
     // **방향이 중요하다.** 웹뷰가 요청하는 조건(요청 박스 밖)이 Rust가 되돌리는
     // 조건(히트 박스 안)보다 바깥이어야 띠가 생긴다. 뒤집으면 그 사이에서
     // 요청과 되돌리기가 매 틱 번갈아 일어난다.
@@ -83,17 +83,17 @@ fn 요청_박스가_히트_박스를_포함한다() {
 
 #[test]
 fn 히스테리시스_띠_안은_어느_쪽도_아니다() {
-    let (hl, _, _, _) = hit_rect(AT.0, AT.1);
+    let (hl, _, _, _) = hit_rect(AT.0, AT.1, 1.0);
     let band = hl - PET_SIZE * PET_HIT_HYSTERESIS_RATIO / 2.0;
     let y = AT.1 + PET_SIZE / 2.0;
-    assert!(!contains(hit_rect(AT.0, AT.1), band, y), "되돌리지 않는다");
-    assert!(contains(request_rect(AT.0, AT.1), band, y), "요청하지도 않는다");
+    assert!(!contains(hit_rect(AT.0, AT.1, 1.0), band, y), "되돌리지 않는다");
+    assert!(contains(request_rect(AT.0, AT.1, 1.0), band, y), "요청하지도 않는다");
 }
 
 #[test]
 fn 히트_박스는_펭귄을_따라_움직인다() {
-    let (l0, t0, r0, b0) = hit_rect(0.0, 0.0);
-    let (l1, t1, r1, b1) = hit_rect(37.0, -19.0);
+    let (l0, t0, r0, b0) = hit_rect(0.0, 0.0, 1.0);
+    let (l1, t1, r1, b1) = hit_rect(37.0, -19.0, 1.0);
     assert_eq!((l1 - l0, t1 - t0, r1 - r0, b1 - b0), (37.0, -19.0, 37.0, -19.0));
 }
 
@@ -101,7 +101,7 @@ fn 히트_박스는_펭귄을_따라_움직인다() {
 fn 히트_박스는_펭귄_크기에_비례한다() {
     // 크기 % 조절이 `PET_SIZE`를 바꿔도 상자가 따라간다는 못이다. 픽셀 상수를
     // 하나라도 하드코딩하면 이 비례가 깨진다.
-    let (l, t, r, b) = hit_rect(0.0, 0.0);
+    let (l, t, r, b) = hit_rect(0.0, 0.0, 1.0);
     for (value, name) in [(l, "l"), (t, "t"), (r, "r"), (b, "b")] {
         let ratio = value / PET_SIZE;
         assert!(
@@ -125,9 +125,9 @@ fn 반열린_구간이라_맞닿은_변은_밖이다() {
 fn 세_상자가_안에서_바깥_순서다() {
     // 히트 ⊂ 되돌리기 ⊂ 요청. 순서가 뒤집히면 경계에서 요청과 되돌리기가
     // 매 틱 번갈아 일어나거나, 그림에 닿고 나서야 되돌린다.
-    let (hl, ht, hr, hb) = hit_rect(AT.0, AT.1);
-    let (vl, vt, vr, vb) = revert_rect(AT.0, AT.1);
-    let (ql, qt, qr, qb) = request_rect(AT.0, AT.1);
+    let (hl, ht, hr, hb) = hit_rect(AT.0, AT.1, 1.0);
+    let (vl, vt, vr, vb) = revert_rect(AT.0, AT.1, 1.0);
+    let (ql, qt, qr, qb) = request_rect(AT.0, AT.1, 1.0);
     assert!(ql < vl && vl < hl);
     assert!(qt < vt && vt < ht);
     assert!(qr > vr && vr > hr);
@@ -145,7 +145,7 @@ fn 통과(
     cursor: Option<(f64, f64)>,
     anchor: Option<(f64, f64)>,
 ) -> bool {
-    decide_click_through(requested, pose, pet, cursor, anchor).through()
+    decide_click_through(requested, pose, pet, cursor, anchor, 1.0).through()
 }
 
 /// 되돌리기 상자 밖, 창 여백. 통과를 유지해야 하는 자리다.
@@ -197,10 +197,10 @@ fn 상자를_벗어나는_자세면_클릭을_먹는다() {
 #[test]
 fn 커서가_그림_근처로_오면_닿기_전에_되돌린다() {
     // 그림에 닿은 뒤에 되돌리면 한 틱 + 세터 한 프레임 동안 클릭이 샌다.
-    let (hl, _, _, _) = hit_rect(AT.0, AT.1);
+    let (hl, _, _, _) = hit_rect(AT.0, AT.1, 1.0);
     let 코앞 = (hl - PET_SIZE * PET_HIT_ARM_RATIO / 2.0, AT.1 + PET_SIZE / 2.0);
     assert!(
-        !contains(hit_rect(AT.0, AT.1), 코앞.0, 코앞.1),
+        !contains(hit_rect(AT.0, AT.1, 1.0), 코앞.0, 코앞.1),
         "아직 그림 밖이다"
     );
     assert!(!통과(
@@ -267,14 +267,14 @@ fn 자세_때문에_접을_때는_요청을_남긴다() {
     // 지우면 슬라이딩이 끝난 뒤에도 요청이 없고, 웹뷰는 포인터가 움직일 때만
     // 그것도 스로틀에 걸려 재요청한다 — 커서가 멈춰 있으면 여백이 계속 클릭을
     // 먹는다(고치기 전 동작으로 퇴화).
-    let v = decide_click_through(true, Pose::OutOfBox, AT, Some(여백()), None);
+    let v = decide_click_through(true, Pose::OutOfBox, AT, Some(여백()), None, 1.0);
     assert!(!v.through());
     assert!(!v.latches(), "일시적 사정인데 걸쇠가 걸렸다");
 }
 
 #[test]
 fn 커서를_못_읽을_때도_요청을_남긴다() {
-    let v = decide_click_through(true, Pose::InBox, AT, None, None);
+    let v = decide_click_through(true, Pose::InBox, AT, None, None, 1.0);
     assert!(!v.through());
     assert!(!v.latches());
 }
@@ -283,11 +283,11 @@ fn 커서를_못_읽을_때도_요청을_남긴다() {
 fn 위치_판정으로_되돌릴_때만_요청을_지운다() {
     // 이 둘은 배율에 기대는 판정이라, 다시 켜려면 웹뷰의 client 좌표를 거쳐야
     // 한다 — 걸쇠가 그걸 강제한다.
-    let 몸_위 = decide_click_through(true, Pose::InBox, AT, Some(몸()), Some(여백()));
+    let 몸_위 = decide_click_through(true, Pose::InBox, AT, Some(몸()), Some(여백()), 1.0);
     assert!(몸_위.latches(), "커서가 그림 근처인데 요청이 남는다");
 
     let (ax, ay) = 여백();
     let 멀리 = (ax - PET_SIZE * PET_DRIFT_RATIO - 1.0, ay);
-    let 드리프트 = decide_click_through(true, Pose::InBox, AT, Some(멀리), Some((ax, ay)));
+    let 드리프트 = decide_click_through(true, Pose::InBox, AT, Some(멀리), Some((ax, ay)), 1.0);
     assert!(드리프트.latches(), "너무 멀어졌는데 요청이 남는다");
 }

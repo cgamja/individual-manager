@@ -309,13 +309,15 @@ fn 배율이_바뀌면_세계_캐시를_다시_잰다() {
     assert!(world_is_stale(None, 0, 1.0));
 }
 
-/// 크기 커맨드가 쓰는 값이 창을 만들 때 쓰는 값과 같은 함수에서 나와야
-/// 슬라이더를 민 창과 새로 뜬 창의 크기가 갈리지 않는다.
+/// 배율이 바뀐 틱에는 **자는 마리도** 옮겨야 한다. 안 그러면 새 경계로 다시
+/// clamp된 좌표가 창에 안 걸려 최대 25초 동안 허공에 뜨거나 화면 밖에 남는다.
 #[test]
-fn 크기_커맨드와_창_생성이_같은_배율_함수를_쓴다() {
-    for percent in (SIZE_MIN..=SIZE_MAX).step_by(SIZE_STEP as usize) {
-        assert_eq!(pet_window_size(scale_of(percent)), pet_window_size(f64::from(percent) / 100.0));
-    }
+fn 배율이_바뀌면_자는_마리도_옮긴다() {
+    // 평소에는 안 옮긴다.
+    assert!(!should_move(false, false));
+    // 구조됐거나 배율이 바뀌면 동작과 무관하게 옮긴다.
+    assert!(should_move(false, true));
+    assert!(should_move(true, false));
 }
 
 #[test]

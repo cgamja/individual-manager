@@ -57,10 +57,13 @@ pub(super) fn world_is_stale(cached: Option<(u64, f64)>, now: u64, scale: f64) -
 }
 
 /// 이번 틱에 창을 실제로 옮길지. 자는 펭귄은 안 옮긴다.
-/// **경계를 못 읽어 주 모니터로 구조된 마리(`rescued`)는 동작과 무관하게 옮긴다** —
-/// 안 옮기면 사라진 화면의 좌표에 남아 다시는 안 보인다.
-pub(super) fn should_move(moves_window: bool, rescued: bool) -> bool {
-    moves_window || rescued
+/// **동작과 무관하게 옮겨야 하는 경우가 둘 있다**(`forced`):
+/// 경계를 못 읽어 주 모니터로 구조된 마리 — 안 옮기면 사라진 화면의 좌표에 남아
+/// 다시는 안 보인다. 그리고 **배율이 방금 바뀐 틱** — 자는 펭귄은 `moves_window`가
+/// 거짓이라, 새 경계로 다시 clamp된 좌표가 창에 안 걸려 최대 25초(`SLEEP_MS`)
+/// 동안 허공에 뜨거나 화면 밖에 남는다.
+pub(super) fn should_move(moves_window: bool, forced: bool) -> bool {
+    moves_window || forced
 }
 
 /// 다음 틱까지 잘 시간. **구조는 여기에 넣지 않는다** — 한 번 옮기면 제자리를 찾으므로
@@ -129,6 +132,7 @@ pub(super) fn apply_click_through(
     snapshot: &Snapshot,
     requested: bool,
     cursor: Option<(f64, f64)>,
+    scale: f64,
     view: &mut ClickThroughView,
 ) -> Verdict {
     let verdict = decide_click_through(
@@ -137,6 +141,7 @@ pub(super) fn apply_click_through(
         (snapshot.x, snapshot.y),
         cursor,
         view.anchor,
+        scale,
     );
     let want = verdict.through();
     view.anchor = if want { view.anchor.or(cursor) } else { None };
@@ -168,9 +173,13 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
         let mut volley_view = VolleyView::default();
         let mut mismatch_since: HashMap<PetId, u64> = HashMap::new();
         let mut click_view: HashMap<PetId, ClickThroughView> = HashMap::new();
-        // 화면 배율과 그걸 **읽어 본** 시각. 실패도 시각을 남긴다 — 안 그러면
-        // 못 읽는 동안 매 틱 비싼 `current_monitor()`를 두드린다.
-        let mut scale: (Option<f64>, u64) = (None, 0);
+        // **배율이 둘이다.** `dpi`는 화면의 물리→논리 배율(커서를 논리 좌표로
+        // 바꾸는 데 쓴다)이고, `scale`은 사용자가 고른 크기다. 아래 `dpi`는 그걸
+        // **읽어 본** 시각을 함께 든다 — 실패도 시각을 남겨야 못 읽는 동안 매 틱
+        // 비싼 `current_monitor()`를 두드리지 않는다.
+        let mut dpi: (Option<f64>, u64) = (None, 0);
+        // 직전 틱의 크기 배율. 바뀐 틱에는 자는 마리까지 한 번 옮긴다.
+        let mut last_scale: Option<f64> = None;
         loop {
             let ids = 잠금(&app.state::<PetState>().pets).ids();
             let now = now_ms();
@@ -287,17 +296,15 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             // 하나다 (PRD §5.2). 배율이 다른 화면이 섞이면 이 변환이 어긋나는데,
             // 그건 이 앱의 범위 밖이다. `ids` 순서로 골라 마리마다 흔들리지
             // 않게 한다 — `HashMap` 순서로 뽑으면 갱신마다 기준이 바뀐다.
-            if 볼_일이_있다 && now.saturating_sub(scale.1) >= BOUNDS_REFRESH_MS {
-                scale = (
+            if 볼_일이_있다 && now.saturating_sub(dpi.1) >= BOUNDS_REFRESH_MS {
+                dpi = (
                     ids.iter()
                         .find_map(|id| ready.get(id))
                         .and_then(|(window, _)| current_scale(window)),
                     now,
                 );
             }
-            let cursor = cursor_px
-                .zip(scale.0)
-                .map(|((px, py), s)| (px / s, py / s));
+            let cursor = cursor_px.zip(dpi.0).map(|((px, py), d)| (px / d, py / d));
 
             // 2) 코어를 한 번에 진행시킨다. **락을 마리마다 잡지 않는다** — 틱 하나가
             //    전 마리에 대해 원자적이어야 서로를 보는 판정을 여기에 얹을 수 있다.
@@ -343,6 +350,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     &snapshot,
                     requested,
                     cursor,
+                    scale,
                     click_view.entry(id).or_default(),
                 );
                 any_click_through |= verdict.through();
@@ -350,7 +358,10 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 if requested && verdict.latches() {
                     withdraw.push(id);
                 }
-                let moves = should_move(snapshot.behavior.moves_window(), *rescued);
+                let moves = should_move(
+                    snapshot.behavior.moves_window(),
+                    *rescued || last_scale != Some(scale),
+                );
                 any_moves |= snapshot.behavior.moves_window();
                 let look = look_of(&snapshot);
                 apply(
@@ -374,6 +385,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             any_moves |= volley.is_some();
             apply_ball(&app, board_alive, ball, &mut ball_view, scale);
             apply_volley(&app, volley, &mut volley_view, scale);
+            last_scale = Some(scale);
 
             std::thread::sleep(Duration::from_millis(tick_interval(
                 any_moves,
@@ -481,7 +493,7 @@ pub(super) fn apply_ball(
     }
 }
 
-/// 공을 끄는 동안 다음 틱(최대 50ms)을 기다리면 손을 따라오지 못한다.
+/// 공을 끄는 동안 다음 틱을 기다리면 손을 따라오지 못한다.
 /// 펭귄의 [`flush`]와 같은 이유다.
 pub(super) fn flush_ball(app: &AppHandle) {
     let ball = app

@@ -163,6 +163,8 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
         loop {
             let ids = 잠금(&app.state::<PetState>().pets).ids();
             let now = now_ms();
+            // 배율은 틱마다 한 번만 읽는다 — 창 좌표·창 크기·경계가 전부 이 값을 쓴다.
+            let scale = pet_scale(&app);
 
             // 0) 클릭 통과의 커서 — **락을 하나도 쥐지 않은 채, 통과 중이거나
             //    요청이 있을 때만, 마릿수와 무관하게 한 번 읽는다.**
@@ -229,8 +231,8 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             if ids.is_empty() {
                 // 펭귄을 전부 껐거나 마지막 마리가 사라졌다. 공만 남겨 두면
                 // 굴릴 핀이 없는 공이 바탕화면에 영원히 놓여 있다 (R11).
-                apply_ball(&app, false, None, &mut ball_view);
-                apply_volley(&app, None, &mut volley_view);
+                apply_ball(&app, false, None, &mut ball_view, scale);
+                apply_volley(&app, None, &mut volley_view, scale);
                 std::thread::sleep(Duration::from_millis(SLEEP_TICK_MS));
                 continue;
             }
@@ -247,10 +249,10 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     .is_none_or(|(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
                 let mut rescued = false;
                 if stale {
-                    let read = current_bounds(&window).map(World::single);
+                    let read = current_bounds(&window, scale).map(World::single);
                     rescued = read.is_none();
                     if let Some(world) =
-                        world_to_cache(read, || primary_bounds(&window).map(World::single))
+                        world_to_cache(read, || primary_bounds(&window, scale).map(World::single))
                     {
                         worlds.insert(*id, (world, now));
                     } else {
@@ -347,6 +349,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     snapshot,
                     moves,
                     should_notify(last_look.get(&id).copied(), look),
+                    scale,
                 );
                 last_look.insert(id, look);
             }
@@ -360,8 +363,8 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
 
             any_moves |= ball.is_some_and(|b| b.rolling);
             any_moves |= volley.is_some();
-            apply_ball(&app, board_alive, ball, &mut ball_view);
-            apply_volley(&app, volley, &mut volley_view);
+            apply_ball(&app, board_alive, ball, &mut ball_view, scale);
+            apply_volley(&app, volley, &mut volley_view, scale);
 
             std::thread::sleep(Duration::from_millis(tick_interval(
                 any_moves,
@@ -373,9 +376,15 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
 
 /// 스냅샷을 창 위치와 웹뷰 상태에 반영한다. 창 이동과 상태 통지는 조건이
 /// 다르다 — 자는 펭귄은 움직이지 않지만 "잔다"는 사실은 알려야 한다.
-pub(super) fn apply(window: &WebviewWindow, snapshot: Snapshot, move_window: bool, notify: bool) {
+pub(super) fn apply(
+    window: &WebviewWindow,
+    snapshot: Snapshot,
+    move_window: bool,
+    notify: bool,
+    scale: f64,
+) {
     if move_window {
-        let (wx, wy) = window_origin(snapshot.x, snapshot.y);
+        let (wx, wy) = window_origin(snapshot.x, snapshot.y, scale);
         let _ = window.set_position(LogicalPosition::new(wx, wy));
     }
     if notify {
@@ -397,6 +406,7 @@ pub(super) fn apply_ball(
     board_alive: bool,
     ball: Option<BallSnapshot>,
     view: &mut BallView,
+    scale: f64,
 ) {
     let Some(ball) = ball else {
         if view.look.take().is_some() {
@@ -412,10 +422,10 @@ pub(super) fn apply_ball(
     };
     view.board_alive = board_alive;
 
-    let at = ball_window_origin(ball.x, ball.y);
+    let at = ball_window_origin(ball.x, ball.y, scale);
     let window = match ball_window(app) {
         Some(window) => window,
-        None => match create_ball_window(app, at) {
+        None => match create_ball_window(app, at, scale) {
             Ok(window) => {
                 view.fails = 0;
                 view.at = Some(at);
@@ -468,7 +478,7 @@ pub(super) fn flush_ball(app: &AppHandle) {
     let (Some(ball), Some(window)) = (ball, ball_window(app)) else {
         return;
     };
-    let (wx, wy) = ball_window_origin(ball.x, ball.y);
+    let (wx, wy) = ball_window_origin(ball.x, ball.y, pet_scale(app));
     let _ = window.set_position(LogicalPosition::new(wx, wy));
 }
 
@@ -484,6 +494,6 @@ pub(super) fn flush(app: &AppHandle, id: PetId) -> Option<Snapshot> {
         .unwrap()
         .get(id)?
         .snapshot();
-    apply(&window, snapshot, true, true);
+    apply(&window, snapshot, true, true, pet_scale(app));
     Some(snapshot)
 }

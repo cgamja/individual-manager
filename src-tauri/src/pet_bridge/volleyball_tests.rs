@@ -6,9 +6,33 @@ fn 공(x: f64, y: f64, flying: bool) -> VolleyBallSnapshot {
 
 #[test]
 fn 공_창_좌상단은_공_중심에서_반지름을_뺀다() {
-    let (x, y) = vball_window_origin(500.0, 400.0);
+    let (x, y) = vball_window_origin(500.0, 400.0, 1.0);
     assert_eq!(x, 500.0 - VBALL_WINDOW_SIZE / 2.0);
     assert_eq!(y, 400.0 - VBALL_WINDOW_SIZE / 2.0);
+}
+
+#[test]
+fn 배율이_반이면_공도_코트도_절반_자리에_놓인다() {
+    let (x, y) = vball_window_origin(500.0, 400.0, 0.5);
+    assert_eq!(vball_window_size(0.5), VBALL_WINDOW_SIZE / 2.0);
+    assert_eq!(x, 250.0 - VBALL_WINDOW_SIZE / 4.0);
+    assert_eq!(y, 200.0 - VBALL_WINDOW_SIZE / 4.0);
+    assert_eq!(
+        court_rect_on_screen((100.0, 200.0, 800.0, 400.0), 0.5),
+        (50.0, 100.0, 400.0, 200.0)
+    );
+}
+
+/// 코어 좌표를 기억하면 배율만 바뀐 틱이 "달라진 게 없다"로 걸러져 코트만
+/// 옛 크기로 남는다. 기억이 화면 좌표라는 것을 못 박는다.
+#[test]
+fn 코트_사각형은_배율이_바뀌면_달라진다() {
+    let 코어 = (100.0, 200.0, 800.0, 400.0);
+    assert_ne!(
+        court_rect_on_screen(코어, 1.0),
+        court_rect_on_screen(코어, 0.6),
+        "배율이 달라도 같은 값이면 코트가 안 따라온다"
+    );
 }
 
 #[test]

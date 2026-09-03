@@ -237,8 +237,9 @@ pub fn pet_add(
         .ok_or_else(|| format!("펭귄은 {MAX_PETS}마리까지예요"))?;
 
     apply_saved_settings(&app, id);
-    let at = window_origin(start_x, bounds.floor_y);
-    if let Err(err) = create_pet_window(&app, id, at) {
+    let scale = pet_scale(&app);
+    let at = window_origin(start_x, bounds.floor_y, scale);
+    if let Err(err) = create_pet_window(&app, id, at, scale) {
         state.pets.lock().unwrap().forget(id);
         return Err(err.to_string());
     }

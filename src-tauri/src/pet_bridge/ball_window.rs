@@ -13,19 +13,27 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder}
 
 use crate::pet::BOWLING_BALL_SIZE;
 
+use super::to_screen;
+
 /// 공 창의 라벨. **`capabilities/default.json`의 `windows`에 있어야 한다** —
 /// 없으면 이 창이 부르는 커맨드가 컴파일·테스트를 다 통과하고 **런타임에서만
 /// 조용히 reject된다**
 /// (`docs/solutions/best-practices/tauri-command-registration-silent-failure.md`).
 pub const BALL_LABEL: &str = "bowling-ball";
 
-/// 창은 공에 딱 맞춘다. 펭귄 창과 달리 말풍선도 방망이도 없다.
+/// 창은 공에 딱 맞춘다 (배율 1 기준). 펭귄 창과 달리 말풍선도 방망이도 없다.
 pub const BALL_WINDOW_SIZE: f64 = BOWLING_BALL_SIZE;
 
-/// 공 **중심** 좌표 → 창 좌상단. 코어가 공을 중심으로 들고 있는 이유는
-/// 히트 판정이 중심끼리의 거리라서다.
-pub fn ball_window_origin(x: f64, y: f64) -> (f64, f64) {
-    (x - BALL_WINDOW_SIZE / 2.0, y - BALL_WINDOW_SIZE / 2.0)
+/// 화면에 놓이는 공 한 변. **그림은 `width: 100%`라 창만 줄이면 따라온다.**
+pub fn ball_window_size(scale: f64) -> f64 {
+    BALL_WINDOW_SIZE * scale
+}
+
+/// 공 **중심**의 코어 좌표 → 화면 좌표의 창 좌상단. 코어가 공을 중심으로 들고
+/// 있는 이유는 히트 판정이 중심끼리의 거리라서다.
+pub fn ball_window_origin(x: f64, y: f64, scale: f64) -> (f64, f64) {
+    let side = ball_window_size(scale);
+    (to_screen(x, scale) - side / 2.0, to_screen(y, scale) - side / 2.0)
 }
 
 pub fn ball_window(app: &AppHandle) -> Option<WebviewWindow> {
@@ -33,13 +41,18 @@ pub fn ball_window(app: &AppHandle) -> Option<WebviewWindow> {
 }
 
 /// 공 창을 만든다. 이미 있으면 그것을 돌려준다.
-pub fn create_ball_window(app: &AppHandle, at: (f64, f64)) -> tauri::Result<WebviewWindow> {
+pub fn create_ball_window(
+    app: &AppHandle,
+    at: (f64, f64),
+    scale: f64,
+) -> tauri::Result<WebviewWindow> {
     if let Some(existing) = ball_window(app) {
         return Ok(existing);
     }
+    let side = ball_window_size(scale);
     WebviewWindowBuilder::new(app, BALL_LABEL, WebviewUrl::App("ball.html".into()))
         .title("Bowling Ball")
-        .inner_size(BALL_WINDOW_SIZE, BALL_WINDOW_SIZE)
+        .inner_size(side, side)
         .position(at.0, at.1)
         .transparent(true)
         .decorations(false)

@@ -123,11 +123,11 @@ fn 둘_다_못_읽으면_캐시를_건드리지_않는다() {
 
 #[test]
 fn 크기가_0인_작업_영역은_모니터로_치지_않는다() {
-    assert!(bounds_of_work_area((0, 0), (0, 0), 1.0).is_none());
-    assert!(bounds_of_work_area((0, 0), (1_440, 0), 2.0).is_none());
-    assert!(bounds_of_work_area((0, 0), (0, 900), 2.0).is_none());
+    assert!(bounds_of_work_area((0, 0), (0, 0), 1.0, 1.0).is_none());
+    assert!(bounds_of_work_area((0, 0), (1_440, 0), 2.0, 1.0).is_none());
+    assert!(bounds_of_work_area((0, 0), (0, 900), 2.0, 1.0).is_none());
     assert!(
-        bounds_of_work_area((0, 0), (2_880, 1_800), 2.0).is_some(),
+        bounds_of_work_area((0, 0), (2_880, 1_800), 2.0, 1.0).is_some(),
         "멀쩡한 모니터는 통과해야 한다"
     );
 }
@@ -193,9 +193,19 @@ fn 공_창_라벨이_capabilities에_등록되어_있다() {
 /// 어긋나 눈으로는 보이지만 히트 판정과 어긋난다.
 #[test]
 fn 공_창은_중심을_기준으로_놓인다() {
-    let (x, y) = ball_window_origin(500.0, 800.0);
+    let (x, y) = ball_window_origin(500.0, 800.0, 1.0);
     assert_eq!(x, 500.0 - BALL_WINDOW_SIZE / 2.0);
     assert_eq!(y, 800.0 - BALL_WINDOW_SIZE / 2.0);
+}
+
+/// 공 창은 크기와 자리가 **함께** 배율을 타야 한다. 한쪽만 타면 공이 손에서
+/// 반 칸 어긋난 채로 굴러간다.
+#[test]
+fn 공_창의_크기와_자리가_함께_배율을_탄다() {
+    assert_eq!(ball_window_size(0.5), BALL_WINDOW_SIZE / 2.0);
+    let (x, y) = ball_window_origin(500.0, 800.0, 0.5);
+    assert_eq!(x, 250.0 - BALL_WINDOW_SIZE / 4.0);
+    assert_eq!(y, 400.0 - BALL_WINDOW_SIZE / 4.0);
 }
 
 /// 위치는 `BallLook`에 안 들어간다 — 넣으면 굴러가는 내내 20Hz로 리렌더한다.
@@ -605,26 +615,41 @@ fn 경계는_창_여백까지_화면_안에_들어오게_잡는다() {
 
 #[test]
 fn 어느_경계에_서도_창_전체가_화면_안이다() {
+    // **어느 배율에서도** 성립해야 한다 — 경계는 코어 단위로 넓어지고 창은
+    // 화면 단위로 줄어드는데, 둘이 어긋나면 작은 펭귄이 화면 밖에 선다.
     let area = (0.0, 25.0, 1440.0, 875.0);
-    let b = bounds_from_work_area((0, 25), (1440, 875), 1.0, PET_SIZE);
-    for (px, py) in [
-        (b.left, b.top),
-        (b.right, b.top),
-        (b.left, b.floor_y),
-        (b.right, b.floor_y),
-    ] {
-        let (wx, wy) = window_origin(px, py);
-        assert!(wx >= area.0 - 0.001, "창이 왼쪽으로 벗어남: {wx}");
-        assert!(
-            wx + PET_WINDOW_W <= area.0 + area.2 + 0.001,
-            "오른쪽으로 벗어남"
-        );
-        assert!(wy >= area.1 - 0.001, "창이 위로 벗어남: {wy}");
-        assert!(
-            wy + PET_WINDOW_H <= area.1 + area.3 + 0.001,
-            "아래로 벗어남"
-        );
+    for percent in (SIZE_MIN..=SIZE_MAX).step_by(SIZE_STEP as usize) {
+        let s = scale_of(percent);
+        let b = bounds_of_work_area((0, 25), (1440, 875), 1.0, s).expect("멀쩡한 작업 영역");
+        let (ww, wh) = pet_window_size(s);
+        for (px, py) in [
+            (b.left, b.top),
+            (b.right, b.top),
+            (b.left, b.floor_y),
+            (b.right, b.floor_y),
+        ] {
+            let (wx, wy) = window_origin(px, py, s);
+            assert!(wx >= area.0 - 0.001, "{percent}%: 창이 왼쪽으로 벗어남: {wx}");
+            assert!(
+                wx + ww <= area.0 + area.2 + 0.001,
+                "{percent}%: 오른쪽으로 벗어남"
+            );
+            assert!(wy >= area.1 - 0.001, "{percent}%: 창이 위로 벗어남: {wy}");
+            assert!(wy + wh <= area.1 + area.3 + 0.001, "{percent}%: 아래로 벗어남");
+        }
     }
+}
+
+/// 배율이 작으면 코어가 보는 세계가 넓어진다 — 작은 펭귄은 더 오른쪽까지 간다.
+#[test]
+fn 배율이_작으면_세계가_넓어진다() {
+    let 크게 = bounds_of_work_area((0, 25), (1440, 875), 1.0, 1.0).unwrap();
+    let 작게 = bounds_of_work_area((0, 25), (1440, 875), 1.0, 0.5).unwrap();
+    assert!(작게.right > 크게.right, "세계가 안 넓어졌다");
+    assert!(작게.floor_y > 크게.floor_y, "바닥이 안 내려갔다");
+    // 화면으로 되돌리면 같은 자리다 — 오른쪽 끝의 창 오른쪽 변이 일치한다.
+    let 오른쪽 = |b: Bounds, s: f64| window_origin(b.right, b.floor_y, s).0 + pet_window_size(s).0;
+    assert!((오른쪽(크게, 1.0) - 오른쪽(작게, 0.5)).abs() < 1e-9);
 }
 
 #[test]

@@ -46,7 +46,7 @@ fn 다른_설정이_있어도_크기만_읽는다() {
 }
 
 #[test]
-fn 렌더_크기는_PET_SIZE에_배율을_곱한_값이다() {
+fn 렌더_크기는_펭귄_한_변에_배율을_곱한_값이다() {
     assert_eq!(pet_render_px(1.0), crate::pet::PET_SIZE);
     assert_eq!(pet_render_px(0.5), crate::pet::PET_SIZE / 2.0);
 }

@@ -10,6 +10,7 @@ use super::*;
 /// 저장된 마릿수만큼 펭귄을 만든다. 이미 있으면 모자란 만큼만 채운다.
 pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
     let wanted = pet_count(app);
+    let scale = pet_scale(app);
     let now = now_ms();
     let world = world_or_flat_any(app);
     let bounds = world.first().bounds;
@@ -32,7 +33,12 @@ pub fn spawn_saved_pets(app: &AppHandle) -> tauri::Result<()> {
             break;
         };
         apply_saved_settings(app, id);
-        if let Err(err) = create_pet_window(app, id, window_origin(start_x, bounds.floor_y)) {
+        if let Err(err) = create_pet_window(
+            app,
+            id,
+            window_origin(start_x, bounds.floor_y, scale),
+            scale,
+        ) {
             app.state::<PetState>().pets.lock().unwrap().forget(id);
             return Err(err);
         }
@@ -87,10 +93,14 @@ pub const PET_WINDOW_W: f64 = PET_SIZE + PET_PAD_X * 2.0;
 
 pub const PET_WINDOW_H: f64 = PET_SIZE + PET_PAD_TOP;
 
-/// 펭귄 좌표 → 창 좌표. 펭귄이 창 안에서 (PAD_X, PAD_TOP)에 놓이므로
-/// 창은 그만큼 왼쪽·위로 물러나 있어야 한다.
-pub fn window_origin(pet_x: f64, pet_y: f64) -> (f64, f64) {
-    (pet_x - PET_PAD_X, pet_y - PET_PAD_TOP)
+/// 펭귄의 **코어 좌표** → **화면 논리 좌표**의 창 좌상단. 펭귄이 창 안에서
+/// (PAD_X, PAD_TOP)에 놓이므로 창은 그만큼 왼쪽·위로 물러나 있고, 그 여백도
+/// 몸통과 함께 배율을 탄다.
+pub fn window_origin(pet_x: f64, pet_y: f64, scale: f64) -> (f64, f64) {
+    (
+        to_screen(pet_x - PET_PAD_X, scale),
+        to_screen(pet_y - PET_PAD_TOP, scale),
+    )
 }
 
 pub fn pet_window(app: &AppHandle, id: PetId) -> Option<WebviewWindow> {
@@ -108,14 +118,16 @@ pub fn create_pet_window(
     app: &AppHandle,
     id: PetId,
     at: (f64, f64),
+    scale: f64,
 ) -> tauri::Result<WebviewWindow> {
     if let Some(existing) = pet_window(app, id) {
         return Ok(existing);
     }
 
+    let (w, h) = pet_window_size(scale);
     WebviewWindowBuilder::new(app, pet_label(id), WebviewUrl::App("pet.html".into()))
         .title("Penguin Pet")
-        .inner_size(PET_WINDOW_W, PET_WINDOW_H)
+        .inner_size(w, h)
         .position(at.0, at.1)
         .transparent(true)
         .decorations(false)

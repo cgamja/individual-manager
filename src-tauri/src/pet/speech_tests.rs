@@ -4,7 +4,7 @@
 //! 막게 두면 새 모드를 얹을 때 빠뜨리는 것이 기본값이 되기 때문이다.
 //! **핀볼 것을 반드시 함께 본다** — 목록에 하나 더 넣는 실수를 그게 잡는다.
 
-use super::test_support::*;
+
 use super::*;
 
 const 세계: Bounds = Bounds {

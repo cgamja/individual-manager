@@ -726,3 +726,21 @@ describe("PetApp이 쓰는 클래스에 스타일이 있다", () => {
     expect(hasRule(css, cls), `.${cls} 규칙이 없다`).toBe(true);
   });
 });
+
+describe("야차의 막힘 표시", () => {
+  /** 주석을 걷어낸 CSS — 설명에 적힌 선택자에 걸리지 않게 한다. */
+  const 코드만 = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+
+  it("국면이_아니라_신호에_걸린다", () => {
+    // `.pg--yacha-guard .pg-anger`에 걸면 **정반대가 된다**: 가드 자세는 링에
+    // 도착할 때도, 12%로 고를 때도, 혼자 남은 챔피언도 밟으므로 주먹과 무관하게
+    // 번쩍이고, 정작 막았을 때는 맞은 쪽이 `Guard` 그대로라 아무것도 안 뜬다.
+    expect(코드만).not.toMatch(/\.pg--yacha-guard\s+\.pg-anger/);
+    expect(코드만).toMatch(/\.pg--punch-blocked\s+\.pg-anger/);
+  });
+
+  it("화남_표시는_후광에서_빠진다", () => {
+    // 후광이 같은 도형을 밝게 한 벌 더 그려 붉은 표시를 회색 X로 덮는다.
+    expect(코드만).toMatch(/\.pg-halo\s+\.pg-anger/);
+  });
+});

@@ -118,6 +118,10 @@ export const DEFAULT_TAUNTS: readonly string[] = [
 /** 대사 한 줄의 최대 길이. 말풍선이 창을 넘지 않을 만큼만 받는다. */
 export const TAUNT_MAX_LEN = 40;
 
+/** 안물의 문구. **대사 목록과 별도 채널이다** — 목록을 다 지워도 이건 나온다.
+ * 코어는 동작만 알고 문구는 웹뷰가 갖는다 (PRINCIPLE 4). */
+export const DONT_ASK_LINE = "묻지 않았습니다~~";
+
 /** 추첨값으로 대사를 고른다. 목록이 비어도 터지지 않는다. */
 export const tauntFor = (roll: number, lines: readonly string[]): string =>
   lines.length === 0 ? "" : lines[Math.abs(roll) % lines.length];

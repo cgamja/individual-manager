@@ -1,4 +1,6 @@
 import { NET_SVG, SAND_SVG } from "../assets/props/court";
+import { onPetScale } from "../lib/pet";
+import { loadPetSettings } from "../lib/settings";
 import "./court.css";
 
 /**
@@ -17,6 +19,16 @@ import "./court.css";
  * **모래는 화면 바닥이 아니라 판에 있다.** 펭귄이 딛고 서는 면이라 판을 따라
  * 뜬다 — 한 번 화면 바닥의 배경 해변으로 그렸다가 되돌렸다.
  */
+
+/** 네트·모래는 고정 px라 배율을 직접 걸어야 한다. 판마다 새로 뜨는 창이지만
+ * 판이 도는 도중에 크기가 바뀔 수도 있어 방송도 듣는다. */
+function 배율(size: number) {
+  document.documentElement.style.setProperty("--pg-scale", String(size / 100));
+}
+void loadPetSettings()
+  .then((s) => 배율(s.size))
+  .catch(() => {});
+void onPetScale(({ size }) => 배율(size)).catch(() => {});
 
 const root = document.getElementById("court-root");
 if (root) {

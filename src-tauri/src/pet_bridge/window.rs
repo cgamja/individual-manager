@@ -143,8 +143,6 @@ pub fn create_pet_window(
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .build()
         .inspect(|window| {
-            // CSS는 배율 1 기준으로 짜여 있다 — 웹뷰 줌이 그 전부를 한 번에 늘린다.
-            let _ = window.set_zoom(scale);
             let _ = window.show();
         })
 }

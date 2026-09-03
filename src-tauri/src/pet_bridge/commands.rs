@@ -171,8 +171,10 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
     Ok(())
 }
 
-/// 펭귄 크기 배율을 바꾼다 (R2). **창을 다시 만들지 않는다** — 크기와 줌만 다시
-/// 걸고 자리를 잡는다. 저장은 웹뷰가 담당한다 (`pet_set_pinball`과 같은 규약).
+/// 펭귄 크기 배율을 바꾼다 (R2). **창을 다시 만들지 않는다** — 창 크기만 다시
+/// 걸고 자리를 잡는다. 그림을 줄이는 것은 웹뷰(`--pg-scale`)의 몫이다
+/// (PRINCIPLE 4: Rust는 "어디에", 웹뷰는 "어떻게 보이는지").
+/// 저장은 웹뷰가 담당한다 (`pet_set_pinball`과 같은 규약).
 ///
 /// 공·코트 창은 틱(`apply_ball`·`apply_volley`)이 50ms 안에 따라온다.
 #[tauri::command]
@@ -185,7 +187,6 @@ pub fn pet_set_size(size: u32, state: State<'_, PetState>, app: AppHandle) {
     for id in ids {
         if let Some(window) = pet_window(&app, id) {
             let _ = window.set_size(LogicalSize::new(w, h));
-            let _ = window.set_zoom(scale);
         }
         flush(&app, id);
     }

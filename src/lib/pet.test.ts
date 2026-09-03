@@ -11,6 +11,9 @@ import {
   throwVelocity,
   verticalClass,
   type Behavior,
+  GAZE_LIMIT,
+  gazeFor,
+  normalizedIn,
 } from "./pet";
 
 describe("behaviorClass", () => {
@@ -339,5 +342,54 @@ describe("성별은 창 라벨에서 결정적으로 나온다", () => {
     for (const label of ["main", "volley-court", "", "pet-x"]) {
       expect(isFemalePet(label)).toBe(false);
     }
+  });
+});
+
+describe("창 px → 그림 좌표", () => {
+  /** 같은 화면 크기에서 같은 자리를 짚으면 배율과 무관하게 같은 값이어야 한다.
+   * 요소 크기로 나누므로 배율은 이미 그 안에 들어 있다. */
+  const rectOf = (scale: number) => ({
+    left: 100,
+    top: 200,
+    width: 140 * scale,
+    height: 140 * scale,
+  });
+
+  it("정규화는_요소_크기에_비례한_자리를_같은_값으로_준다", () => {
+    for (const s of [0.5, 1, 1.5]) {
+      const r = rectOf(s);
+      // 요소의 3/4 지점 = 어느 배율에서나 +0.25
+      const { nx, ny } = normalizedIn(r, r.left + r.width * 0.75, r.top + r.height * 0.75);
+      expect(nx, `배율 ${s}`).toBeCloseTo(0.25, 10);
+      expect(ny, `배율 ${s}`).toBeCloseTo(0.25, 10);
+    }
+  });
+
+  it("배율이_바뀌어도_시선이_같은_곳을_가리킨다", () => {
+    // 눈동자 좌표는 **SVG user unit**이라 그림을 얼마로 줄이든 같아야 한다.
+    // 창 px를 그대로 넣으면 이 검사가 배율마다 다른 값을 내며 빨개진다.
+    const 기준 = (() => {
+      const r = rectOf(1);
+      const { nx, ny } = normalizedIn(r, r.left + r.width * 0.9, r.top + r.height * 0.1);
+      return gazeFor(nx, ny);
+    })();
+    for (const s of [0.5, 1.5]) {
+      const r = rectOf(s);
+      const { nx, ny } = normalizedIn(r, r.left + r.width * 0.9, r.top + r.height * 0.1);
+      expect(gazeFor(nx, ny), `배율 ${s}`).toEqual(기준);
+    }
+  });
+
+  it("시선은_흰자를_벗어나지_않는다", () => {
+    // 정규화 값이 ±0.5까지 가므로 ×4면 ±2다 — 그대로 두면 눈 밖으로 나간다.
+    expect(gazeFor(0.5, -0.5)).toEqual({ x: GAZE_LIMIT, y: -GAZE_LIMIT });
+    expect(gazeFor(-5, 5)).toEqual({ x: -GAZE_LIMIT, y: GAZE_LIMIT });
+  });
+
+  it("크기가_0인_요소는_0으로_떨어진다", () => {
+    expect(normalizedIn({ left: 0, top: 0, width: 0, height: 0 }, 10, 10)).toEqual({
+      nx: 0,
+      ny: 0,
+    });
   });
 });

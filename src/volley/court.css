@@ -36,8 +36,12 @@ body {
   --vb-sand-wave: 8px;
 
   position: relative;
-  width: 100%;
-  height: 100%;
+  /* 창은 배율만큼 작고 위 길이는 배율 1 기준이다 — 판을 통째로 줄인다
+     (펭귄 창의 `#pet-root`와 같은 방법). */
+  width: calc(100% / var(--pg-scale, 1));
+  height: calc(100% / var(--pg-scale, 1));
+  transform: scale(var(--pg-scale, 1));
+  transform-origin: 0 0;
 }
 
 /* ── 모래톱 — 창 바닥에 붙는다. 판과 함께 떠 있다 ─────────────── */

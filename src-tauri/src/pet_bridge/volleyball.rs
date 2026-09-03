@@ -128,7 +128,6 @@ fn 그림_창(
 pub fn create_court_window(
     app: &AppHandle,
     rect: (f64, f64, f64, f64),
-    scale: f64,
 ) -> tauri::Result<WebviewWindow> {
     if let Some(existing) = court_window(app) {
         return Ok(existing);
@@ -140,8 +139,6 @@ pub fn create_court_window(
         (rect.0, rect.1),
         (rect.2, rect.3),
     )?;
-    // 네트·모래는 `court.css`가 고정 px로 잡는다 — 줌이 그걸 배율에 맞춘다.
-    let _ = window.set_zoom(scale);
     sink_court_below_pets(app);
     Ok(window)
 }
@@ -264,11 +261,10 @@ pub(super) fn apply_volley(
                 let (x, y, w, h) = court;
                 let _ = window.set_position(LogicalPosition::new(x, y));
                 let _ = window.set_size(LogicalSize::new(w, h));
-                let _ = window.set_zoom(scale);
                 view.court_rect = Some(court);
             }
         }
-        None => match create_court_window(app, court, scale) {
+        None => match create_court_window(app, court) {
             Ok(_) => {
                 view.fails = 0;
                 view.court_rect = Some(court);

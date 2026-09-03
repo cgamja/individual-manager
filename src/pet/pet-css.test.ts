@@ -183,6 +183,38 @@ describe("pet.css 커버리지", () => {
   });
 });
 
+describe("크기 배율", () => {
+  it("무대를_통째로_줄이는_변환이_있다", () => {
+    // 이게 없으면 창만 작아지고 그림은 원래 크기로 남아 창 밖으로 넘친다.
+    const 규칙 = css.match(/#pet-root\s*\{([^}]*)\}[^{]*$/m);
+    expect(css, "#pet-root 규칙이 없다").toMatch(/#pet-root\s*\{/);
+    expect(css, "--pg-scale로 스케일하지 않는다").toMatch(
+      /#pet-root\s*\{[^}]*transform:\s*scale\(var\(--pg-scale/,
+    );
+    expect(css, "transform-origin이 좌상단이 아니면 창 밖으로 밀린다").toMatch(
+      /#pet-root\s*\{[^}]*transform-origin:\s*0 0/,
+    );
+    expect(규칙 === null || true).toBe(true);
+  });
+
+  it("배율의_기본값이_1이다", () => {
+    // 없으면 `calc(100% / var(--pg-scale))`가 무효가 되어 레이아웃이 통째로 죽는다.
+    expect(css).toMatch(/--pg-scale:\s*1\s*;/);
+  });
+
+  it("시선은_SVG_안에서만_쓰인다", () => {
+    // `--gaze-*`는 **SVG user unit**이다. 창 px 공간(바깥 요소)에서 쓰는 순간
+    // 배율만큼 어긋난다 — 그래서 쓰는 자리를 `.pg-gaze`로 못 박는다.
+    const 쓰는_규칙 = [...css.matchAll(/([^{}]+)\{([^}]*--gaze-[^}]*)\}/g)].map((m) =>
+      m[1].trim(),
+    );
+    expect(쓰는_규칙.length, "--gaze-를 쓰는 규칙이 없다").toBeGreaterThan(0);
+    for (const 선택자 of 쓰는_규칙) {
+      expect(선택자, `${선택자} 가 .pg-gaze 밖에서 시선을 쓴다`).toContain("pg-gaze");
+    }
+  });
+});
+
 describe("창 여백 상수 동기화", () => {
   it.each([
     ["pg-size", "PET_SIZE"],

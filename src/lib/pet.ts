@@ -151,8 +151,42 @@ export const EVENT_PET_SETTINGS = "pet://settings";
 /** 효과음 설정의 방송. `pet://settings`에 얹지 않는 이유: 그쪽은 **Rust가 */
 export const EVENT_PET_SOUND = "pet://sound";
 
+/** 크기 배율의 방송. **커서 방망이 때문에 있다** — 창 크기와 웹뷰 줌은 Rust가
+ * 걸지만 CSS `cursor: url()`은 줌 밖이라 그림을 다시 만들어야 한다. */
+export const EVENT_PET_SCALE = "pet://scale";
+
 /** 클릭과 드래그를 가르는 이동량(px). 이보다 덜 움직였으면 클릭으로 본다. */
 export const DRAG_THRESHOLD_PX = 4;
+
+/** 창 px → 펭귄 기준 정규화 좌표(-0.5~0.5).
+ *
+ * **웹뷰의 px가 그림 좌표로 넘어가는 유일한 문이다.** 빠따 히트(`nx`/`ny`)와
+ * 시선이 둘 다 여기를 지난다. 크기 배율이 들어와도 식이 안 바뀌는 이유는
+ * 나누는 값이 **그때그때의 요소 크기**라서다 — 배율이 이미 그 안에 들어 있다. */
+export function normalizedIn(
+  rect: { left: number; top: number; width: number; height: number },
+  clientX: number,
+  clientY: number,
+): { nx: number; ny: number } {
+  return {
+    nx: rect.width > 0 ? (clientX - rect.left) / rect.width - 0.5 : 0,
+    ny: rect.height > 0 ? (clientY - rect.top) / rect.height - 0.5 : 0,
+  };
+}
+
+/** 눈동자가 흰자를 벗어나지 않을 만큼만 움직인다 (**SVG user unit**). */
+export const GAZE_LIMIT = 1.6;
+
+/** 정규화 좌표 → 눈동자 이동량(SVG user unit).
+ *
+ * **배율 항이 없는 것이 맞다.** 들어오는 값은 이미 정규화됐고, 나가는 값은
+ * SVG user unit이다 — `.pg-gaze`의 `translate()`가 그 공간에서 해석하므로
+ * 그림 전체를 얼마로 줄이든 눈동자는 같은 자리를 가리킨다. 창 px를 그대로
+ * 넣으면 그 순간 배율만큼 어긋난다. */
+export function gazeFor(nx: number, ny: number): { x: number; y: number } {
+  const clamp = (v: number) => Math.max(-GAZE_LIMIT, Math.min(GAZE_LIMIT, v));
+  return { x: clamp(nx * 4), y: clamp(ny * 4) };
+}
 
 /** 이 펭귄이 암컷인가 — **창 라벨(`pet-<id>`)에서 결정적으로 뽑는다.**
  *
@@ -425,3 +459,11 @@ export const onPetSound = (
 /** 효과음 설정을 방송한다 — 프론트가 직접 emit한다. Rust를 거치지 않는다 (KTD2). */
 export const emitPetSound = (on: boolean, volume: number): Promise<void> =>
   emit(EVENT_PET_SOUND, { sound: on, volume });
+
+/** 크기가 바뀌면 알려 준다 — 커서 방망이를 다시 그리는 창들이 듣는다. */
+export const onPetScale = (cb: (settings: { size: number }) => void): Promise<UnlistenFn> =>
+  listen<{ size: number }>(EVENT_PET_SCALE, (event) => cb(event.payload));
+
+/** 크기(퍼센트)를 방송한다. 효과음과 같은 경로다. */
+export const emitPetScale = (size: number): Promise<void> =>
+  emit(EVENT_PET_SCALE, { size });

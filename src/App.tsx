@@ -6,6 +6,7 @@ import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
 import {
   addPet,
+  emitPetScale,
   emitPetSound,
   fishPet,
   getPetSummary,
@@ -241,6 +242,7 @@ function App() {
         return;
       }
       await setPetSize(next).catch((err) => console.error("크기 적용 실패:", err));
+      await emitPetScale(next).catch((err) => console.error("크기 방송 실패:", err));
     },
     [size],
   );

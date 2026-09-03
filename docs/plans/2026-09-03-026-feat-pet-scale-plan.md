@@ -23,8 +23,8 @@ execution: code
   적용한다. 테스트 이름은 한국어. 커밋은 한국어 Angular 컨벤션, Implementation Unit
   하나가 커밋 하나.
 - **정지 조건** —
-  1. `WebviewWindow::set_zoom`(macOS `setPageZoom`)이 투명·무장식 창에서 안 먹거나
-     그림이 깨진다 → KTD4의 폴백으로 갈지 보고하고 정한다.
+  1. 확대 방식(`set_zoom` 또는 CSS 변환)이 투명·무장식 창에서 안 먹거나 그림이
+     깨진다 → 보고하고 정한다. **실제로 걸렸고 KTD4′로 뒤집었다.**
   2. **소품을 배율에 맞추려면 코어(`src-tauri/src/pet/**`)를 고쳐야 한다는 결론이 나온다**
      → 고치지 말고 보고한다. KTD1이 틀렸다는 신호이고, 설계를 다시 볼 자리다.
   3. 커서 방망이가 P1(프로브)의 두 갈래 중 어느 쪽으로도 배율을 못 타면 보고한다 —
@@ -136,7 +136,7 @@ R9의 본문이다. **"자동"은 코드를 안 고친다는 뜻이고, 그 근�
 | 3a | **비치볼** `props/beach-ball` | 공 창(`volley-ball.html`) | `.vb-ball { width:100%; height:100% }` + `viewBox="0 0 64 64"`. 2번과 완전히 같다 | **자동** (창 크기만) |
 | 3b | **코트** `props/court` | 코트 창(`volley-court.html`) | `court.css`가 `--vb-net-h: 85px` · `--vb-net-w: 96px` · `--vb-sand-depth: 80px`를 **고정 px**로 박고 `volley.test.ts`가 Rust 상수와 대조한다. 퍼센트가 아니라 자동이 아니다 → `#court-root`에 **CSS 변환**을 건다 (KTD4') | **별도 조치** |
 | 4 | **핀볼 판** `src/pinball` | 판 창(`pinball.html`) | `pinball.css`가 전부 `100%`이고 **그림이 하나도 없다** — 판은 "화면을 덮어 커서를 채로 바꾸는 투명 막"이라 기하가 **화면 기하**이지 펭귄 기하가 아니다. 그래서 판 자체는 배율과 무관하다. 판 위의 커서는 1번 | **무관** (근거 명시) |
-| 5 | **펭귄 SVG 안의 장비** `penguin/gear`(방망이·낚싯대) · `penguin/hula` | 펭귄 창 | 같은 `<svg class="penguin">` 안의 `.pg-all` 자식이고, 펭귄 창에 `set_zoom(s)`가 걸린다 | **자동** |
+| 5 | **펭귄 SVG 안의 장비** `penguin/gear`(방망이·낚싯대) · `penguin/hula` | 펭귄 창 | 같은 `<svg class="penguin">` 안의 `.pg-all` 자식이고, `#pet-root`의 변환이 통째로 줄인다 | **자동** |
 
 덧붙여 배율을 **안 타는 것**도 못 박는다: `#ball-root { cursor: grab }`,
 `.penguin { cursor: grab }` 같은 **키워드 커서**는 OS가 크기를 정하므로 손대지 않는다.
@@ -278,12 +278,12 @@ pub fn to_core(v: f64, scale: f64) -> f64;           // 화면 → 코어
 **KTD8 — 배율을 바꿔도 창을 다시 만들지 않는다.**
 
 `pet_set_enabled(false)` → `spawn_saved_pets`로 갈아엎는 길이 이미 있지만, 슬라이더는
-단계마다 `onChange`가 오므로 창 8개를 11번 재생성하게 된다. `set_size` + `set_zoom` +
-`flush`면 창은 그대로 두고 크기만 바뀐다(R2).
+단계마다 `onChange`가 오므로 창 8개를 11번 재생성하게 된다. `set_size` + `flush`(Rust)와
+`--pg-scale`(웹뷰)이면 창은 그대로 두고 크기만 바뀐다(R2).
 
 **핀볼 판도 다시 만들지 않는다.** 판을 닫았다 여는 것은 "나가는 문이 둘"(PRD §5.8)이
 잠깐 하나로 줄어드는 구간을 만든다 — 여는 데 실패하면 모드는 켜짐인데 판이 없다.
-판에는 `set_zoom`(또는 커서 재설치)만 건다.
+판에는 커서 재설치만 건다.
 
 **KTD9′ — 커서 방망이는 그림과 핫스팟을 배율만큼 다시 그린다. (P1 종결)**
 
@@ -359,7 +359,7 @@ flowchart TB
 
   subgraph 브릿지 [pet_bridge — 유일한 환산 지점]
     SC["scale.rs<br/>pet_scale / pet_render_px<br/>pet_box_in_window / to_core / to_screen"]
-    W["window.rs — 창 크기·위치·set_zoom"]
+    W["window.rs — 창 크기·위치"]
     B["bounds.rs — 작업영역 ÷ (dpi × s)"]
     T["tick.rs 20Hz — 배율 1회 읽기"]
     CMD["commands.rs — 드래그 델타 ÷ s"]
@@ -372,7 +372,7 @@ flowchart TB
   S -.->|3 emit pet://scale — 결과 B에서만| P & BD
   ST -->|읽기| SC
   SC --> W & B & T & CMD
-  W -->|set_size + set_zoom| P & C
+  W -->|set_size + 첫 배율 주입| P & C
   W -->|set_size만| BW
   T -->|코어 좌표 × s| W
   CMD -->|화면 델타 ÷ s| CORE
@@ -383,9 +383,9 @@ flowchart TB
 ```mermaid
 stateDiagram-v2
   [*] --> 시작: spawn_saved_pets
-  시작 --> 정상: pet_scale(app) 읽어 창 생성 + set_zoom + 커서 심기
+  시작 --> 정상: pet_scale(app) 읽어 창 생성 + 배율 주입 + 커서 심기
   정상 --> 재적용: pet_set_size(size)
-  재적용 --> 정상: 펫 창 set_size+set_zoom+flush\n코트·공 창 갱신 · 판 커서 갱신\n틱 캐시(worlds·court_rect) 무효화
+  재적용 --> 정상: 펫 창 set_size+flush · 웹뷰 --pg-scale 방송\n코트·공 창 갱신 · 커서 다시 그리기\n틱 캐시(worlds·court_rect) 무효화
   정상 --> 정상: 20Hz 틱 — 배율 1회 읽고 좌표 × s
 ```
 
@@ -444,7 +444,7 @@ stateDiagram-v2
   `배율이_작으면_팝오버가_펭귄에_더_붙는다` · `공_창_좌상단과_크기가_배율을_탄다`
 - **Verification** `cd src-tauri && cargo test`
 
-### U3 — 살아 있는 창에 배율을 건다 (`pet_set_size` + 틱 + `set_zoom`)
+### U3 — 살아 있는 창에 배율을 건다 (`pet_set_size` + 틱)
 
 - **Goal** 커맨드 하나로 지금 떠 있는 창 전부가 새 크기가 되고, 20Hz 틱이 새 배율로
   좌표를 낸다. 소품 표 3b번(코트)과 5번(장비·훌라)이 여기서 성립한다.
@@ -453,23 +453,21 @@ stateDiagram-v2
 - **Files** `commands.rs` · `tick.rs` · `volleyball.rs` · `window.rs` · `lib.rs`
 - **Approach**
   - `pet_set_size(size: u32, ...)`: clamp → `scale` → 살아 있는 펫 창마다
-    `set_size` → `set_zoom(s)` → `flush(app, id)`. 코트 창이 살아 있으면 코트에도
-    `set_size`/`set_position`/`set_zoom`, 공 창들에는 `set_size`.
+    `set_size` → `flush(app, id)`. 코트·공 창은 틱이 50ms 안에 따라온다.
     **락에서 꺼낸 id를 `let`으로 먼저 받는다** — `for id in <락>.ids()`는 가드를 루프 내내
     붙들고 `flush`가 같은 락을 다시 잡아 자기 데드락이다
     (`docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md`).
   - **`lib.rs`의 `generate_handler!`에 `pet_set_size`를 등록한다** — 빠뜨리면 컴파일·
     테스트·경고가 전부 통과하고 런타임에서만 조용히 reject된다.
-  - `set_zoom`은 **AppKit 포인터를 직접 만지지 않는** Tauri API라 `sink_court_below_pets`처럼
-    `run_on_main_thread`로 감쌀 필요가 없다. **틱에서 부르지 않고** 커맨드와 창 생성
-    직후에서만 부른다.
+  - 그림을 줄이는 일은 웹뷰가 한다(`--pg-scale`) — Rust는 창 크기와 자리만 만진다
+    (PRINCIPLE 4). `initialization_script`로 첫 페인트 전에 배율을 심는다.
   - 틱 시작에 `let scale = pet_scale(&app);` 한 번, `worlds` 캐시 키에 배율 추가,
     `apply`/`apply_ball`/`apply_volley`/`flush`/`flush_ball`에 전파.
     `VolleyView.court_rect`를 **화면 좌표**로 바꾼다(KTD7-2).
-  - 공 창에 `set_zoom`을 **안 거는 이유**를 주석 한 줄로 남긴다(레이아웃이 전부 `100%`).
+  - 공 창에 변환을 **안 거는 이유**를 주석 한 줄로 남긴다(레이아웃이 전부 `100%`).
 - **Test scenarios** `배율이_바뀌면_세계_캐시를_다시_잰다`(캐시 판정을 순수 함수로 떼어) ·
   `코트_기억은_화면_좌표라_배율이_바뀌면_달라진다` · `화면_드래그_델타가_코어_단위로_줄어든다`.
-  창 생성·`set_zoom`·`set_size` 자체는 Tauri 런타임 표면이라 단위 테스트로 안 잡힌다 →
+  창 생성·`set_size` 자체는 Tauri 런타임 표면이라 단위 테스트로 안 잡힌다 →
   **Test expectation: none — 수동 스모크(AE2·AE3·AE5)로 검증한다.**
 - **Verification** `cargo test` + `npm run tauri dev` 스모크(AE2·AE3·AE5·AE7), 판이 도는
   중에 슬라이더 밀어 보기(A4)
@@ -487,7 +485,7 @@ stateDiagram-v2
     `src/pinball/main.ts` · `src/lib/pet.ts`(`EVENT_PET_SCALE`·`emitPetScale`·`onPetScale`) ·
     `src/App.tsx`(저장 뒤 브로드캐스트).
   - 결과 B에서만 추가: `src/pet/main.tsx`(펭귄 창도 명시 설치).
-  - **어느 결과든 `pinball.rs`는 안 만진다** — 판 창에 `set_zoom`을 걸지 않는다(KTD4 확정).
+  - **`pinball.rs`는 안 만진다** — 판 창에는 확대를 안 건다(KTD4′).
 - **Approach**
   - `batCursorUrl(deg, scale)`: SVG `width/height = 48 * scale`, **`viewBox`는 `0 0 48 48`
     그대로**(그림이 늘어난다), 핫스팟은 `10*scale 30*scale`. `HOTSPOT` 상수를 숫자 쌍으로
@@ -620,7 +618,7 @@ stateDiagram-v2
 - **균일 축소**(작아지면 화면 기준 이동 속도도 함께 느려짐)
 - 저장 키 **`pet.size`**(퍼센트 정수, 기본 100)
 - **커서를 포함한 모든 소품이 범위 안**
-- **핀볼 판 창에는 `set_zoom`을 걸지 않는다** (KTD4·KTD9)
+- **핀볼 판 창에는 확대를 걸지 않는다** (KTD4′·KTD9′)
 
 ## 병렬 작업과의 접점
 
@@ -633,6 +631,6 @@ stateDiagram-v2
 - **그쪽 PR이 먼저 머지되므로, 그 히트 박스를 배율에 물리는 것은 이 PR의 몫이다** (U7/KTD10).
   그쪽은 `PET_SIZE` 비율로만 계산하고 `PET_PAD_*`·`PET_WINDOW_*`를 안 쓴다.
 - `settings.rs`는 **안 만진다** — `PET_KEY`·`SETTINGS_FILE`을 `scale.rs`가 `use`할 뿐이다.
-- `PetApp.tsx`는 **한 줄도 안 바뀐다**(KTD4의 `set_zoom` 덕분). 커서는 엔트리
+- `PetApp.tsx`는 정규화 계산을 `lib/pet.ts`로 옮기는 만큼만 바뀐다(KTD11). 커서는 엔트리
   (`src/pet/main.tsx`)에 있으므로 P1 결과 B여도 `PetApp.tsx`는 안 건드린다.
 - 상대 브랜치의 코드를 미리 가져오지 않는다. U1~U6은 `main` 기준이고, U7만 rebase 뒤에 한다.

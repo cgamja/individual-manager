@@ -1,6 +1,6 @@
 //! 웹뷰가 부르는 #[tauri::command] 전부.
 
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 use crate::pet::{PetId, Snapshot, VolleyRefusal, MAX_PETS};
 
@@ -185,15 +185,26 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
 /// 틱이 느린 대기(`SLEEP_TICK_MS`)로 떨어져 있어 최대 그만큼 늦다.
 #[tauri::command]
 pub fn pet_apply_size(state: State<'_, PetState>, app: AppHandle) {
-    let (w, h) = pet_window_size(pet_scale(&app));
-    // **id를 먼저 꺼내 가드를 떨군다** — `flush`가 같은 락을 다시 잡아 자기 데드락이다
+    let scale = pet_scale(&app);
+    let size = pet_window_size(scale);
+    // **id를 먼저 꺼내 가드를 떨군다** — 본문이 같은 락을 다시 잡아 자기 데드락이다
     // (docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md).
     let ids = state.pets.lock().unwrap().ids();
     for id in ids {
-        if let Some(window) = pet_window(&app, id) {
-            let _ = window.set_size(LogicalSize::new(w, h));
+        let Some(window) = pet_window(&app, id) else {
+            continue;
+        };
+        let at = state
+            .pets
+            .lock()
+            .unwrap()
+            .get(id)
+            .map(|p| p.snapshot())
+            .map(|s| window_origin(s.x, s.y, scale));
+        if let Some(at) = at {
+            // 크기와 자리를 **한 문으로** 건다 ([`place_window`]).
+            place_window(&window, at, Some(size));
         }
-        flush(&app, id);
     }
 }
 

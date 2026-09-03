@@ -48,13 +48,17 @@ pub fn scale_from(stored: Option<&serde_json::Value>) -> f64 {
 }
 
 /// 저장된 배율. 창을 만들거나 옮기기 전에 이걸 읽는다.
+///
+/// **`store()`가 아니라 `get_store()`를 먼저 본다.** `store()`는 이미 열린 스토어에도
+/// 매번 경로를 다시 해석하고 전역 컬렉션에 **쓰기 락**을 잡는다(`StoreBuilder::build_inner`).
+/// 이 함수는 20Hz 틱과 드래그(pointermove)마다 불리므로 그 값이면 프론트의
+/// `store.get`/`set`과 계속 경합한다. `get_store()`는 읽기 락만 잡는다.
+/// 아직 안 열렸을 때만 `store()`로 떨어진다.
 pub fn pet_scale(app: &AppHandle) -> f64 {
-    scale_from(
-        app.store(SETTINGS_FILE)
-            .ok()
-            .and_then(|store| store.get(PET_KEY))
-            .as_ref(),
-    )
+    let store = app
+        .get_store(SETTINGS_FILE)
+        .or_else(|| app.store(SETTINGS_FILE).ok());
+    scale_from(store.and_then(|store| store.get(PET_KEY)).as_ref())
 }
 
 /// **화면에 그려지는 펭귄의 한 변 (논리 px).** 창 크기·좌표 변환·클릭 판정이 전부

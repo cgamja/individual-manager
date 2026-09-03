@@ -241,10 +241,13 @@ function App() {
         setSizeState(prev);
         return;
       }
-      // **순서를 방향으로 정한다.** 창 크기(Rust)와 그림 크기(웹뷰)는 왕복이 둘로
-      // 나뉘므로 그 사이 한 프레임은 둘이 어긋난다. 줄일 때 창을 먼저 줄이면
-      // `#pet-root`의 `overflow: hidden`이 아직 큰 그림을 잘라 낸다 — 슬라이더를
-      // 끌면 눈금마다 깜빡인다. 키울 때는 반대다.
+      // 창 크기(Rust)와 그림 크기(웹뷰)는 왕복이 둘로 나뉘므로 그 사이 한 프레임은
+      // 둘이 어긋난다. 줄일 때 창이 먼저 줄면 `#pet-root`의 `overflow: hidden`이
+      // 아직 큰 그림을 잘라 내므로, 줄일 때는 그림을 먼저 보낸다.
+      //
+      // **보장이 아니라 폭을 좁히는 것이다.** 위에서 저장이 이미 끝났고 20Hz 틱은
+      // 그 저장소를 독립적으로 읽으므로, 틱이 방송보다 먼저 창을 줄일 수 있다
+      // (≤50ms). 실제 회복은 펭귄 창의 `resize` 화해자가 한다 (`pet/main.tsx`).
       const 그림_먼저 = next < prev;
       const 창 = () => applyPetSize().catch((err) => console.error("크기 적용 실패:", err));
       const 그림 = () => emitPetScale(next).catch((err) => console.error("크기 방송 실패:", err));

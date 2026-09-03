@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 
 use crate::pet::{BallSnapshot, PetId, Snapshot, VolleySnapshot, World};
 
@@ -54,6 +54,13 @@ pub(super) fn world_is_stale(cached: Option<(u64, f64)>, now: u64, scale: f64) -
         None => true,
         Some((at, was)) => now.saturating_sub(at) >= BOUNDS_REFRESH_MS || was != scale,
     }
+}
+
+/// 이 마리의 창을 다시 재야 하는가. **마리별로 본다** — 전역 "직전 배율"로 굴리면,
+/// 배율이 바뀐 그 틱에 창을 못 찾았거나 경계를 못 읽어 빠진 마리는 다음 틱에
+/// "배율 안 바뀜"으로 읽혀 영영 안 맞는다.
+pub(super) fn window_resized(last: Option<(f64, f64)>, want: (f64, f64)) -> bool {
+    last != Some(want)
 }
 
 /// 이번 틱에 창을 실제로 옮길지. 자는 펭귄은 안 옮긴다.
@@ -182,8 +189,6 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
         // **읽어 본** 시각을 함께 든다 — 실패도 시각을 남겨야 못 읽는 동안 매 틱
         // 비싼 `current_monitor()`를 두드리지 않는다.
         let mut dpi: (Option<f64>, u64) = (None, 0);
-        // 직전 틱의 크기 배율. 바뀐 틱에는 자는 마리까지 한 번 옮긴다.
-        let mut last_scale: Option<f64> = None;
         loop {
             let ids = 잠금(&app.state::<PetState>().pets).ids();
             let now = now_ms();
@@ -349,16 +354,10 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 let Some((window, rescued)) = ready.get(&id) else {
                     continue;
                 };
-                // **크기를 자리보다 먼저 건다.** 자리는 창 좌상단이라 크기가 바뀌면
-                // 같은 좌상단이라도 덮는 영역이 달라진다 — 순서가 뒤집히면 한 프레임
-                // 어긋난 사각형이 보인다.
                 // 부동소수 동등 비교가 안전한 이유: 양쪽 다 같은 순수 함수에
                 // 같은 배율을 넣은 결과라 비트까지 같다.
                 let want = pet_window_size(scale);
-                if last_size.get(&id) != Some(&want) {
-                    let _ = window.set_size(LogicalSize::new(want.0, want.1));
-                    last_size.insert(id, want);
-                }
+                let resized = window_resized(last_size.get(&id).copied(), want);
                 let requested = requests.get(&id).copied().unwrap_or(false);
                 let verdict = apply_click_through(
                     window,
@@ -373,11 +372,10 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                 if requested && verdict.latches() {
                     withdraw.push(id);
                 }
-                let moves = should_move(
-                    snapshot.behavior.moves_window(),
-                    *rescued || last_scale != Some(scale),
-                );
-                any_moves |= snapshot.behavior.moves_window();
+                // **크기가 바뀌면 자는 마리도 옮긴다.** 크기만 걸고 자리를 안 걸면
+                // 좌하단 앵커 때문에 창 위 모서리가 높이 차이만큼 어긋난 채 남는다.
+                let moves = should_move(snapshot.behavior.moves_window(), *rescued || resized);
+                any_moves |= snapshot.behavior.moves_window() || resized;
                 let look = look_of(&snapshot);
                 apply(
                     window,
@@ -385,7 +383,11 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     moves,
                     should_notify(last_look.get(&id).copied(), look),
                     scale,
+                    if resized { Some(want) } else { None },
                 );
+                if resized {
+                    last_size.insert(id, want);
+                }
                 last_look.insert(id, look);
             }
             if !withdraw.is_empty() {
@@ -400,7 +402,6 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             any_moves |= volley.is_some();
             apply_ball(&app, board_alive, ball, &mut ball_view, scale);
             apply_volley(&app, volley, &mut volley_view, scale);
-            last_scale = Some(scale);
 
             std::thread::sleep(Duration::from_millis(tick_interval(
                 any_moves,
@@ -418,10 +419,11 @@ pub(super) fn apply(
     move_window: bool,
     notify: bool,
     scale: f64,
+    resize: Option<(f64, f64)>,
 ) {
-    if move_window {
-        let (wx, wy) = window_origin(snapshot.x, snapshot.y, scale);
-        let _ = window.set_position(LogicalPosition::new(wx, wy));
+    if move_window || resize.is_some() {
+        let at = window_origin(snapshot.x, snapshot.y, scale);
+        place_window(window, at, resize);
     }
     if notify {
         let _ = window.emit_to(
@@ -493,12 +495,10 @@ pub(super) fn apply_ball(
     };
 
     let side = ball_window_size(scale);
-    if view.side != Some(side) {
-        let _ = window.set_size(LogicalSize::new(side, side));
+    let 다시_잰다 = view.side != Some(side);
+    if 다시_잰다 || view.at != Some(at) {
+        place_window(&window, at, 다시_잰다.then_some((side, side)));
         view.side = Some(side);
-    }
-    if view.at != Some(at) {
-        let _ = window.set_position(LogicalPosition::new(at.0, at.1));
         view.at = Some(at);
     }
     let look = ball_look_of(&ball);
@@ -521,8 +521,7 @@ pub(super) fn flush_ball(app: &AppHandle) {
     let (Some(ball), Some(window)) = (ball, ball_window(app)) else {
         return;
     };
-    let (wx, wy) = ball_window_origin(ball.x, ball.y, pet_scale(app));
-    let _ = window.set_position(LogicalPosition::new(wx, wy));
+    place_window(&window, ball_window_origin(ball.x, ball.y, pet_scale(app)), None);
 }
 
 /// 커맨드가 상태를 바꾼 뒤 즉시 화면에 반영한다 — 다음 틱(최대 500ms)을
@@ -537,6 +536,6 @@ pub(super) fn flush(app: &AppHandle, id: PetId) -> Option<Snapshot> {
         .unwrap()
         .get(id)?
         .snapshot();
-    apply(&window, snapshot, true, true, pet_scale(app));
+    apply(&window, snapshot, true, true, pet_scale(app), None);
     Some(snapshot)
 }

@@ -828,3 +828,57 @@ fn 만들_것이_없으면_아무것도_안_한다() {
     assert!(r.is_ok());
     assert_eq!(되돌린, None);
 }
+
+// ── 창을 놓는 순서 (플랜 026, 자체 리뷰 1·2번) ──────────────────────────
+
+/// macOS에서 `set_position`은 좌상단 기준이고 `set_size`는 좌하단 기준이라,
+/// **자리를 먼저 걸면 뒤따르는 크기 변경이 위 모서리를 높이 차이만큼 민다.**
+/// 그래서 창을 놓는 문은 하나여야 하고, 그 문이 순서를 쥔다.
+#[test]
+fn 창을_놓는_문이_하나다() {
+    // 브릿지 어디서도 `set_position`을 직접 부르지 않는다 — `place_window`만 부른다.
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/pet_bridge");
+    let mut 어긴_파일 = Vec::new();
+    for entry in std::fs::read_dir(&dir).expect("pet_bridge 디렉터리를 못 읽었다") {
+        let path = entry.expect("항목을 못 읽었다").path();
+        if path.extension().is_none_or(|e| e != "rs") {
+            continue;
+        }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        // 문 자신과 검사 파일은 예외다.
+        if name == "mod.rs" || name.ends_with("_tests.rs") || name == "tests.rs" {
+            continue;
+        }
+        let src = std::fs::read_to_string(&path).expect("소스를 못 읽었다");
+        // 주석을 걷어낸다 — 안 그러면 설명에 적힌 이름이 위반으로 잡힌다.
+        let 코드만 = src
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if 코드만.contains(".set_position(") {
+            어긴_파일.push(name);
+        }
+    }
+    assert!(
+        어긴_파일.is_empty(),
+        "`place_window`를 안 거치고 자리를 옮긴다: {어긴_파일:?}"
+    );
+}
+
+/// 크기 변경 판정은 **마리별**이어야 한다. 전역 "직전 배율" 하나로 굴리면,
+/// 배율이 바뀐 그 틱에 창을 못 찾아 빠진 마리는 다음 틱에 "안 바뀜"으로 읽혀
+/// 크기만 맞고 자리가 안 맞은 채로 남는다.
+#[test]
+fn 창_크기_판정은_마리별로_기억한다() {
+    let 백 = pet_window_size(1.0);
+    let 육십 = pet_window_size(0.6);
+    // 처음 보는 마리는 재야 한다.
+    assert!(window_resized(None, 백));
+    // 같은 크기를 이미 걸었으면 안 잰다.
+    assert!(!window_resized(Some(백), 백));
+    // 배율이 달라졌으면 잰다.
+    assert!(window_resized(Some(백), 육십));
+    // **이 마리가 그 틱을 놓쳤어도** 기억이 옛 크기이므로 다음 틱에 잡힌다.
+    assert!(window_resized(Some(백), 육십), "빠진 마리가 영영 안 맞는다");
+}

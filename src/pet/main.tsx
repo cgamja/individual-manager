@@ -33,6 +33,22 @@ void onPetScale(({ size }) => {
   배율(size / 100);
 }).catch(() => {});
 
+/** **화해자.** 방송은 fire-and-forget이라 유실될 수 있다 — 그러면 Rust는 창을
+ * 다시 쟀는데 웹뷰는 옛 배율로 그려 재시작할 때까지 잘린 채 남는다. Rust 쪽이
+ * `last_size`로 창 크기를 매 틱 화해시키는 것과 같은 것을 여기에도 둔다.
+ *
+ * **`resize`가 정확히 그 신호다** — 창 크기를 바꾸는 것은 배율뿐이다. 값은 창
+ * 크기에서 역산하지 않고 **저장소에서 다시 읽는다**: 창 크기는 정수로 반올림돼
+ * 배율이 미세하게 어긋나고, 그 값이 Rust의 히트 상자와 갈린다. */
+window.addEventListener("resize", () => {
+  const 내_세대 = ++세대;
+  void loadPetSettings()
+    .then((s) => {
+      if (내_세대 === 세대) 배율(s.size / 100);
+    })
+    .catch(() => {});
+});
+
 ReactDOM.createRoot(document.getElementById("pet-root") as HTMLElement).render(
   <React.StrictMode>
     <PetApp />

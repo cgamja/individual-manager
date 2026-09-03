@@ -22,7 +22,7 @@
 //! (`docs/solutions/ui-bugs/macos-window-order-is-not-stable-level-is.md`).
 
 use tauri::{
-    AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, WebviewUrl,
+    AppHandle, Emitter, EventTarget, Manager, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder,
 };
 
@@ -263,8 +263,11 @@ pub(super) fn apply_volley(
         Some(window) => {
             if view.court_rect != Some(court) {
                 let (x, y, w, h) = court;
-                let _ = window.set_position(LogicalPosition::new(x, y));
-                let _ = window.set_size(LogicalSize::new(w, h));
+                // **크기를 먼저, 자리를 나중에** — [`place_window`]가 그 순서를 쥔다.
+                // 자리를 먼저 걸면 뒤따르는 크기 변경이 위 모서리를 높이 차이만큼
+                // 밀어, 판이 도는 중에 배율을 바꾸면 모래가 착지면에서 어긋난 채
+                // 캐시된다.
+                place_window(&window, (x, y), Some((w, h)));
                 view.court_rect = Some(court);
             }
         }
@@ -296,12 +299,10 @@ pub(super) fn apply_volley(
     };
 
     let side = vball_window_size(scale);
-    if view.ball_side != Some(side) {
-        let _ = window.set_size(LogicalSize::new(side, side));
+    let 다시_잰다 = view.ball_side != Some(side);
+    if 다시_잰다 || view.ball_at != Some(at) {
+        place_window(&window, at, 다시_잰다.then_some((side, side)));
         view.ball_side = Some(side);
-    }
-    if view.ball_at != Some(at) {
-        let _ = window.set_position(LogicalPosition::new(at.0, at.1));
         view.ball_at = Some(at);
     }
     let look = volley_look_of(&ball);

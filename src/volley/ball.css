@@ -1,0 +1,56 @@
+/* 비치볼 — 창 하나가 통째로 공이다. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* **배경을 칠하지 않는다.** 조금이라도 칠하면 공 둘레에 네모가 보인다. */
+  background: transparent;
+  user-select: none;
+}
+
+/* **클릭 통과는 CSS가 못 한다 — 이건 다른 일을 한다.**
+   진짜 클릭 통과는 Rust의 `set_ignore_cursor_events(true)`(= `NSWindow.
+   ignoresMouseEvents`)뿐이다. `pointer-events: none`은 **웹뷰가 클릭에
+   반응하지 않게** 할 뿐이고 네이티브 창은 여전히 클릭을 **먹는다**(아래 앱으로
+   안 내려간다). 그래도 두는 이유는 커서 모양·텍스트 선택·hover 같은 웹뷰
+   자체의 반응을 없애기 위해서다. */
+#vball-root,
+#vball-root * {
+  pointer-events: none;
+}
+
+#vball-root {
+  width: 100%;
+  height: 100%;
+}
+
+.vb-ball {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 날아가는 동안 돈다. 색 조각이 있어서 도는 게 실제로 보인다 —
+   무늬 없는 공은 아무리 돌려도 멈춰 있는 것과 구분되지 않는다. */
+.vb-ball--flying .vb-ball-body {
+  animation: vb-ball-spin 1.1s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+@keyframes vb-ball-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #vball-root,
+  #vball-root * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

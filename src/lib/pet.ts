@@ -22,6 +22,19 @@ export type FreakoutPhase = "dash" | "pant";
  * 그대로 쓴다 (2026-09-02 사용자 지시). */
 export type BowlingPhase = "gather" | "ready" | "scatter";
 
+/** 비치발리볼 한 판에서 **마리 하나가** 거쳐 가는 국면. 판 전체의 국면은 코어
+ * 안에만 있다 — 웹뷰는 자기 펭귄이 무엇을 하는지만 알면 된다.
+ *
+ * `cheer`/`sulk`는 **싸가지 반응의 그림을 CSS에서 재사용한다.** 국면을
+ * `Volleyball` 안에 남긴 이유는 그래야 축하하는 동안에도 옷이 남기 때문이다. */
+export type VolleyPhase =
+  | "gather"
+  | "ready"
+  | "chase"
+  | "bump"
+  | "cheer"
+  | "sulk";
+
 /** 클릭했을 때의 반응 — 놀라지 않고 싸가지 없게 군다. */
 export type SassyKind =
   | "turn_away"
@@ -49,7 +62,8 @@ export type Behavior =
   | { kind: "tumble" }
   | { kind: "slide" }
   | { kind: "ice_fishing"; fishing: FishingPhase }
-  | { kind: "bowling"; bowling: BowlingPhase };
+  | { kind: "bowling"; bowling: BowlingPhase }
+  | { kind: "volleyball"; volley: VolleyPhase };
 
 /** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
 export interface Speech {
@@ -124,6 +138,13 @@ export const EVENT_BALL_STATE = "bowling://ball";
  * 이게 없으면 "볼링 한 판" 버튼이 비활성인 채로 남는다. */
 export const EVENT_BOWLING_OVER = "bowling://over";
 
+/** 비치볼 창이 구독하는 상태 이벤트. 공 창이 따로라 이벤트도 따로다. */
+export const EVENT_VOLLEY_STATE = "volley://ball";
+
+/** 비치발리볼 판이 **끝났을 때** 온다. 판을 끝내는 것은 예산이지 사용자가
+ * 아니라서, 이게 없으면 "비치발리볼 한 판" 버튼이 비활성인 채로 남는다. */
+export const EVENT_VOLLEY_OVER = "volley://over";
+
 /** 설정이 **이 창 밖에서** 바뀌었을 때 오는 알림 (핀볼 판의 Esc 등). */
 export const EVENT_PET_SETTINGS = "pet://settings";
 
@@ -132,6 +153,32 @@ export const EVENT_PET_SOUND = "pet://sound";
 
 /** 클릭과 드래그를 가르는 이동량(px). 이보다 덜 움직였으면 클릭으로 본다. */
 export const DRAG_THRESHOLD_PX = 4;
+
+/** 이 펭귄이 암컷인가 — **창 라벨(`pet-<id>`)에서 결정적으로 뽑는다.**
+ *
+ * 성별은 **웹뷰 소유**다 (PRINCIPLE 4): "어떻게 보이는지"라 Rust는 모른다.
+ * 효과음의 목소리 높이(`voiceOffsetFor`)가 이미 같은 방식이다.
+ *
+ * **난수를 안 쓴다** — 같은 시드가 같은 결과를 내야 하고(PRINCIPLE 3), id는
+ * 증가만 하므로 **앱을 껐다 켜도 같은 펭귄은 같은 성별**이다. 그래서
+ * 저장하지도 않는다 (PRD §7).
+ *
+ * **홀짝으로 가르면 안 된다.** 처음에 `(id * 11) % 2`로 썼는데 그건 `id % 2`와
+ * 같아서 곱수가 아무 일도 안 했고, **팀 배정(`assign_sides`)도 id 홀짝 교대**라
+ * 매 판이 **여자팀 대 남자팀**이 됐다. 팀 편성과 성별은 무관해야 한다.
+ *
+ * 그래서 곱한 뒤 **윗자리 비트를 꺼낸다** — 낮은 자리는 곱셈으로 안 섞이고
+ * 입력의 홀짝을 그대로 물고 있다. 목소리 오프셋(`voiceOffsetFor`)과도 다른
+ * 상수·다른 자리라 "높은 목소리 = 암컷" 같은, 아무도 요구하지 않은 규칙이 안 생긴다.
+ *
+ * 마릿수가 짝수여도 **성비는 짝수가 아닐 수 있다.** 그래도 된다. */
+export const isFemalePet = (label: string): boolean => {
+  const m = /^pet-(\d+)$/.exec(label);
+  if (!m) return false;
+  // Knuth 승산 해시. 32비트로 자른 뒤 16번째 비트를 본다.
+  const h = (Number(m[1]) * 2654435761) >>> 0;
+  return ((h >>> 16) & 1) === 1;
+};
 
 /** 동작 → CSS 클래스. 유휴는 종류까지 내려가야 두리번과 기지개가 구분된다. */
 /** Rust의 snake_case를 CSS 선택자에 쓰는 kebab-case로. 한 곳에서만 바꾼다. */
@@ -143,6 +190,7 @@ export const behaviorClass = (behavior: Behavior): string => {
   if (behavior.kind === "ice_fishing") return `pg--fishing-${kebab(behavior.fishing)}`;
   if (behavior.kind === "freakout") return `pg--freakout-${kebab(behavior.freakout)}`;
   if (behavior.kind === "bowling") return `pg--bowling-${kebab(behavior.bowling)}`;
+  if (behavior.kind === "volleyball") return `pg--volley-${kebab(behavior.volley)}`;
   return `pg--${kebab(behavior.kind)}`;
 };
 
@@ -157,6 +205,9 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--squawk" ||
   cls === "pg--freakout-pant" ||
   cls === "pg--bowling-scatter" ||
+  cls === "pg--volley-bump" ||
+  cls === "pg--volley-cheer" ||
+  cls === "pg--volley-sulk" ||
   cls === "pg--swing" ||
   cls.startsWith("pg--sassy-") ||
   (cls.startsWith("pg--fishing-") && cls !== "pg--fishing-wait");
@@ -199,6 +250,9 @@ export interface PetSummary {
   focused: number | null;
   /** 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로 버튼을 끈다 (A3). */
   bowling: boolean;
+  /** 비치발리볼 판이 도는 중인가. **두 판은 서로를 배제하므로** 어느 쪽이든
+   * 도는 동안 버튼 둘이 함께 비활성된다. */
+  volleyball: boolean;
 }
 
 /** 볼링 공의 상태. **위치는 여기 없다** — 창이 옮기므로, 넣으면 굴러가는
@@ -208,6 +262,15 @@ export interface BallSnapshot {
   y: number;
   rolling: boolean;
   held: boolean;
+}
+
+/** 비치볼의 상태. **위치는 창이 옮기므로 겉모습에 안 들어간다** — 넣으면
+ * 날아가는 내내 20Hz로 리렌더한다. */
+export interface VolleyBallSnapshot {
+  x: number;
+  y: number;
+  /** 날아가는 중인가 — 도는 그림을 그리는 데 쓴다. */
+  flying: boolean;
 }
 
 export const getPetSummary = (): Promise<PetSummary> => invoke("pet_summary");
@@ -233,6 +296,11 @@ export const freakoutPet = (): Promise<void> => invoke("pet_freakout");
 /** 볼링 한 판을 연다. **우클릭한 한 마리가 아니라 화면의 펭귄 전부**가
  * 참여한다 (R1) — 그래서 다른 동작들과 달리 대상을 안 고른다. */
 export const startBowling = (): Promise<void> => invoke("bowling_start");
+
+/** 비치발리볼 한 판을 연다. **사용자 입력이 없는 유일한 판이다** — 버튼을
+ * 누르면 20초쯤 알아서 놀고 끝난다. 볼링과 마찬가지로 화면의 펭귄 전부가
+ * 참여하므로 대상을 안 고른다. 두 마리부터 열린다. */
+export const startVolleyball = (): Promise<void> => invoke("volleyball_start");
 
 /** 공을 집는다. 굴러가는 중이면 `false` — 한 판에 한 번 굴린다. */
 export const startBallDrag = (): Promise<boolean> => invoke("ball_drag_start");
@@ -308,6 +376,26 @@ export const onBallState = (cb: (ball: BallSnapshot) => void): Promise<UnlistenF
 /** 볼링 판이 끝나면 알려 준다. 설정 창이 버튼을 되살리는 데 쓴다. */
 export const onBowlingOver = (cb: () => void): Promise<UnlistenFn> =>
   listen(EVENT_BOWLING_OVER, () => cb());
+
+/** 비치볼 창이 **뜨자마자** 현재 상태를 한 번 받아 간다.
+ *
+ * **없으면 공이 판 내내 안 돈다** — 틱이 창을 만들고 같은 호출에서 첫 상태를
+ * 보내는데 그때 이 파일은 아직 실행되지도 않았다. 그 뒤로는 "달라진 게 없다"로
+ * 걸러져 다시 안 온다. */
+export const getVolleyState = (): Promise<VolleyBallSnapshot | null> =>
+  invoke("volley_get_state");
+
+/** 자기 창의 비치볼 상태만 구독한다. 펭귄·볼링 공과 같은 이유로 **창에 묶는다.** */
+export const onVolleyState = (
+  cb: (ball: VolleyBallSnapshot) => void,
+): Promise<UnlistenFn> =>
+  getCurrentWebviewWindow().listen<VolleyBallSnapshot>(EVENT_VOLLEY_STATE, (event) =>
+    cb(event.payload),
+  );
+
+/** 비치발리볼 판이 끝나면 알려 준다. */
+export const onVolleyOver = (cb: () => void): Promise<UnlistenFn> =>
+  listen(EVENT_VOLLEY_OVER, () => cb());
 
 /** 설정이 이 창 밖에서 바뀌면 알려 준다 — 지금은 핀볼 판의 Esc가 유일한 경우다. */
 export const onPetSettings = (

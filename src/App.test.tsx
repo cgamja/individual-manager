@@ -206,3 +206,46 @@ describe("설정 창", () => {
     expect(screen.getByRole("button", { name: "펭귄 추가" })).toBeEnabled();
   });
 });
+
+describe("판을 못 열면 이유를 보여 준다", () => {
+  // **버튼이 눌렸는데 아무 일도 안 일어나면 고장으로 읽힌다.** 코어가 이유를
+  // 셋으로 갈라 주는데(두 마리부터 / 이미 판이 돈다 / 코트를 깔 자리가 없다)
+  // 콘솔에만 찍으면 사용자에게는 "안 눌린다"로 보인다 (PRD §5.10).
+  function mockBoard(거절: () => boolean) {
+    mockWindow();
+    mockIPC((cmd) => {
+      if (cmd === "plugin:event|listen") return 1;
+      if (cmd === "plugin:event|unlisten") return undefined;
+      if (cmd === "pet_summary")
+        return { count: 1, max: 8, focused: 3, bowling: false, volleyball: false };
+      if (cmd === "volleyball_start") {
+        if (거절()) throw "두 마리부터 할 수 있어요";
+        return null;
+      }
+      if (cmd.startsWith("plugin:store|")) return null;
+      return undefined;
+    });
+  }
+
+  it("비치발리볼_거절_사유가_화면에_뜬다", async () => {
+    mockBoard(() => true);
+    render(<App />);
+    const 버튼 = await screen.findByRole("button", { name: "비치발리볼 한 판" });
+    fireEvent.click(버튼);
+    expect(await screen.findByText("두 마리부터 할 수 있어요")).toBeInTheDocument();
+  });
+
+  it("성공하면_사유가_사라진다", async () => {
+    let 거절 = true;
+    mockBoard(() => 거절);
+    render(<App />);
+    const 버튼 = await screen.findByRole("button", { name: "비치발리볼 한 판" });
+    fireEvent.click(버튼);
+    expect(await screen.findByText("두 마리부터 할 수 있어요")).toBeInTheDocument();
+    거절 = false;
+    fireEvent.click(버튼);
+    await waitFor(() =>
+      expect(screen.queryByText("두 마리부터 할 수 있어요")).not.toBeInTheDocument(),
+    );
+  });
+});

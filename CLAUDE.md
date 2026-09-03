@@ -39,8 +39,11 @@
 src/
   pet/                펭귄 창 웹뷰 — Penguin.tsx(SVG), PetApp.tsx, sound·synth
     css/              동작별 스타일 (base·ground·air·react·pinball·drag·
-                      fishing·freakout·rest·speech) — index.css가 묶는다
+                      fishing·freakout·rest·speech·bowling·volleyball)
+                      — index.css가 묶는다
   pinball/            핀볼 판 창 — 화면을 덮는 투명 창, 커서만 방망이
+  ball/               볼링 공 창 — 집어서 굴린다
+  volley/             비치발리볼 코트·비치볼 창 — 그림뿐이고 클릭을 통과시킨다
   components/         설정 창 카드 UI
   lib/                Rust invoke·이벤트 래퍼 (pet, settings)
 src-tauri/src/
@@ -49,10 +52,10 @@ src-tauri/src/
     behavior.rs       동작 목록(Behavior) + 국면 enum
     world.rs          펭귄이 다닐 영역
     motion/           동작 하나가 파일 하나 (ground·air·react·drag·
-                      pinball·fishing·freakout)
+                      pinball·fishing·freakout·bowling·volleyball)
     mod.rs            Pet·Pets·step 디스패치·pick_next·enter·clamp·난수
-  pet_bridge/         Tauri 연결 — settings·window·pinball·bounds·tick·
-                      popover·commands
+  pet_bridge/         Tauri 연결 — settings·window·pinball·ball_window·
+                      volleyball·bounds·tick·popover·commands
   lib.rs              setup: 트레이 생성, Accessory 정책, 플러그인 등록, 창 이벤트
 docs/plans/           마일스톤 항목별 구현 플랜
 docs/solutions/       재발 방지용 학습 기록 — 셸을 건드리기 전에 읽는다
@@ -135,6 +138,25 @@ Rust는 아무 말도 하지 않는다.
   **락에서 꺼낸 것을 순회할 때는 반드시 `let`으로 먼저 받는다.** 증상은 "버튼을
   누르면 앱이 통째로 멈춘다" 하나뿐이고 두 러너·타입 검사·번들 빌드가 전부 통과한다.
   → `docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md`
+- **`ns_window()` 아래로 내려간 순간부터는 반드시 메인 스레드다.** AppKit 객체를
+  20Hz 틱 스레드에서 만지면 **앱이 흔적 없이 죽는다** — 패닉도, `RunEvent::Exit`도,
+  로그 한 줄도 안 남고 프로세스가 증발한다("판을 잘 열었다"는 로그 **직후에** 사라진다).
+  KTD5의 *"`set_position`은 어느 스레드에서 불러도 안전하다"*는 **Tauri API에 한한**
+  이야기이고, `ns_window()`로 꺼낸 포인터를 직접 만지는 것은 그 디스패치를 건너뛴다.
+  같은 함수라도 **호출 자리가 커맨드냐 틱이냐로 갈린다** — 핀볼 판(`sink_pinball_below_pets`)은
+  커맨드에서 불려 멀쩡했고, 그걸 베껴 온 코트(`sink_court_below_pets`)는 틱에서 불려
+  죽었다. 진단의 첫 수는 `.run(|_, event|)`로 `RunEvent`를 전부 찍어 보는 것이다 —
+  종료 이벤트가 **안 뜨는 것**이 "정상 종료가 아니다"의 증거다. →
+  `docs/solutions/best-practices/appkit-from-tick-thread-kills-the-app.md`
+- **`set_ignore_cursor_events`는 비동기다 — 호출 직후에 읽으면 `false`다.** `Ok(())`를
+  즉시 주지만 적용은 이벤트 루프를 왕복한 뒤다(`set_position`과 같은 성질). 직후에
+  읽어 확인하면 "이 API는 `always_on_top` 창에서 안 먹는다"는 **오답**이 나온다 —
+  실제로는 2초 뒤에 읽으면 `true`고 창은 처음부터 정상이었다. 창을 `visible(false)`로
+  만들고 → 플래그를 걸고 → `show()` 하면 간극이 가장 좁아지지만 **한 프레임은 남을
+  수 있고 CSS로는 못 메운다** — `pointer-events: none`은 웹뷰가 반응하지 않게 할 뿐
+  네이티브 창은 클릭을 그대로 먹는다. 클릭 통과와 창 레벨은 서로를 대신하지 못하므로
+  **둘 다** 건다. →
+  `docs/solutions/best-practices/tauri-ignore-cursor-events-is-async.md`
 - **화면을 넘나드는 좌표는 배율부터 의심한다.** 창 하나로 여러 화면을 덮으면 그 창은
   배율 하나만 쓰므로 배율이 다른 화면에서 어긋난다. 화면마다 창을 따로 만든다.
 - **사용자를 막는 기능에는 나가는 문이 둘 있어야 한다.** 핀볼 판은 화면 전체의 클릭을
@@ -158,7 +180,7 @@ M1(메뉴바 셸 + 뽀모도로 + 알림), M2(Notion TODO), M2.5(바탕화면 �
 좌표계 교체(`World`/`Screen`)만 머지된 채 남아 있고 **프로덕션에서는 화면 하나만 담는다.**
 
 **F3의 모션은 전부 들어갔다** — 굴러떨어지기·얼음낚시·슬라이딩·빽빽거리기·발작.
-빈도 재조정, **핀볼 모드**(PRD §5.8), **효과음**(Web Audio 직접 합성, 다섯에서만 —
+빈도 재조정, **핀볼 모드**(PRD §5.8), **효과음**(Web Audio 직접 합성, 일곱에서만 —
 `MOTIONS.md` 효과음 절)까지 들어가 `MOTIONS.md`의 "넣을 동작" 목록은 비었고,
 **`PRD.md` §9에 미정 오픈 퀘스천이 하나도 없다** (Q9가 마지막이었다).
 

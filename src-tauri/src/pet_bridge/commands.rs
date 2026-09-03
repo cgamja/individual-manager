@@ -2,7 +2,7 @@
 
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
-use crate::pet::{PetId, Snapshot, MAX_PETS};
+use crate::pet::{PetId, Snapshot, VolleyRefusal, MAX_PETS};
 
 use super::*;
 
@@ -182,11 +182,13 @@ pub fn pet_summary(state: State<'_, PetState>) -> PetSummary {
     let count = state.pets.lock().unwrap().len();
     let focused = *state.focused.lock().unwrap();
     let bowling = state.pets.lock().unwrap().bowling().is_some();
+    let volleyball = state.pets.lock().unwrap().volleyball().is_some();
     PetSummary {
         count,
         max: MAX_PETS,
         focused,
         bowling,
+        volleyball,
     }
 }
 
@@ -352,6 +354,59 @@ pub fn bowling_start(state: State<'_, PetState>, app: AppHandle) -> Result<(), S
         flush(&app, id);
     }
     Ok(())
+}
+
+/// 설정 창의 "비치발리볼 한 판" — **볼링과 같은 전역 커맨드다.** 우클릭한 한
+/// 마리가 아니라 화면의 펭귄 전부가 참여한다.
+///
+/// **사용자 입력이 여기서 끝난다.** 이 커맨드 뒤로는 20초 동안 사용자가 할 일이
+/// 하나도 없다 — 볼링의 드래그·굴리기에 해당하는 커맨드가 없는 이유다.
+#[tauri::command]
+pub fn volleyball_start(state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let court = world_or_flat_any(&app).first().bounds;
+    // 시드는 시각이다 — 같은 시드가 같은 랠리를 낳으므로(PRINCIPLE 3),
+    // 버튼을 다시 누르면 다른 판이 나온다.
+    let opened = state
+        .pets
+        .lock()
+        .unwrap()
+        .start_volleyball(now_ms(), court, now_ms());
+    opened.map_err(|why| {
+        match why {
+            VolleyRefusal::BoardBusy => "이미 판이 돌고 있어요",
+            VolleyRefusal::NoRoom => "코트를 깔 자리가 없어요 — 화면이 좁아요",
+            VolleyRefusal::TooFew => "두 마리부터 할 수 있어요",
+            VolleyRefusal::Odd => "짝수 마릿수만 할 수 있어요 — 팀이 갈려야 해요",
+        }
+        .to_string()
+    })?;
+    // **id를 먼저 꺼내 가드를 떨군다.** `for id in <락>.ids()`로 쓰면 반복자
+    // 식의 임시 `MutexGuard`가 루프 전체 동안 살아 있고, `flush`가 같은
+    // 뮤텍스를 다시 잡아 자기 데드락이 난다 (`bowling_start`와 같은 이유).
+    let ids = state.pets.lock().unwrap().ids();
+    for id in ids {
+        flush(&app, id);
+    }
+    Ok(())
+}
+
+/// 비치볼 웹뷰가 **처음 뜰 때** 현재 상태를 한 번 받아 간다 (`pet_get_state`와 같은 자리).
+///
+/// **없으면 공이 판 내내 안 돈다.** 틱이 공 창을 만들고 **같은 호출에서** 첫
+/// 상태를 emit하는데, 그때 웹뷰는 아직 `ball.ts`를 실행하지도 않아 리스너가
+/// 없다 — 이벤트는 버려지고 `view.look`은 `Some(true)`로 잠긴다. 다음 emit은
+/// 공이 멎을 때뿐이라 `vb-ball--flying`이 **한 번도 안 붙는다.** 볼링 공이
+/// 이걸 안 겪는 이유는 첫 상태(`rolling: false`)가 DOM 기본값과 같아서다.
+#[tauri::command]
+pub fn volley_get_state(
+    window: WebviewWindow,
+    state: State<'_, PetState>,
+) -> Option<crate::pet::VolleyBallSnapshot> {
+    if window.label() != VBALL_LABEL {
+        return None;
+    }
+    let ball = state.pets.lock().unwrap().volleyball().and_then(|v| v.ball());
+    ball
 }
 
 /// 공을 집는다. 굴러가는 중이면 `false` — 한 판에 한 번 굴린다.

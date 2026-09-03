@@ -18,6 +18,8 @@ import {
   slidePet,
   squawkPet,
   startBowling,
+  startVolleyball,
+  onVolleyOver,
   freakoutPet,
   type PetSummary,
 } from "./lib/pet";
@@ -58,6 +60,9 @@ const MOTIONS: readonly Motion[] = [
 
 function App() {
   const [saveFailed, setSaveFailed] = useState(false);
+  /** 판을 못 연 이유. **버튼이 눌렸는데 아무 일도 안 일어나면 고장으로 읽히므로**
+   * 코어가 만든 문구를 그대로 띄운다 (PRD §5.10). 성공하면 지운다. */
+  const [boardNotice, setBoardNotice] = useState<string | null>(null);
   const [petEnabled, setPetEnabledState] = useState(DEFAULT_PET_SETTINGS.enabled);
   const [soundEnabled, setSoundEnabledState] = useState(DEFAULT_PET_SETTINGS.sound);
   const [pinballEnabled, setPinballEnabledState] = useState(DEFAULT_PET_SETTINGS.pinball);
@@ -70,6 +75,7 @@ function App() {
     max: 8,
     focused: null,
     bowling: false,
+    volleyball: false,
   });
 
   useEffect(() => {
@@ -123,6 +129,19 @@ function App() {
       })
       .catch(() => {});
 
+    // 비치발리볼도 같다 — 판을 끝내는 것은 예산이지 사용자가 아니다.
+    let unlistenVolley: UnlistenFn | undefined;
+    void onVolleyOver(() => {
+      getPetSummary()
+        .then(setPetSummary)
+        .catch(() => {});
+    })
+      .then((off) => {
+        if (cancelled) off();
+        else unlistenVolley = off;
+      })
+      .catch(() => {});
+
     let unlisten: UnlistenFn | undefined;
     void onPetSettings(({ pinball }) => {
       setPinballEnabledState(pinball);
@@ -141,6 +160,7 @@ function App() {
       document.removeEventListener("visibilitychange", onVisibility);
       unlisten?.();
       unlistenBowling?.();
+      unlistenVolley?.();
     };
   }, []);
 
@@ -264,7 +284,26 @@ function App() {
   /** 볼링 한 판 — **저장하지 않는다.** 켜 두는 모드가 아니라 몇 초짜리
    * 한 판이라, 앱을 껐다 켜면 판은 그냥 없다 (KTD11). */
   const handleBowling = useCallback(async () => {
-    await startBowling().catch((err) => console.error("볼링을 못 열었어요:", err));
+    try {
+      await startBowling();
+      setBoardNotice(null);
+    } catch (err) {
+      setBoardNotice(typeof err === "string" ? err : "볼링을 못 열었어요");
+    }
+    await refreshPets();
+  }, [refreshPets]);
+
+  /** 비치발리볼 한 판 — 볼링과 같은 규칙으로 **저장하지 않는다.** 20초짜리
+   * 한 판이라 앱을 껐다 켜면 판은 그냥 없다. */
+  const handleVolleyball = useCallback(async () => {
+    try {
+      await startVolleyball();
+      setBoardNotice(null);
+    } catch (err) {
+      // 코어가 이유를 넷으로 갈라 준다 (두 마리부터 / 짝수만 / 이미 판이 돈다 /
+      // 코트를 깔 자리가 없다). 콘솔에만 찍으면 사용자에게는 "안 눌린다"로 보인다.
+      setBoardNotice(typeof err === "string" ? err : "비치발리볼을 못 열었어요");
+    }
     await refreshPets();
   }, [refreshPets]);
 
@@ -309,7 +348,14 @@ function App() {
         onPinballEnabledChange={(next) => void handlePinballEnabledChange(next)}
         bowlingRunning={petSummary.bowling}
         onBowling={() => void handleBowling()}
+        volleyballRunning={petSummary.volleyball}
+        onVolleyball={() => void handleVolleyball()}
       />
+      {boardNotice && (
+        <p className="notif-hint" role="status">
+          {boardNotice}
+        </p>
+      )}
       {saveFailed && (
         <p className="notif-hint" role="status">
           설정 저장에 실패했어요 — 변경은 이번 실행에만 적용돼요

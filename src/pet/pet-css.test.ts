@@ -5,7 +5,7 @@ import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../l
 
 /** 동작이 CSS에 실제로 그려져 있는지 확인한다. */
 /** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
-const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout","bowling"]
+const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout","bowling","volleyball"]
   .map((n) => readFileSync(resolve(`src/pet/css/${n}.css`), "utf8"))
   .join("\n");
 const petRs =
@@ -47,6 +47,12 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "bowling", bowling: "gather" },
   { kind: "bowling", bowling: "ready" },
   { kind: "bowling", bowling: "scatter" },
+  { kind: "volleyball", volley: "gather" },
+  { kind: "volleyball", volley: "ready" },
+  { kind: "volleyball", volley: "chase" },
+  { kind: "volleyball", volley: "bump" },
+  { kind: "volleyball", volley: "cheer" },
+  { kind: "volleyball", volley: "sulk" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },
   { kind: "ice_fishing", fishing: "bite" },
@@ -131,6 +137,11 @@ function rustMs(name: string): number | null {
   return m ? Number(m[1].replace(/_/g, "")) : null;
 }
 
+/** `VOLLEY_CHEER_MS`처럼 **다른 상수를 그대로 받는** 경우를 위한 대체 경로. */
+function sassyMs(): number | null {
+  return rustMs("SASSY_MS");
+}
+
 /** `.pg--이름 .pg-all { animation: ... 1.1s ... }` 의 길이를 ms로 꺼낸다. */
 function cssDurationMs(cls: string): number | null {
   const m = css.match(
@@ -158,6 +169,7 @@ describe("동작 길이 동기화", () => {
     ["pg--squawk", "SQUAWK_MS"],
     ["pg--freakout-pant", "FREAKOUT_PANT_MS"],
     ["pg--bowling-scatter", "BOWLING_SCATTER_MS"],
+    ["pg--volley-bump", "VOLLEY_BUMP_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
     const b = rustMs(konst);
@@ -234,8 +246,152 @@ describe("싸가지 반응 길이 동기화", () => {
   });
 });
 
+describe("비치발리볼", () => {
+  it("이긴_쪽과_진_쪽은_싸가지_keyframe을_참조만_한다", () => {
+    // 같은 이름을 두 번 정의하면 앞의 애니메이션이 통째로 죽는다. 재사용은
+    // **참조**로 해야 하고, `volleyball.css`가 새로 정의하면 안 된다.
+    const volley = readFileSync(resolve("src/pet/css/volleyball.css"), "utf8");
+    for (const name of ["pg-butt-wiggle", "pg-turn-away", "pg-tail-wag", "pg-paddle"]) {
+      expect(volley, `${name}을 다시 정의했다`).not.toContain(`@keyframes ${name}`);
+      expect(volley, `${name}을 참조하지 않는다`).toContain(name);
+    }
+  });
+
+  it("축하_길이가_Rust의_VOLLEY_CHEER_MS와_같다", () => {
+    // 재사용한 keyframe이라 주기 × 반복이 상수와 맞아야 자세가 중간에 안 멈춘다.
+    const total = rustMs("VOLLEY_CHEER_MS") ?? sassyMs();
+    expect(total, "길이 상수를 못 찾았다").not.toBeNull();
+    const re = /\.pg--volley-(?:cheer|sulk)\s+(\.[\w-]+)\s*\{[^}]*animation:\s*[\w-]+\s+([0-9.]+)s[^;]*?\s(\d+);/g;
+    const 부위 = [...css.matchAll(re)];
+    expect(부위.length, "축하·약오름 애니메이션을 못 찾았다").toBeGreaterThan(1);
+    for (const [, sel, secs, count] of 부위) {
+      const ms = Math.round(Number(secs) * 1000) * Number(count);
+      expect(ms, `${sel} 의 주기 × 횟수가 다르다`).toBe(total);
+    }
+  });
+
+  it("훌라_차림은_pg_all_안에_있다", () => {
+    // 밖에 두면 착지 포즈에서 몸만 눌리고 옷이 허공에 남는다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const all = svg.indexOf('className="pg-all"');
+    const luau = svg.indexOf('className="pg-luau"');
+    expect(all).toBeGreaterThan(-1);
+    expect(luau).toBeGreaterThan(all);
+  });
+
+  it("상의는_암컷만_보인다", () => {
+    // 수컷은 아래만 — 상체를 채우는 것은 레이 하나다.
+    expect(css).toMatch(/\.pg-luau-top\s*\{[^}]*display:\s*none/);
+    expect(css).toMatch(/\.pg-female\s+\.pg-luau-top\s*\{[^}]*display:\s*block/);
+  });
+
+  it("상의가_옷으로_읽히게_그려졌다", () => {
+    // **덮개형으로 갔다가 "갑바"로 읽혀 비키니로 돌아왔다** (2026-09-02 사용자).
+    // 문제는 노출량이 아니라 **옷으로 읽히느냐**였다 — 색이 몸에 가깝고 경계가
+    // 없으면 아무리 덮어도 살로 보인다. 그래서 셋을 못 박는다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const 상의 = svg.slice(
+      svg.indexOf('<g className="pg-luau-top">'),
+      svg.indexOf("</g>", svg.indexOf('<g className="pg-luau-top">')),
+    );
+    expect(상의.length, "상의 그림을 못 찾았다").toBeGreaterThan(0);
+
+    // **도형 단위로 쪼갠다.** 아래 검사들이 문자 수나 전체 문자열로 세면
+    // 도형 하나를 지워도 옆 도형이 대신 통과시킨다.
+    const 도형 = 상의.split("<path").slice(1);
+
+    // (1) 삼각형 두 개 — 닫힌 경로 둘.
+    const 삼각형 = [...상의.matchAll(/d="(M[^"]*Z)"/g)].map((m) => m[1]);
+    expect(삼각형.length, "삼각형 두 개가 아니다").toBe(2);
+
+    // (2) **끈이 보인다** — 목뒤 V와 등뒤로 도는 가로줄. 사용자가 명시적으로
+    // 요구한 형태이면서, 얇아도 옷으로 읽히게 하는 장치이기도 하다.
+    //
+    // **`stroke={STRAW_DARK}`를 세면 안 된다** — 삼각형의 테두리도 같은 값이라
+    // 끈 둘을 통째로 지워도 2가 나와 통과한다(실제로 그랬다). 채우기 없이
+    // 선만 있는 도형, 즉 **끈만** 센다.
+    const 끈 = 도형.filter((d) => d.includes("stroke={STRAW_DARK}") && !d.includes("fill={"));
+    expect(끈.length, "끈이 둘(목뒤 V·등뒤 가로줄)이 아니다").toBe(2);
+
+    // (3) 도형마다 테두리가 있다 — 경계가 없으면 살로 읽힌다.
+    // **문자 수로 잘라 보지 않는다** — 여유가 30자뿐이라 첫 삼각형의 테두리를
+    // 지우면 두 번째 것을 읽어 통과한다.
+    const 채운_도형 = 도형.filter((d) => d.includes("fill={STRAW}"));
+    expect(채운_도형.length, "채워진 삼각형이 둘이 아니다").toBe(2);
+    for (const d of 채운_도형) {
+      expect(d, "테두리 없는 삼각형이 있다").toMatch(/strokeWidth=/);
+    }
+  });
+
+  it("상의_삼각형이_얕다", () => {
+    // **"둘 다 얇게"가 지시다.** 깊게 그리면 다시 덮개가 되고, 덮개는 갑바로
+    // 읽혔다. 배(`SNOW` 타원, cy=82 ry=26 → y 56~108)의 위쪽 3분의 1 안에서
+    // 끝나야 한다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const 상의 = svg.slice(
+      svg.indexOf('<g className="pg-luau-top">'),
+      svg.indexOf("</g>", svg.indexOf('<g className="pg-luau-top">')),
+    );
+    const 삼각형 = [...상의.matchAll(/d="(M[^"]*Z)"/g)].map((m) => m[1]);
+    expect(삼각형.length).toBe(2);
+    for (const d of 삼각형) {
+      // **`M`/`L`/`Z`로만 그린다.** 곡선(`C`·`Q`)이나 `H`/`V`를 허용하면 좌표를
+      // 짝으로 읽는 아래 계산이 깨져 **깊이 0이 나오고 그냥 통과한다** — 곡선
+      // 하나로 30 깊이의 덮개를 그려도 못 잡는다.
+      expect(d, `삼각형에 M/L/Z 아닌 명령이 있다: ${d}`).toMatch(/^M[\s\d.LZ]+$/);
+      const nums = [...d.matchAll(/[\d.]+/g)].map((m) => Number(m[0]));
+      const ys = nums.filter((_, i) => i % 2 === 1);
+      const 깊이 = Math.max(...ys) - Math.min(...ys);
+      expect(깊이, `삼각형이 ${깊이} 로 깊다 — 덮개로 돌아간다`).toBeLessThan(16);
+    }
+  });
+
+  it("옷_색이_몸_색과_대비된다", () => {
+    // 배가 흰색이라 옅은 살구·크림 계열을 쓰면 옷이 아니라 살로 읽힌다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const 색 = (name: string) => {
+      const m = svg.match(new RegExp(`const ${name} = "(#[0-9a-fA-F]{6})"`));
+      return m ? m[1] : null;
+    };
+    const 밝기 = (hex: string) =>
+      (parseInt(hex.slice(1, 3), 16) +
+        parseInt(hex.slice(3, 5), 16) +
+        parseInt(hex.slice(5, 7), 16)) /
+      3;
+    const snow = 색("SNOW");
+    expect(snow, "SNOW를 못 찾았다").not.toBeNull();
+    // **상의도 하의도 같은 지푸라기다** — 재질이 하나라 볼 색도 하나다.
+    const straw = 색("STRAW");
+    expect(straw, "STRAW를 못 찾았다").not.toBeNull();
+    expect(
+      밝기(snow!) - 밝기(straw!),
+      `STRAW(${straw})가 흰 배와 너무 가깝다 — 옷이 아니라 살로 읽힌다`,
+    ).toBeGreaterThan(60);
+  });
+
+  it("중간에_썼던_이름이_안_남아있다", () => {
+    // `pg-straw`는 덮개형으로 가던 시절의 이름이다.
+    const svg = readFileSync(resolve("src/pet/Penguin.tsx"), "utf8");
+    const volley = readFileSync(resolve("src/pet/css/volleyball.css"), "utf8");
+    for (const [이름, 본문] of [
+      ["Penguin.tsx", svg],
+      ["volleyball.css", volley],
+    ] as const) {
+      expect(본문, `${이름}에 pg-straw가 남아 있다`).not.toContain("pg-straw");
+    }
+  });
+});
+
 describe("평소 숨기는 도형", () => {
-  const 숨기는_도형 = ["pg-hole", "pg-rod", "pg-line", "pg-float", "pg-fish", "pg-beak-lower"];
+  const 숨기는_도형 = [
+    "pg-hole",
+    "pg-rod",
+    "pg-line",
+    "pg-float",
+    "pg-fish",
+    "pg-beak-lower",
+    "pg-luau",
+  ];
 
   /** 선택자에 이 클래스가 정확히 등장하는 모든 규칙 블록의 본문. */
   function 규칙들(cls: string): string[] {

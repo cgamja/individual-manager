@@ -111,6 +111,28 @@ pub enum BowlingPhase {
     Scatter,
 }
 
+/// 비치발리볼 한 판에서 **마리 하나가** 거쳐 가는 국면. 판 전체의 국면은 따로
+/// 있다 (`volleyball::CourtPhase`) — 볼링과 같은 두 층 구조다.
+///
+/// **스스로 끝나는 것은 `Gather`·`Bump`·`Cheer`·`Sulk`뿐이다.** `Ready`와 `Chase`는
+/// 판이 몰아 준다 — "다음 공이 어디로 오나"는 마리 혼자서는 답할 수 없다.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VolleyPhase {
+    /// 화면 가운데의 자기 자리로 **날아간다.** 유일하게 공중인 국면이다
+    Gather,
+    /// 코트에 서서 공을 본다
+    Ready,
+    /// 공이 떨어질 자리로 **뛴다** — 랠리 화면의 절반이 이 국면이다
+    Chase,
+    /// 공을 때린다. 뛰어오르는 그림은 CSS가 그리고 좌표는 안 바뀐다
+    Bump,
+    /// 이겼다 — 엉덩이를 흔든다 (`Sassy`의 그림을 CSS에서 재사용한다)
+    Cheer,
+    /// 졌다 — 등을 홱 돌린다. `Cheer`와 함께 이 동작의 귀결 국면이다
+    Sulk,
+}
+
 /// 발작 한 판이 거쳐 가는 국면.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -194,6 +216,13 @@ pub enum Behavior {
     Bowling {
         bowling: BowlingPhase,
     },
+    /// 비치발리볼 — 화면 세로 중앙에 뜬 모래톱으로 모여 한 판 친다.
+    /// **사용자가 아무것도 안 하는 첫 동작**이라, 이 동작의 성패는 물리가 아니라
+    /// "20초 동안 보고 있기 지루한가"에 달렸다. 랠리는 판(`Pets::volleyball`)이
+    /// 시드 난수로 만들고 마리는 몰리는 쪽이다.
+    Volleyball {
+        volley: VolleyPhase,
+    },
 }
 
 impl Behavior {
@@ -220,6 +249,11 @@ impl Behavior {
                 }
                 // 판이 바닥이 아니라 **화면 세로 중앙**에 서므로 핀은 떠 있다.
                 | Behavior::Bowling { .. }
+                // **비치발리볼도 전부 공중이다** — 판이 볼링과 같이 화면 세로
+                // 중앙에 서고 모래도 네트도 거기 함께 뜬다. 하나라도
+                // 지상으로 두면 `clamp`가 그 국면에서 펭귄을 바닥으로 끌어내려
+                // 코트에서 떨어진다.
+                | Behavior::Volleyball { .. }
         )
     }
 }

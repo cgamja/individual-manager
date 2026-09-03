@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { voiceOffsetFor } from "../pet/sound";
 import {
+  isFemalePet,
   DRAG_THRESHOLD_PX,
   DEFAULT_TAUNTS,
   tauntFor,
@@ -269,6 +271,73 @@ describe("킹받는 대사", () => {
   it("아주_큰_값이나_음수에도_대사를_돌려준다", () => {
     for (const roll of [Number.MAX_SAFE_INTEGER, -7, 0, 1e15]) {
       expect(DEFAULT_TAUNTS).toContain(tauntFor(roll, DEFAULT_TAUNTS));
+    }
+  });
+});
+
+describe("성별은 창 라벨에서 결정적으로 나온다", () => {
+  it("같은_라벨은_항상_같은_결과다", () => {
+    // 난수를 쓰면 앱을 껐다 켤 때마다 옷이 바뀐다 (PRINCIPLE 3).
+    for (const label of ["pet-1", "pet-2", "pet-7", "pet-8"]) {
+      const 처음 = isFemalePet(label);
+      for (let i = 0; i < 5; i += 1) expect(isFemalePet(label)).toBe(처음);
+    }
+  });
+
+  it("암수가_둘_다_나온다", () => {
+    const 결과 = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => isFemalePet(`pet-${n}`));
+    expect(결과.some(Boolean), "암컷이 하나도 없다").toBe(true);
+    expect(결과.some((f) => !f), "수컷이 하나도 없다").toBe(true);
+  });
+
+  it("홀짝으로_안_갈린다", () => {
+    // **팀 배정(`assign_sides`)이 id 홀짝 교대다.** 성별도 홀짝이면 매 판이
+    // 여자팀 대 남자팀이 된다 — 실제로 `(id * 11) % 2`로 썼다가 그랬다
+    // (그건 `id % 2`와 같은 식이다).
+    const 성별 = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => isFemalePet(`pet-${n}`));
+    const 홀짝 = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => n % 2 === 1);
+    expect(성별, "성별이 id 홀짝과 똑같다 — 팀과 붙어 버린다").not.toEqual(홀짝);
+    expect(성별, "성별이 id 홀짝의 반대일 뿐이다").not.toEqual(홀짝.map((x) => !x));
+  });
+
+  it("한_팀에_암수가_섞인다", () => {
+    // 왼쪽 팀은 id 오름차순의 짝수 번째(= id 1,3,5,7), 오른쪽은 나머지다.
+    const 왼쪽 = [1, 3, 5, 7].map((n) => isFemalePet(`pet-${n}`));
+    const 오른쪽 = [2, 4, 6, 8].map((n) => isFemalePet(`pet-${n}`));
+    for (const [이름, 팀] of [["왼쪽", 왼쪽], ["오른쪽", 오른쪽]] as const) {
+      expect(팀.some(Boolean), `${이름} 팀이 전원 수컷이다`).toBe(true);
+      expect(팀.some((f) => !f), `${이름} 팀이 전원 암컷이다`).toBe(true);
+    }
+  });
+
+  it("여덟_마리에서_성비가_한쪽으로_안_쏠린다", () => {
+    const 암컷 = [1, 2, 3, 4, 5, 6, 7, 8].filter((n) => isFemalePet(`pet-${n}`)).length;
+    expect(암컷).toBeGreaterThanOrEqual(3);
+    expect(암컷).toBeLessThanOrEqual(5);
+  });
+
+  it("목소리_높낮이와_성별이_안_붙는다", () => {
+    // **"높은 목소리 = 암컷"이 되면 안 된다.** 둘 다 id의 함수라 완전한
+    // 독립은 불가능하니, 실제로 지켜야 하는 것만 본다: 높은 쪽에도 낮은 쪽에도
+    // 암수가 모두 있어야 한다.
+    //
+    // (앞서 여기에 "쌍의 가짓수가 2보다 많다"를 썼는데, `voiceOffsetFor`만으로도
+    // id마다 값이 달라 **항상 통과하는 테스트**였다 — `isFemalePet`이 상수를
+    // 돌려줘도 초록이었다.)
+    const 높은: boolean[] = [];
+    const 낮은: boolean[] = [];
+    for (let n = 1; n <= 12; n += 1) {
+      (voiceOffsetFor(`pet-${n}`) > 0 ? 높은 : 낮은).push(isFemalePet(`pet-${n}`));
+    }
+    for (const [이름, 무리] of [["높은 목소리", 높은], ["낮은 목소리", 낮은]] as const) {
+      expect(무리.some(Boolean), `${이름}가 전원 수컷이다`).toBe(true);
+      expect(무리.some((f) => !f), `${이름}가 전원 암컷이다`).toBe(true);
+    }
+  });
+
+  it("펫_창이_아니면_수컷으로_떨어진다", () => {
+    for (const label of ["main", "volley-court", "", "pet-x"]) {
+      expect(isFemalePet(label)).toBe(false);
     }
   });
 });

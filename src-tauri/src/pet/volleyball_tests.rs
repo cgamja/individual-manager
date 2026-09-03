@@ -1,0 +1,884 @@
+use super::*;
+
+/// 1440×900쯤의 화면을 흉내 낸 경계.
+fn 넓은_코트() -> Bounds {
+    Bounds {
+        left: 52.0,
+        right: 1_248.0,
+        top: 80.0,
+        floor_y: 700.0,
+    }
+}
+
+fn 코트() -> Court {
+    Court::new(넓은_코트()).expect("넓은 화면에서는 코트가 선다")
+}
+
+/// **세워 놓은 모니터.** 1080×1920쯤 — 세로가 길수록 판에서 모래까지의 낙하가
+/// 길어져 킬샷이 화면 밖으로 나가려 한다. 가로 화면만 보면 안 걸린다.
+fn 좁고_긴_코트() -> Bounds {
+    Bounds {
+        left: 52.0,
+        right: 888.0,
+        top: 105.0,
+        floor_y: 1_805.0,
+    }
+}
+
+// ── 코트 기하 ──────────────────────────────────────────────────
+
+#[test]
+fn 좁은_화면에서는_판을_열_수_없다() {
+    let 좁은 = Bounds {
+        left: 0.0,
+        right: 200.0,
+        top: 0.0,
+        floor_y: 400.0,
+    };
+    assert!(Court::new(좁은).is_none());
+}
+
+#[test]
+fn 납작한_경계에서_패닉하지_않는다() {
+    let 납작 = Bounds {
+        left: 0.0,
+        right: 0.0,
+        top: 0.0,
+        floor_y: 0.0,
+    };
+    assert!(Court::new(납작).is_none());
+}
+
+#[test]
+fn 타점은_네트_꼭대기보다_높다() {
+    // KTD6 — 이게 성립하는 동안 공은 네트에 걸릴 수가 없다. `tuning.rs`의
+    // `const assert!`와 같은 주장을 실제 기하로 한 번 더 확인한다.
+    let c = 코트();
+    assert!(
+        c.contact_y() < c.net_top_y(),
+        "타점 {} 이 네트 꼭대기 {} 보다 아래다",
+        c.contact_y(),
+        c.net_top_y()
+    );
+}
+
+#[test]
+fn 모래는_판과_함께_화면_세로_중앙에_뜬다() {
+    // **모래는 화면 바닥이 아니라 판에 있다.** 펭귄이 딛고 서는 면이라 판을
+    // 따라 뜬다 — 한 번 화면 바닥의 배경 해변으로 그렸다가 되돌렸다. 모래만
+    // 바닥에 남기면 펭귄이 딛고 선 면이 사라져 코트가 허공에 뜬다.
+    let b = 넓은_코트();
+    let c = Court::new(b).unwrap();
+    let play_y = c.spot_of(Side::Left, 0, 1).1;
+    assert!(
+        (play_y - (b.top + b.floor_y) / 2.0).abs() < 1e-9,
+        "판이 화면 세로 중앙이 아니다"
+    );
+    assert_eq!(c.sand_y(), play_y + PET_SIZE, "모래는 펭귄 발밑이다");
+    // 화면 바닥과는 한참 떨어져 있다.
+    assert!(
+        c.sand_y() < b.floor_y,
+        "모래({})가 화면 바닥({})까지 내려갔다",
+        c.sand_y(),
+        b.floor_y
+    );
+}
+
+#[test]
+fn 양_팀은_네트를_사이에_두고_선다() {
+    let c = 코트();
+    let (l0, l1) = c.span_of(Side::Left);
+    let (r0, r1) = c.span_of(Side::Right);
+    assert!(l0 < l1, "왼쪽 폭이 뒤집혔다");
+    assert!(r0 < r1, "오른쪽 폭이 뒤집혔다");
+    assert!(l1 < c.net_cx(), "왼쪽 코트가 네트를 넘었다");
+    assert!(r0 > c.net_cx(), "오른쪽 코트가 네트를 넘었다");
+    // 네트에 딱 붙어 서지 않는다.
+    assert!(c.net_cx() - l1 >= VOLLEY_NET_GAP * 0.5);
+    assert!(r0 - c.net_cx() >= VOLLEY_NET_GAP * 0.5);
+}
+
+#[test]
+fn 코트는_네트를_사이에_두고_대칭이다() {
+    let c = 코트();
+    let (l0, l1) = c.span_of(Side::Left);
+    let (r0, r1) = c.span_of(Side::Right);
+    assert!((c.net_cx() - l1 - (r0 - c.net_cx())).abs() < 1e-9);
+    assert!((c.net_cx() - l0 - (r1 - c.net_cx())).abs() < 1e-9);
+}
+
+#[test]
+fn 자리는_세계_경계_안에_있다() {
+    let b = 넓은_코트();
+    let c = Court::new(b).unwrap();
+    for n in 1..=4 {
+        for k in 0..n {
+            for side in [Side::Left, Side::Right] {
+                let (x, y) = c.spot_of(side, k, n);
+                assert!(
+                    x >= b.left && x <= b.right,
+                    "{side:?} {k}/{n} 의 x={x} 가 경계 밖이다"
+                );
+                // **판이 화면 세로 중앙으로 올라갔다** — 세로 자리가 전부 같고
+                // 경계 안이어야 한다는 이 테스트의 의도는 그대로다.
+                assert_eq!(y, (b.top + b.floor_y) / 2.0, "펭귄은 판 위에 뜬다");
+                assert!(y > b.top && y < b.floor_y, "판이 세계 밖으로 나갔다");
+            }
+        }
+    }
+}
+
+#[test]
+fn 한_마리면_자기_코트_가운데에_선다() {
+    let c = 코트();
+    let (x, _) = c.spot_of(Side::Left, 0, 1);
+    let (lo, hi) = c.span_of(Side::Left);
+    assert!(((x + PET_SIZE / 2.0) - (lo + hi) / 2.0).abs() < 1e-9);
+}
+
+#[test]
+fn 여럿이면_코트_폭에_고르게_퍼진다() {
+    let c = 코트();
+    let (lo, hi) = c.span_of(Side::Left);
+    let 자리: Vec<f64> = (0..3)
+        .map(|k| c.spot_of(Side::Left, k, 3).0 + PET_SIZE / 2.0)
+        .collect();
+    assert!((자리[0] - lo).abs() < 1e-9);
+    assert!((자리[2] - hi).abs() < 1e-9);
+    // 간격이 같다.
+    assert!(((자리[1] - 자리[0]) - (자리[2] - 자리[1])).abs() < 1e-9);
+}
+
+#[test]
+fn 네트를_기준으로_어느_쪽인지_안다() {
+    let c = 코트();
+    assert_eq!(c.side_of_cx(c.net_cx() - 10.0), Side::Left);
+    assert_eq!(c.side_of_cx(c.net_cx() + 10.0), Side::Right);
+}
+
+#[test]
+fn 코트_사각형은_네트_꼭대기부터_모래_아래까지다() {
+    // 의도는 그대로 — 창 하나가 네트와 모래를 **함께** 덮는다. 판이 올라가면서
+    // 판이 올라가면서 통째로 떠 있는 띠가 됐을 뿐이다.
+    let c = 코트();
+    let (x, y, w, h) = c.rect();
+    assert_eq!(y, c.net_top_y(), "창 윗변은 네트 꼭대기다");
+    assert_eq!(
+        h,
+        c.sand_y() + VOLLEY_SAND_DEPTH - c.net_top_y(),
+        "창은 모래톱 아래까지 덮는다"
+    );
+    // **네트는 창의 가로 한가운데다** — 웹뷰가 `left: 50%`로 맞출 수 있는 근거다.
+    assert!(((x + w / 2.0) - c.net_cx()).abs() < 1e-9, "네트가 창 한가운데가 아니다");
+    let (모래_lo, 모래_hi) = c.sand_span();
+    assert_eq!((x, x + w), (모래_lo, 모래_hi), "창은 모래사장을 통째로 덮는다");
+}
+
+#[test]
+fn 창이_네트와_모래를_함께_품는다() {
+    // 창 하나가 코트 전체다 — 네트 꼭대기부터 모래톱 아래까지.
+    let c = 코트();
+    let (_, y, _, h) = c.rect();
+    assert!(y <= c.net_top_y(), "창 윗변이 네트보다 아래다");
+    assert!(
+        y + h > c.sand_y(),
+        "창이 모래 표면({})까지 안 내려온다",
+        c.sand_y()
+    );
+    // 판 전체가 화면 안이다 — 세계 위아래를 안 넘는다.
+    let b = 넓은_코트();
+    assert!(y > b.top, "코트가 세계 위로 넘쳤다");
+    assert!(y + h < b.floor_y + PET_SIZE, "코트가 세계 아래로 넘쳤다");
+}
+
+#[test]
+fn 모래톱은_코트보다_조금_넓다() {
+    // 끝에 선 펭귄의 발밑도 모래여야 한다. 다만 화면 전체를 덮지는 않는다 —
+    // 판이 떠 있는 띠 하나다.
+    let b = 넓은_코트();
+    let c = Court::new(b).unwrap();
+    let (lo, hi) = c.sand_span();
+    // **몸통까지 모래 위여야 한다.** `lo <= s_lo`만 보면 여백이 0이어도 등호로
+    // 통과하는데, 그때 끝에 선 펭귄은 몸의 절반이 모래 밖으로 나간다.
+    for side in [Side::Left, Side::Right] {
+        let (s_lo, s_hi) = c.span_of(side);
+        assert!(
+            lo <= s_lo - PET_SIZE / 2.0,
+            "{side:?} 팀 왼쪽 끝 마리의 몸이 모래 밖이다"
+        );
+        assert!(
+            s_hi + PET_SIZE / 2.0 <= hi,
+            "{side:?} 팀 오른쪽 끝 마리의 몸이 모래 밖이다"
+        );
+    }
+    // 그렇다고 세계 밖까지 뻗지는 않는다 — 판이 떠 있는 띠 하나다.
+    assert!(lo >= b.left, "모래가 세계 왼쪽 밖으로 나갔다");
+    assert!(hi <= b.right + PET_SIZE, "모래가 세계 오른쪽 밖으로 나갔다");
+}
+
+#[test]
+fn 네트는_모래_위에_선다() {
+    // 그물 아래끝이 모래에 닿는다 — 매달린 것이 아니라 서 있는 그림이다.
+    let c = 코트();
+    assert!((c.net_top_y() + VOLLEY_NET_HEIGHT - c.sand_y()).abs() < 1e-9);
+}
+
+// ── 팀 배정 ────────────────────────────────────────────────────
+
+#[test]
+fn 홀수면_왼쪽_팀이_한_마리_많다() {
+    let sides = assign_sides(3);
+    assert_eq!(sides.iter().filter(|s| **s == Side::Left).count(), 2);
+    assert_eq!(sides.iter().filter(|s| **s == Side::Right).count(), 1);
+}
+
+#[test]
+fn 팀은_id_오름차순으로_번갈아_배정된다() {
+    assert_eq!(
+        assign_sides(4),
+        vec![Side::Left, Side::Right, Side::Left, Side::Right]
+    );
+    // 같은 마릿수는 항상 같은 배치를 낳는다 (난수를 안 쓴다).
+    assert_eq!(assign_sides(8), assign_sides(8));
+}
+
+#[test]
+fn 두_마리면_한_명씩_나뉜다() {
+    assert_eq!(assign_sides(2), vec![Side::Left, Side::Right]);
+}
+
+#[test]
+fn 반대편은_서로다() {
+    assert_eq!(Side::Left.other(), Side::Right);
+    assert_eq!(Side::Right.other(), Side::Left);
+}
+
+// ── 공 물리와 랠리 계획 ────────────────────────────────────────
+
+/// 코트에 마리 `n`을 세우고 판을 연다. 반환은 (판, (id, 팀, 몸통 가운데 x) 목록).
+fn 판(n: usize, seed: u64) -> (Volleyball, Vec<(PetId, Side, f64)>) {
+    판_에서(넓은_코트(), n, seed)
+}
+
+/// 아무 경계에서나 판을 연다 — 세워 놓은 화면처럼 다른 기하를 볼 때 쓴다.
+fn 판_에서(bounds: Bounds, n: usize, seed: u64) -> (Volleyball, Vec<(PetId, Side, f64)>) {
+    let court = Court::new(bounds).expect("코트가 선다");
+    let sides = assign_sides(n);
+    let 좌수 = sides.iter().filter(|s| **s == Side::Left).count();
+    let 우수 = n - 좌수;
+    let (mut 좌, mut 우) = (0usize, 0usize);
+    let mut players = BTreeMap::new();
+    let mut 위치 = Vec::new();
+    for (i, side) in sides.iter().enumerate() {
+        let id = i as PetId + 1;
+        let (k, total) = if *side == Side::Left {
+            좌 += 1;
+            (좌 - 1, 좌수)
+        } else {
+            우 += 1;
+            (우 - 1, 우수)
+        };
+        let spot = court.spot_of(*side, k, total);
+        players.insert(id, *side);
+        위치.push((id, *side, spot.0 + PET_SIZE / 2.0));
+    }
+    (Volleyball::new(players, court, 0, seed), 위치)
+}
+
+struct 랠리결과 {
+    왕복: usize,
+    끝난_ms: u64,
+    체공들: Vec<u64>,
+    목적지들: Vec<f64>,
+}
+
+/// 판을 열고 서브까지 넣은 뒤 끝날 때까지 굴린다. 받을 마리는 목적지로 곧장
+/// 이동시킨다 — 코어의 랠리 계획만 떼어 보기 위한 이상적 모형이고, 실제 이동은
+/// `motion/volleyball.rs`가 한다.
+fn 랠리를_굴린다(n: usize, seed: u64) -> 랠리결과 {
+    const 틱: u64 = 50;
+    let dt = 틱 as f64 / 1_000.0;
+    let (mut board, mut 위치) = 판(n, seed);
+    let mut now = 0u64;
+    board.serve(now, &위치);
+    let mut 왕복 = 0;
+    let mut 체공들 = Vec::new();
+    let mut 목적지들 = Vec::new();
+
+    while now < 200_000 {
+        now += 틱;
+        board.step_ball(dt);
+
+        if let Some((rid, tcx)) = board.receiver() {
+            if let Some(p) = 위치.iter_mut().find(|(id, _, _)| *id == rid) {
+                let 남은 = tcx - p.2;
+                let 한걸음 = VOLLEY_CHASE_SPEED * dt;
+                p.2 += 남은.clamp(-한걸음, 한걸음);
+            }
+            let cx = 위치.iter().find(|(id, _, _)| *id == rid).map(|p| p.2);
+            if let Some(cx) = cx {
+                if board.contact_at(cx) {
+                    let to = board.next_side();
+                    let 상대: Vec<(PetId, f64)> = 위치
+                        .iter()
+                        .filter(|(_, s, _)| *s == to)
+                        .map(|(id, _, cx)| (*id, *cx))
+                        .collect();
+                    board.hit(now, &상대);
+                    왕복 += 1;
+                    체공들.push(board.last_flight_ms());
+                    if let Some((_, tcx)) = board.receiver() {
+                        목적지들.push(tcx);
+                    }
+                }
+            }
+        }
+
+        if board.landed() {
+            return 랠리결과 {
+                왕복,
+                끝난_ms: now,
+                체공들,
+                목적지들,
+            };
+        }
+    }
+    panic!("판이 200초 안에 안 끝났다");
+}
+
+#[test]
+fn 같은_시드는_같은_랠리를_낳는다() {
+    // **매 틱 전체를 대조한다** — 끝에서 한 번만 보면 중간에 갈렸다가 우연히
+    // 붙은 경우를 놓친다.
+    let (mut a, 위치a) = 판(4, 0xBEEF);
+    let (mut b, 위치b) = 판(4, 0xBEEF);
+    a.serve(0, &위치a);
+    b.serve(0, &위치b);
+    for t in 1..=400u64 {
+        a.step_ball(0.05);
+        b.step_ball(0.05);
+        let now = t * 50;
+        assert_eq!(a.ball(), b.ball(), "{now}ms 에서 공이 갈렸다");
+        assert_eq!(a.receiver(), b.receiver(), "{now}ms 에서 받을 마리가 갈렸다");
+        assert_eq!(a.phase(), b.phase(), "{now}ms 에서 국면이 갈렸다");
+    }
+}
+
+#[test]
+fn 다른_시드는_다른_랠리를_낳는다() {
+    let 결과들: Vec<Vec<f64>> = (1u64..=5).map(|s| 랠리를_굴린다(4, s).목적지들).collect();
+    assert!(
+        결과들.iter().any(|r| *r != 결과들[0]),
+        "시드 다섯 개가 전부 같은 목적지 열을 냈다 — 난수가 안 걸렸다"
+    );
+}
+
+#[test]
+fn 공은_반드시_네트를_넘는다() {
+    // KTD6 — 네트 근처를 지날 때 공은 언제나 네트 꼭대기보다 위다.
+    네트를_넘는지_본다(넓은_코트());
+    // **세워 놓은 화면도 본다** — 낙하가 길어져 킬샷의 조건이 달라지는 자리다.
+    네트를_넘는지_본다(좁고_긴_코트());
+}
+
+fn 네트를_넘는지_본다(bounds: Bounds) {
+    let court = Court::new(bounds).expect("코트가 선다");
+    for seed in 1u64..=8 {
+        let (mut board, mut 위치) = 판_에서(bounds, 4, seed);
+        board.serve(0, &위치);
+        let mut now = 0u64;
+        while now < 40_000 && !board.landed() {
+            now += 50;
+            board.step_ball(0.05);
+            if let Some(ball) = board.ball() {
+                // **그물 전폭을 본다.** ±40은 그물에 폭이 생기기 전의 값이라
+                // 가장 낮게 지나는 **먼 쪽 모서리**(±48)를 놓쳤다.
+                // **공 아래쪽을 본다.** 중심만 보면 반지름 28px이 그물 안으로
+                // 들어가 있어도 통과한다 — 실제로 그렇게 통과하고 있었다.
+                if (ball.x - court.net_cx()).abs() <= VOLLEY_NET_HALF_W {
+                    assert!(
+                        ball.y + VOLLEY_BALL_SIZE / 2.0 <= court.net_top_y(),
+                        "시드 {seed}: 공이 네트를 뚫었다 (아래끝={}, 그물 꼭대기={})",
+                        ball.y + VOLLEY_BALL_SIZE / 2.0,
+                        court.net_top_y()
+                    );
+                }
+            }
+            if let Some((rid, tcx)) = board.receiver() {
+                if let Some(p) = 위치.iter_mut().find(|(id, _, _)| *id == rid) {
+                    let 남은 = tcx - p.2;
+                    p.2 += 남은.clamp(-VOLLEY_CHASE_SPEED * 0.05, VOLLEY_CHASE_SPEED * 0.05);
+                }
+                let cx = 위치.iter().find(|(id, _, _)| *id == rid).unwrap().2;
+                if board.contact_at(cx) {
+                    let to = board.next_side();
+                    let 상대: Vec<(PetId, f64)> = 위치
+                        .iter()
+                        .filter(|(_, s, _)| *s == to)
+                        .map(|(id, _, cx)| (*id, *cx))
+                        .collect();
+                    board.hit(now, &상대);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn 공이_모래에_닿으면_판이_끝난다() {
+    let (mut board, 위치) = 판(2, 7);
+    board.serve(0, &위치);
+    let mut now = 0;
+    while now < 10_000 && !board.landed() {
+        now += 50;
+        board.step_ball(0.05);
+    }
+    assert!(board.landed(), "받는 사람이 없어도 공은 반드시 떨어진다");
+    board.settle(now);
+    assert_eq!(board.phase(), CourtPhase::Point);
+}
+
+#[test]
+fn 예산이_다_되면_반드시_끝난다() {
+    // 여덟 마리가 코트를 빽빽하게 덮어도 끝난다 — KTD7의 종료 증명.
+    for seed in 1u64..=10 {
+        let r = 랠리를_굴린다(8, seed);
+        assert!(
+            r.끝난_ms <= VOLLEY_SESSION_MS.1 + 4_000,
+            "시드 {seed}: {}ms 나 걸렸다",
+            r.끝난_ms
+        );
+    }
+}
+
+#[test]
+fn 한_판은_스무_초쯤_걸린다() {
+    for seed in 1u64..=20 {
+        let r = 랠리를_굴린다(4, seed);
+        assert!(
+            (VOLLEY_SESSION_MS.0..=VOLLEY_SESSION_MS.1 + 3_000).contains(&r.끝난_ms),
+            "시드 {seed}: {}ms — 18~25초 밖이다",
+            r.끝난_ms
+        );
+    }
+}
+
+#[test]
+fn 랠리는_열_번_넘게_오간다() {
+    // 밀도가 곧 이 동작의 재미다. 왕복이 몇 번 안 되면 20초가 통째로 빈다.
+    let mut 왕복들: Vec<usize> = (1u64..=20).map(|s| 랠리를_굴린다(4, s).왕복).collect();
+    왕복들.sort_unstable();
+    let 중앙값 = 왕복들[왕복들.len() / 2];
+    assert!(중앙값 >= 12, "왕복 중앙값이 {중앙값}회뿐이다 — 랠리로 안 보인다");
+}
+
+#[test]
+fn 체공이_세_갈래로_갈린다() {
+    // **등급값을 그대로 대조하지 않는다.** 판이 화면 세로 중앙으로 올라가면서
+    // 공이 뜰 수 있는 높이가 절반이 됐고, `flight_ms_for`의 천장 자르기가 가장
+    // 긴 등급을 눌러 준다 — 값은 달라져도 **셋으로 갈린다**는 것이 이 테스트가
+    // 지키려던 것이고 그건 그대로다 (`VOLLEY_MIN_HEADROOM` 단언이 하한을 잡는다).
+    // **등급 자체를 본다.** 관측값으로 세면 도착 보장(`필요`)이 만드는 잔값이
+    // 수십 가지라 `>= 3`이 그냥 통과한다 — 등급이 하나로 뭉개져도 못 잡는다.
+    let court = 코트();
+    let 등급: Vec<u64> = VOLLEY_FLIGHT_MS
+        .iter()
+        .map(|g| flight_ms_for(&court, 0.0, *g))
+        .collect();
+    let 서로_다른: std::collections::BTreeSet<u64> = 등급.iter().copied().collect();
+    assert_eq!(
+        서로_다른.len(),
+        3,
+        "천장 자르기가 등급 셋을 {}가지로 뭉갰다: {등급:?}",
+        서로_다른.len()
+    );
+    assert!(등급[2] >= 등급[0] * 2, "가장 긴 등급이 짧은 것의 두 배도 안 된다: {등급:?}");
+
+    // 실제 랠리에서도 셋이 다 나온다.
+    let mut 본_것 = std::collections::BTreeSet::new();
+    for seed in 1u64..=20 {
+        for ms in 랠리를_굴린다(4, seed).체공들 {
+            if 등급.contains(&ms) {
+                본_것.insert(ms);
+            }
+        }
+    }
+    assert_eq!(본_것.len(), 3, "랠리에 안 나온 등급이 있다: {본_것:?}");
+}
+
+#[test]
+fn 멀리_보낸_공은_체공이_길다() {
+    // 체공은 "받을 마리가 도착할 수 있는 최소값"으로 아래를 눌러 잡는다. 그래서
+    // 먼 곳을 노린 공은 저절로 토스가 된다 — 주사위 하나가 변화 둘을 만든다.
+    let court = 코트();
+    let 가까이 = flight_ms_for(&court, 0.0, VOLLEY_FLIGHT_MS[0]);
+    let 멀리 = flight_ms_for(&court, 340.0, VOLLEY_FLIGHT_MS[0]);
+    assert!(멀리 > 가까이, "먼 곳({멀리}ms)이 가까운 곳({가까이}ms)보다 안 길다");
+}
+
+#[test]
+fn 목적지에서_가장_가까운_마리가_받는다() {
+    // 난수가 아니라 거리로 정한다 — 그래야 "저쪽으로 갔으니 쟤가 뛰겠구나"가 읽힌다.
+    let 상대 = [(10u32, 0.0), (11, 100.0), (12, 300.0)];
+    assert_eq!(nearest_to(&상대, 90.0), Some(11));
+    assert_eq!(nearest_to(&상대, 5.0), Some(10));
+    assert_eq!(nearest_to(&상대, 999.0), Some(12));
+    assert_eq!(nearest_to(&[], 0.0), None);
+}
+
+#[test]
+fn 킬샷은_아무도_못_받는다() {
+    // 예산이 지난 뒤에는 접촉 판정을 통째로 건너뛴다 — 이게 종료의 증명이다.
+    let (mut board, 위치) = 판(4, 3);
+    board.serve(0, &위치);
+    board.force_rally_over();
+    board.step_ball(0.05);
+    for (_, _, cx) in &위치 {
+        assert!(!board.contact_at(*cx), "예산이 지났는데 접촉이 잡혔다");
+    }
+}
+
+#[test]
+fn 틱이_밀려도_타점을_건너뛰지_않는다() {
+    // 한 틱이 250ms를 정산하면 공이 한 번에 300px 넘게 내려온다 — 지금 위치만
+    // 보면 타점을 통째로 뛰어넘는다. 구간으로 봐야 잡힌다.
+    let (mut board, 위치) = 판(2, 11);
+    board.serve(0, &위치);
+    let (_, cx) = board.receiver().unwrap();
+    let _ = 위치;
+    let mut 잡혔나 = false;
+    for _ in 0..8 {
+        board.step_ball(0.25);
+        if board.contact_at(cx) {
+            잡혔나 = true;
+            break;
+        }
+    }
+    assert!(잡혔나, "250ms 틱에서 타점을 놓쳤다");
+}
+
+#[test]
+fn 서브는_자기_쪽으로_띄웠다_때린다() {
+    // 서브는 국면이 아니라 "자기에게 보내는 왕복 0번"이다 (KTD4).
+    let (mut board, 위치) = 판(4, 5);
+    board.serve(0, &위치);
+    let (rid, tcx) = board.receiver().expect("서브하면 받을 마리가 정해진다");
+    let 서버_cx = 위치.iter().find(|(id, _, _)| *id == rid).unwrap().2;
+    assert!((tcx - 서버_cx).abs() < 1e-9, "서브의 목적지가 자기 자리가 아니다");
+    let ball = board.ball().unwrap();
+    assert!((ball.x - 서버_cx).abs() < 1e-9, "공이 서버 위에서 안 뜬다");
+    assert_eq!(board.phase(), CourtPhase::Rally);
+}
+
+#[test]
+fn 공은_올라가는_동안_안_맞는다() {
+    let (mut board, 위치) = 판(2, 13);
+    board.serve(0, &위치);
+    let (_, cx) = board.receiver().unwrap();
+    let _ = 위치;
+    board.step_ball(0.05);
+    assert!(!board.contact_at(cx), "올라가는 공을 때렸다");
+}
+
+#[test]
+fn 정점은_천장을_넘지_않는다() {
+    let court = 코트();
+    let 높이 = court.contact_y() - court.ceiling_y();
+    for grade in VOLLEY_FLIGHT_MS {
+        let t = flight_ms_for(&court, 0.0, grade) as f64 / 1_000.0;
+        let 정점 = VOLLEY_GRAVITY * t * t / 8.0;
+        assert!(
+            정점 <= 높이 + 1e-6,
+            "체공 {t}s 의 정점 {정점}이 천장 높이 {높이}를 넘는다"
+        );
+    }
+}
+
+#[test]
+fn 진_팀은_공이_떨어진_쪽이다() {
+    let (mut board, 위치) = 판(2, 17);
+    board.serve(0, &위치);
+    let 서버 = board.receiver().unwrap().0;
+    let 서버_팀 = board.side_of(서버).unwrap();
+    while !board.landed() {
+        board.step_ball(0.05);
+    }
+    // 아무도 안 받았으므로 서브한 쪽 코트에 떨어진다.
+    assert_eq!(board.loser(), 서버_팀);
+}
+
+#[test]
+fn 안전_상한이_지나면_판이_만료된다() {
+    let (board, _) = 판(2, 1);
+    assert!(!board.expired(VOLLEY_MAX_MS - 1));
+    assert!(board.expired(VOLLEY_MAX_MS));
+}
+
+#[test]
+fn 마리가_빠지면_참여_목록에서_사라진다() {
+    let (mut board, _) = 판(4, 1);
+    assert_eq!(board.participants().len(), 4);
+    board.leave(2);
+    assert_eq!(board.participants().len(), 3);
+    assert_eq!(board.side_of(2), None);
+}
+
+#[test]
+fn 틱은_밀려도_상한을_넘지_않는다() {
+    let (mut board, _) = 판(2, 1);
+    // 10초가 밀려도 한 번에 `MAX_STEP_MS`만 정산한다 — 아니면 공이 순간이동한다.
+    let dt = board.tick(10_000);
+    assert!((dt - MAX_STEP_MS as f64 / 1_000.0).abs() < 1e-9);
+}
+
+#[test]
+fn 판은_공이_모래에_닿아_끝난다() {
+    // **킬샷은 타점이 아니라 모래를 겨눠야 한다.** 타점 높이로 조준하면 공은
+    // 거기서 152px을 더 떨어지는 동안 가로 속도를 그대로 갖고 있어, 코트를
+    // 벗어난 채 `out_of`로 끝난다 — 그러면 `settle`이 공을 화면 밖 x에서
+    // 수직으로 떨어뜨리고, "공이 모래에 닿으면 끝난다"는 설명이 거짓이 된다.
+    let court = 코트();
+    for n in [2usize, 3, 4, 6, 8] {
+        for seed in 1u64..=12 {
+            let (mut board, mut 위치) = 판(n, seed);
+            board.serve(0, &위치);
+            let mut now = 0u64;
+            while now < 60_000 && !board.landed() {
+                now += 50;
+                board.step_ball(0.05);
+                if let Some((rid, tcx)) = board.receiver() {
+                    if let Some(p) = 위치.iter_mut().find(|(id, _, _)| *id == rid) {
+                        let 남은 = tcx - p.2;
+                        p.2 += 남은.clamp(-VOLLEY_CHASE_SPEED * 0.05, VOLLEY_CHASE_SPEED * 0.05);
+                    }
+                    let cx = 위치.iter().find(|(id, _, _)| *id == rid).unwrap().2;
+                    if board.contact_at(cx) {
+                        let to = board.next_side();
+                        let 상대: Vec<(PetId, f64)> = 위치
+                            .iter()
+                            .filter(|(_, s, _)| *s == to)
+                            .map(|(id, _, cx)| (*id, *cx))
+                            .collect();
+                        board.hit(now, &상대);
+                    }
+                }
+            }
+            let ball = board.ball().expect("판이 끝날 때 공은 있다");
+            assert!(
+                !court.out_of(ball.x),
+                "{n}마리 시드 {seed}: 공이 코트 밖({})에서 끝났다",
+                ball.x
+            );
+            assert!(
+                ball.y + VOLLEY_BALL_SIZE / 2.0 >= court.sand_y() - 1.0,
+                "{n}마리 시드 {seed}: 공이 공중({})에서 끝났다 — 모래는 {}",
+                ball.y,
+                court.sand_y()
+            );
+        }
+    }
+}
+
+/// 판이 끝날 때까지 굴리고 공을 돌려준다. 받을 마리는 목적지로 곧장 이동한다.
+fn 끝까지(bounds: Bounds, n: usize, seed: u64) -> (Court, VolleyBallSnapshot) {
+    let court = Court::new(bounds).expect("코트가 선다");
+    let sides = assign_sides(n);
+    let 좌수 = sides.iter().filter(|s| **s == Side::Left).count();
+    let (mut 좌, mut 우) = (0usize, 0usize);
+    let mut players = BTreeMap::new();
+    let mut 위치 = Vec::new();
+    for (i, side) in sides.iter().enumerate() {
+        let id = i as PetId + 1;
+        let (k, total) = if *side == Side::Left {
+            좌 += 1;
+            (좌 - 1, 좌수)
+        } else {
+            우 += 1;
+            (우 - 1, n - 좌수)
+        };
+        let spot = court.spot_of(*side, k, total);
+        players.insert(id, *side);
+        위치.push((id, *side, spot.0 + PET_SIZE / 2.0));
+    }
+    let mut board = Volleyball::new(players, court, 0, seed);
+    board.serve(0, &위치);
+    let mut now = 0u64;
+    while now < 60_000 && !board.landed() {
+        now += 50;
+        board.step_ball(0.05);
+        if let Some((rid, tcx)) = board.receiver() {
+            if let Some(p) = 위치.iter_mut().find(|(id, _, _)| *id == rid) {
+                let 남은 = tcx - p.2;
+                p.2 += 남은.clamp(-VOLLEY_CHASE_SPEED * 0.05, VOLLEY_CHASE_SPEED * 0.05);
+            }
+            let cx = 위치.iter().find(|(id, _, _)| *id == rid).unwrap().2;
+            if board.contact_at(cx) {
+                let to = board.next_side();
+                let 상대: Vec<(PetId, f64)> = 위치
+                    .iter()
+                    .filter(|(_, s, _)| *s == to)
+                    .map(|(id, _, cx)| (*id, *cx))
+                    .collect();
+                board.hit(now, &상대);
+            }
+        }
+    }
+    (court, board.ball().expect("판이 끝날 때 공은 있다"))
+}
+
+#[test]
+fn 세워_놓은_화면에서도_공이_화면_안에_떨어진다() {
+    // **킬샷의 착지점과 체공은 서로에게 의존한다.** 등급을 짧은 것으로 박아 두면
+    // 세로가 긴 화면에서 낙하가 길어져 공이 화면 밖에 떨어지고, **판이 안 보이는
+    // 데서 끝난다.** 가로 화면 픽스처만 있으면 이 자리를 영영 못 본다.
+    let b = 좁고_긴_코트();
+    for n in [2usize, 4, 8] {
+        for seed in 1u64..=6 {
+            let (court, ball) = 끝까지(b, n, seed);
+            let (lo, hi) = court.landing_span();
+            assert!(
+                ball.x >= lo && ball.x <= hi,
+                "{n}마리 시드 {seed}: 공이 화면 밖 {}에 떨어졌다 (화면 {lo}~{hi})",
+                ball.x
+            );
+        }
+    }
+}
+
+#[test]
+fn 킬샷은_지금_언제나_가장_짧은_등급이다() {
+    // **낙하 높이가 세계와 무관해졌다** — 모래가 판의 발밑이라 타점에서 모래까지가
+    // 어느 화면에서나 `PET_SIZE - 공반지름 + REACH`로 고정이다. 그래서 `kill_shot`의
+    // 등급 훑기는 지금 **첫 등급에서 항상 끝난다.**
+    //
+    // 루프를 지우지 않고 이 테스트를 두는 이유: 상수(`REACH`·`SAND_DEPTH`·`NET_DROP`)를
+    // 만지면 그 전제가 조용히 깨질 수 있고, 그때 **여기가 빨개져서 알려 준다.**
+    // 판이 화면 세로 중앙이던 시절에는 실제로 세로로 긴 화면에서 긴 등급이 필요했다.
+    for bounds in [넓은_코트(), 좁고_긴_코트()] {
+        let court = Court::new(bounds).expect("코트가 선다");
+        for 방향 in [Side::Left, Side::Right] {
+            let (lo, hi) = court.span_of(방향.other());
+            for k in 0..=10 {
+                let x0 = lo + (hi - lo) * k as f64 / 10.0;
+                let (_, ms) = 킬샷(&court, x0, 방향);
+                assert_eq!(
+                    ms, VOLLEY_FLIGHT_MS[0],
+                    "등급 훑기가 첫 등급을 못 썼다 — 기하 전제가 바뀌었다"
+                );
+            }
+        }
+    }
+}
+
+/// 판 하나를 세워 `kill_shot`만 불러 본다.
+fn 킬샷(court: &Court, x0: f64, to: Side) -> (f64, u64) {
+    let mut players = BTreeMap::new();
+    players.insert(1u32, Side::Left);
+    players.insert(2u32, Side::Right);
+    let board = Volleyball::new(players, *court, 0, 1);
+    board.kill_shot_for_test(x0, court.span_of(to).0, to)
+}
+
+#[test]
+fn 킬샷은_코트_안에_떨어진다() {
+    // 그림으로 그려진 코트 사각형 안이어야 한다 — 밖이면 공이 모래 없는
+    // 바탕화면에 꽂힌다.
+    // **`rect()`(= `sand_span`)로 재면 안 된다** — 거기엔 화면 밖 200px 여백이
+    // 들어 있어서, 착지를 화면 안으로 제한한다는 주장을 하나도 안 지킨다.
+    let court = 코트();
+    let (x0, w) = {
+        let (lo, hi) = court.landing_span();
+        (lo, hi - lo)
+    };
+    for seed in 1u64..=20 {
+        let (mut board, mut 위치) = 판(4, seed);
+        board.serve(0, &위치);
+        let mut now = 0u64;
+        while now < 60_000 && !board.landed() {
+            now += 50;
+            board.step_ball(0.05);
+            if let Some((rid, tcx)) = board.receiver() {
+                if let Some(p) = 위치.iter_mut().find(|(id, _, _)| *id == rid) {
+                    let 남은 = tcx - p.2;
+                    p.2 += 남은.clamp(-VOLLEY_CHASE_SPEED * 0.05, VOLLEY_CHASE_SPEED * 0.05);
+                }
+                let cx = 위치.iter().find(|(id, _, _)| *id == rid).unwrap().2;
+                if board.contact_at(cx) {
+                    let to = board.next_side();
+                    let 상대: Vec<(PetId, f64)> = 위치
+                        .iter()
+                        .filter(|(_, s, _)| *s == to)
+                        .map(|(id, _, cx)| (*id, *cx))
+                        .collect();
+                    board.hit(now, &상대);
+                }
+            }
+        }
+        let ball = board.ball().unwrap();
+        assert!(
+            ball.x >= x0 && ball.x <= x0 + w,
+            "시드 {seed}: 공이 화면({x0}~{}) 밖 {}에 떨어졌다",
+            x0 + w,
+            ball.x
+        );
+    }
+}
+
+#[test]
+fn 한쪽_팀이_비면_판을_열지_않는다() {
+    // 한 팀이 통째로 비면 서브 한 번에 공이 떨어져 "2초짜리 판"이 된다.
+    let court = 코트();
+    let mut players = BTreeMap::new();
+    players.insert(1u32, Side::Left);
+    players.insert(2u32, Side::Left);
+    assert!(
+        !both_sides_present(&players),
+        "한쪽만 있는 배치를 통과시켰다"
+    );
+    players.insert(3u32, Side::Right);
+    assert!(both_sides_present(&players));
+    let _ = court;
+}
+
+#[test]
+fn 마릿수가_늘어도_뛰는_거리가_안_죽는다() {
+    // **KTD3-1의 근거가 여기 걸려 있다** — "뛰는 그림이 랠리 화면의 절반을
+    // 채운다"는 주장은 받을 마리가 실제로 이동해야 성립한다. 목적지를 균등하게만
+    // 뽑으면 여덟 마리일 때 이웃 간격이 사정거리에 가까워 아무도 안 뛰고,
+    // 그러면 최대 마릿수에서 갈래 하나가 통째로 죽는다.
+    for n in [2usize, 4, 8] {
+        let mut 총_이동 = 0.0f64;
+        for seed in 1u64..=8 {
+            let (mut board, mut 위치) = 판(n, seed);
+            board.serve(0, &위치);
+            let mut now = 0u64;
+            while now < 40_000 && !board.landed() {
+                now += 50;
+                board.step_ball(0.05);
+                if let Some((rid, tcx)) = board.receiver() {
+                    if let Some(p) = 위치.iter_mut().find(|(id, _, _)| *id == rid) {
+                        let 남은 = tcx - p.2;
+                        let 한걸음 = 남은.clamp(-VOLLEY_CHASE_SPEED * 0.05, VOLLEY_CHASE_SPEED * 0.05);
+                        p.2 += 한걸음;
+                        총_이동 += 한걸음.abs();
+                    }
+                    let cx = 위치.iter().find(|(id, _, _)| *id == rid).unwrap().2;
+                    if board.contact_at(cx) {
+                        let to = board.next_side();
+                        let 상대: Vec<(PetId, f64)> = 위치
+                            .iter()
+                            .filter(|(_, s, _)| *s == to)
+                            .map(|(id, _, cx)| (*id, *cx))
+                            .collect();
+                        board.hit(now, &상대);
+                    }
+                }
+            }
+        }
+        let 판당 = 총_이동 / 8.0;
+        assert!(
+            판당 >= 900.0,
+            "{n}마리: 한 판에 {판당:.0}px밖에 안 뛴다 — 뛰는 그림이 죽었다"
+        );
+    }
+}

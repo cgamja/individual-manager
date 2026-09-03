@@ -1,0 +1,123 @@
+/* 코트 — 화면 세로 중앙에 뜬 모래톱과 그 위에 선 네트.
+   창 하나가 둘을 함께 덮는다 (`Court::rect`). 화면 바닥에는 아무것도 안 그린다. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* **배경을 칠하지 않는다.** 조금이라도 칠하면 코트 둘레에 네모가 보인다. */
+  background: transparent;
+  user-select: none;
+}
+
+/* **클릭 통과는 CSS가 못 한다 — 이건 다른 일을 한다.**
+   진짜 클릭 통과는 Rust의 `set_ignore_cursor_events(true)`(= `NSWindow.
+   ignoresMouseEvents`)뿐이다. `pointer-events: none`은 **웹뷰가 클릭에
+   반응하지 않게** 할 뿐이고 네이티브 창은 여전히 클릭을 **먹는다**(아래 앱으로
+   안 내려간다). 그래도 두는 이유는 커서 모양·텍스트 선택·hover 같은 웹뷰
+   자체의 반응을 없애기 위해서다. */
+#court-root,
+#court-root * {
+  pointer-events: none;
+}
+
+/* 값은 Rust의 `tuning.rs`와 맞아야 한다 — `volley.test.ts`가 대조한다.
+   창 높이는 화면마다 다르지만 이 둘은 고정이라, 창을 늘여도 네트와 모래의
+   두께가 안 변한다. */
+#court-root {
+  --vb-net-h: 85px;
+  --vb-net-w: 96px;
+  --vb-sand-depth: 80px;
+  /* 물결이 착지면 위로 솟는 폭. 아래로도 같은 만큼 내려간다 — 즉 착지면은
+     물결의 **한가운데**다. 그림뿐이라 Rust에 짝이 없다. */
+  --vb-sand-wave: 8px;
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── 모래톱 — 창 바닥에 붙는다. 판과 함께 떠 있다 ─────────────── */
+
+/* **모래는 화면 바닥이 아니라 판에 있다.** 펭귄이 딛고 서는 면이라 판을 따라
+   화면 세로 중앙에 뜬다 — 볼링의 레인이 통째로 떠 있는 것과 같다. (한 번
+   화면 바닥에 그렸다가 되돌렸다: 모래만 바닥에 남기면 코트가 허공에 뜬다.)
+
+   **가로로만 늘어난다.** 세로는 위 변수가 고정하므로 코트가 넓어져도 모래가
+   두꺼워지지 않는다. */
+.vb-sand {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* **물결이 착지면 위아래로 오가도록 여유를 준다.** 요소 높이를 정확히
+     `depth`로 두면 물결선이 통째로 착지면 **아래**에 그려져 공이 모래 위에
+     떠 보인다 — 실제로 1~18px 떠 있었다. */
+  height: calc(var(--vb-sand-depth) + var(--vb-sand-wave));
+  display: block;
+  animation: vb-sand-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes vb-sand-rise {
+  0% {
+    transform: translateY(28px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ── 네트 — 창 위쪽 한가운데. 아래끝이 모래에 닿는다 ──────────── */
+
+/* `left: 50%`로 맞는 근거는 `Court::rect`에 있다 — 창이 `net_cx`를 중심으로
+   대칭이라 웹뷰가 좌표를 하나도 안 받아도 된다. */
+.vb-net {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: var(--vb-net-w);
+  height: var(--vb-net-h);
+  margin-left: calc(var(--vb-net-w) / -2);
+  display: block;
+  animation: vb-net-drop 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes vb-net-drop {
+  0% {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 그물이 바람에 아주 조금 흔들린다 — 완전히 굳으면 붙여 놓은 그림으로 보인다. */
+@keyframes vb-net-sway {
+  0%,
+  100% {
+    transform: skewX(-0.8deg);
+  }
+  50% {
+    transform: skewX(0.8deg);
+  }
+}
+
+.vb-net-mesh {
+  transform-origin: 50% 0%;
+  animation: vb-net-sway 3.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #court-root,
+  #court-root * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

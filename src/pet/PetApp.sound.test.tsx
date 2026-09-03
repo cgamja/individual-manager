@@ -91,6 +91,8 @@ const snap = (over: Partial<PetSnapshot> = {}): PetSnapshot => ({
   speech: null,
   whack_seq: 0,
   pinball: false,
+  punch_seq: 0,
+  punch_down: false,
   behavior: { kind: "walk" },
   ...over,
 });

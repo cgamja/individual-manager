@@ -32,6 +32,12 @@ pub const EVENT_BALL_STATE: &str = "bowling://ball";
 /// 비치볼 창이 구독하는 상태 이벤트. 공 창이 따로라 이벤트도 따로다.
 pub const EVENT_VOLLEY_STATE: &str = "volley://ball";
 
+/// 미녀 펭귄 창이 구독하는 상태 이벤트. 창이 따로라 이벤트도 따로다.
+pub const EVENT_YACHA_QUEEN: &str = "yacha://queen";
+
+/// 야차 판이 **끝났음**을 설정 창에 알린다 (볼링·발리볼과 같은 자리).
+pub const EVENT_YACHA_OVER: &str = "yacha://over";
+
 /// 비치발리볼 판이 **끝났음**을 설정 창에 알린다. 판을 끝내는 것은 예산이지
 /// 사용자가 아니라서, 이게 없으면 버튼이 비활성인 채로 남는다 (볼링과 같다).
 pub const EVENT_VOLLEY_OVER: &str = "volley://over";
@@ -104,9 +110,11 @@ pub struct PetSummary {
     pub focused: Option<PetId>,
     /// 볼링 판이 도는 중인가. 도는 중에 또 누르면 무시되므로(A3) 버튼을 끈다.
     pub bowling: bool,
-    /// 비치발리볼 판이 도는 중인가. **두 판은 서로를 배제하므로** 어느 쪽이든
-    /// 도는 동안 버튼 둘이 함께 비활성된다.
+    /// 비치발리볼 판이 도는 중인가. **세 판은 서로를 배제하므로** 어느 하나든
+    /// 도는 동안 버튼 셋이 함께 비활성된다.
     pub volleyball: bool,
+    /// 단체 야차 판이 도는 중인가. 위와 같은 규칙이다.
+    pub yacha: bool,
 }
 
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
@@ -154,6 +162,7 @@ pub mod commands;
 mod hit;
 mod pinball;
 mod volleyball;
+mod yacha;
 mod popover;
 mod scale;
 mod settings;
@@ -166,6 +175,7 @@ pub use commands::*;
 pub use hit::*;
 pub use pinball::*;
 pub use volleyball::*;
+pub use yacha::*;
 pub use popover::*;
 pub use scale::*;
 pub use settings::*;

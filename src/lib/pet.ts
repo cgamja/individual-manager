@@ -96,6 +96,11 @@ export interface PetSnapshot {
   whack_seq: number;
   /** 핀볼 모드인가. 커서를 채로 바꾸는 데 쓴다. */
   pinball: boolean;
+  /** 야차에서 **이 마리가 이번 라운드의 대표 타격**으로 뽑힌 누적 횟수.
+   * 늘어날 때마다 "퍽"이 한 발 난다 — 라운드마다 딱 한 마리만 오른다. */
+  punch_seq: number;
+  /** 그 한 발이 쓰러뜨린 한 방인가. 반음을 낮춰 더 낮고 길게 낸다. */
+  punch_down: boolean;
   behavior: Behavior;
 }
 
@@ -150,6 +155,8 @@ export const EVENT_BALL_STATE = "bowling://ball";
 export const EVENT_BOWLING_OVER = "bowling://over";
 
 /** 비치볼 창이 구독하는 상태 이벤트. 공 창이 따로라 이벤트도 따로다. */
+export const EVENT_YACHA_QUEEN = "yacha://queen";
+export const EVENT_YACHA_OVER = "yacha://over";
 export const EVENT_VOLLEY_STATE = "volley://ball";
 
 /** 비치발리볼 판이 **끝났을 때** 온다. 판을 끝내는 것은 예산이지 사용자가
@@ -309,6 +316,7 @@ export interface PetSummary {
   /** 비치발리볼 판이 도는 중인가. **두 판은 서로를 배제하므로** 어느 쪽이든
    * 도는 동안 버튼 둘이 함께 비활성된다. */
   volleyball: boolean;
+  yacha: boolean;
 }
 
 /** 볼링 공의 상태. **위치는 여기 없다** — 창이 옮기므로, 넣으면 굴러가는
@@ -357,6 +365,33 @@ export const startBowling = (): Promise<void> => invoke("bowling_start");
  * 누르면 20초쯤 알아서 놀고 끝난다. 볼링과 마찬가지로 화면의 펭귄 전부가
  * 참여하므로 대상을 안 고른다. 두 마리부터 열린다. */
 export const startVolleyball = (): Promise<void> => invoke("volleyball_start");
+
+/** 단체 야차 한 판. 볼링·발리볼과 셋이 서로를 배제한다. */
+export const startYacha = (): Promise<void> => invoke("yacha_start");
+
+/** 미녀 펭귄의 자세. 자리는 Rust가 창을 옮겨 정한다. */
+export type QueenPose = "walk_in" | "belting" | "clap" | "walk_out";
+
+export interface QueenSnapshot {
+  x: number;
+  y: number;
+  facing: Facing;
+  pose: QueenPose;
+}
+
+/** 미녀 창이 **처음 뜰 때** 한 번 받아 간다 — 구독만으로는 첫 국면을 놓친다. */
+export const getQueenState = (): Promise<QueenSnapshot | null> =>
+  invoke("yacha_get_queen");
+
+export const onQueenState = (
+  cb: (queen: QueenSnapshot) => void,
+): Promise<UnlistenFn> =>
+  getCurrentWebviewWindow().listen<QueenSnapshot>(EVENT_YACHA_QUEEN, (event) =>
+    cb(event.payload),
+  );
+
+export const onYachaOver = (cb: () => void): Promise<UnlistenFn> =>
+  getCurrentWebviewWindow().listen(EVENT_YACHA_OVER, () => cb());
 
 /** 공을 집는다. 굴러가는 중이면 `false` — 한 판에 한 번 굴린다. */
 export const startBallDrag = (): Promise<boolean> => invoke("ball_drag_start");

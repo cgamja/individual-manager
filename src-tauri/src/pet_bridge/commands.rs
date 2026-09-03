@@ -2,7 +2,7 @@
 
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
-use crate::pet::{PetId, Snapshot, VolleyRefusal, MAX_PETS};
+use crate::pet::{PetId, Snapshot, VolleyRefusal, YachaRefusal, MAX_PETS};
 
 use super::*;
 
@@ -244,12 +244,14 @@ pub fn pet_summary(state: State<'_, PetState>) -> PetSummary {
     let focused = *state.focused.lock().unwrap();
     let bowling = state.pets.lock().unwrap().bowling().is_some();
     let volleyball = state.pets.lock().unwrap().volleyball().is_some();
+    let yacha = state.pets.lock().unwrap().yacha().is_some();
     PetSummary {
         count,
         max: MAX_PETS,
         focused,
         bowling,
         volleyball,
+        yacha,
     }
 }
 
@@ -450,6 +452,49 @@ pub fn volleyball_start(state: State<'_, PetState>, app: AppHandle) -> Result<()
         flush(&app, id);
     }
     Ok(())
+}
+
+/// 단체 야차 한 판을 연다. 화면의 펭귄 **전부**가 참여한다 (볼링·발리볼과 같은 규칙).
+#[tauri::command]
+pub fn yacha_start(state: State<'_, PetState>, app: AppHandle) -> Result<(), String> {
+    let bounds = world_or_flat_any(&app).first().bounds;
+    // 시드는 시각이다 — 같은 시드가 같은 판을 낳으므로(PRINCIPLE 3),
+    // 버튼을 다시 누르면 다른 대진과 다른 다운 일정이 나온다.
+    let opened = state
+        .pets
+        .lock()
+        .unwrap()
+        .start_yacha(now_ms(), bounds, now_ms());
+    opened.map_err(|why| {
+        match why {
+            YachaRefusal::BoardBusy => "이미 판이 돌고 있어요",
+            YachaRefusal::NoRoom => "붙을 자리가 없어요 — 화면이 좁아요",
+            YachaRefusal::TooFew => "두 마리부터 할 수 있어요",
+        }
+        .to_string()
+    })?;
+    // **id를 먼저 꺼내 가드를 떨군다.** 반복자 식의 임시 `MutexGuard`가 루프
+    // 전체 동안 살아 있고, `flush`가 같은 뮤텍스를 다시 잡아 자기 데드락이 난다.
+    let ids = state.pets.lock().unwrap().ids();
+    for id in ids {
+        flush(&app, id);
+    }
+    Ok(())
+}
+
+/// 미녀 웹뷰가 **처음 뜰 때** 현재 상태를 한 번 받아 간다.
+///
+/// **없으면 미녀가 걸어 들어오는 국면을 통째로 놓친다.** 틱이 창을 만들고
+/// **같은 호출에서** 첫 이벤트를 쏘는데 그때는 리스너가 아직 없다
+/// (`volley_get_state`와 같은 자리).
+#[tauri::command]
+pub fn yacha_get_queen(state: State<'_, PetState>) -> Option<crate::pet::QueenSnapshot> {
+    state
+        .pets
+        .lock()
+        .unwrap()
+        .yacha()
+        .and_then(|b| b.snapshot().queen)
 }
 
 /// 비치볼 웹뷰가 **처음 뜰 때** 현재 상태를 한 번 받아 간다 (`pet_get_state`와 같은 자리).

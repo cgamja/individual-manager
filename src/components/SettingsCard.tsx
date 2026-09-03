@@ -26,6 +26,8 @@ interface SettingsCardProps {
    * 도는 동안 버튼 둘이 함께 비활성된다. */
   volleyballRunning: boolean;
   onVolleyball: () => void;
+  yachaRunning: boolean;
+  onYacha: () => void;
 }
 
 /** 설정 카드. */
@@ -46,7 +48,12 @@ export function SettingsCard({
   onBowling,
   volleyballRunning,
   onVolleyball,
+  yachaRunning,
+  onYacha,
 }: SettingsCardProps) {
+  // **판 셋은 서로를 배제한다.** 조건을 버튼마다 따로 쓰면 넷째를 더할 때 반드시
+  // 하나를 빠뜨린다 — 여기서 한 번 계산해 셋이 같은 값을 본다.
+  const 판이_돈다 = bowlingRunning || volleyballRunning || yachaRunning;
   return (
     <section className="card settings-card">
       <div className="settings-row">
@@ -129,7 +136,7 @@ export function SettingsCard({
         <button
           type="button"
           onClick={onBowling}
-          disabled={bowlingRunning || volleyballRunning}
+          disabled={판이_돈다}
         >
           {bowlingRunning ? "굴리는 중…" : "볼링 한 판"}
         </button>
@@ -147,7 +154,7 @@ export function SettingsCard({
         <button
           type="button"
           onClick={onVolleyball}
-          disabled={bowlingRunning || volleyballRunning}
+          disabled={판이_돈다}
         >
           {volleyballRunning ? "치는 중…" : "비치발리볼 한 판"}
         </button>
@@ -156,6 +163,21 @@ export function SettingsCard({
         펭귄들이 화면 가운데에 모래톱을 깔고 네트를 사이에 두고 서요. 지푸라기 비키니를 입고
         20초쯤 한 판 쳐요. 구경만 하면 돼요 — 공이 모래에 닿으면 끝나고, 이긴 쪽은
         좋아하고 진 쪽은 약 올라요. 두 마리부터 할 수 있고 점수는 안 세요.
+      </p>
+
+      {/* **판 셋이 서로를 배제한다.** 조건을 버튼마다 따로 쓰면 넷째를 더할 때
+          반드시 하나를 빠뜨린다 — 한 곳에서 계산해 셋이 같은 값을 본다. */}
+      <div className="settings-row">
+        <span>단체 야차</span>
+        <button type="button" onClick={onYacha} disabled={판이_돈다}>
+          {yachaRunning ? "치고받는 중…" : "단체 야차 한 판"}
+        </button>
+      </div>
+      <p className="settings-hint">
+        펭귄들이 화면 한가운데로 뭉쳐서 복싱 장갑을 끼고 서로 때려요. 많이 맞은
+        놈부터 눈이 X자가 되면서 쓰러지고, 마지막 한 마리가 남으면 오른쪽에서
+        화장한 미녀 펭귄이 챔피언 벨트를 들고 나와 채워 줘요. 둘 이상이어야
+        붙고, 전적은 안 남아요.
       </p>
 
       <div className="settings-row">

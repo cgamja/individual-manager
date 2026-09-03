@@ -118,7 +118,7 @@ impl Huddle {
     }
 
     /// 판이 열릴 때 잰 경계.
-    pub(super) fn bounds(&self) -> Bounds {
+    pub fn bounds(&self) -> Bounds {
         self.bounds
     }
 }

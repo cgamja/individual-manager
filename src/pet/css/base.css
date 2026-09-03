@@ -7,6 +7,12 @@
   --pg-halo-opacity: 0.42;
 }
 
+/* 몸통 색. `assets/palette.ts`의 `INK`와 같아야 한다 —
+   `pet-css.test.ts`의 `CSS 변수가 팔레트와 같다`가 대조한다. */
+:root {
+  --pg-ink: #1b1f24;
+}
+
 /* 창은 펭귄보다 크다 — 위쪽은 말풍선, 좌우는 방망이 자리다. */
 :root {
   --pg-size: 140px;

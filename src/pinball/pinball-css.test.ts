@@ -115,7 +115,16 @@ describe("핀볼 판", () => {
   });
 
   it("판은_배경을_칠하지_않는다", () => {
+    // 조금이라도 칠하면 화면 전체에 막이 씌워진 것처럼 보인다.
     expect(board).toMatch(/background:\s*transparent/);
-    expect(board).not.toMatch(/background(-color)?:\s*(#|rgb|hsl)/);
+    // **`transparent`·`none` 말고는 아무것도 허용하지 않는다.** 예전에는
+    // `#`·`rgb`·`hsl`만 막아서 이름 색(`background: black`)과
+    // `background-image: linear-gradient(...)`가 통과했다.
+    for (const [, prop, 값] of board.matchAll(/(background(?:-color|-image)?):\s*([^;]+);/g)) {
+      expect(
+        값.trim(),
+        `${prop}에 ${값.trim()} 를 칠했다 — 판은 투명해야 한다`,
+      ).toMatch(/^(transparent|none)$/);
+    }
   });
 });

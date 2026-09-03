@@ -22,9 +22,26 @@ const PENGUIN_ALL = readdirSync(resolve("src/assets/penguin"))
 const PALETTE_SRC = "src/assets/palette.ts";
 
 /** 코어가 낼 수 있는 모든 동작. 코어에 추가하면 여기도 늘려야 한다. */
-const css = ["base","ground","rest","react","pinball","drag","air","speech","fishing","freakout","bowling","volleyball"]
-  .map((n) => readFileSync(resolve(`src/pet/css/${n}.css`), "utf8"))
-  .join("\n");
+/** CSS 주석을 걷어낸다 — 안 그러면 주석에 적힌 `.pg-stage` 같은 이름이
+ * "규칙이 있다"로 통과한다. 실제로 그랬다.
+ * `docs/solutions/best-practices/source-text-tests-pass-on-comments.md` */
+const 코드만_css = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ");
+
+/** 펭귄 창이 실제로 읽는 CSS 전부.
+ *
+ * **`index.css`의 `@import` 목록에서 뽑는다.** 손으로 적으면 앱이 읽는 것과
+ * 검사가 보는 것이 갈라진다 — 새 파일을 `@import`만 하면 그 안의 중복
+ * `@keyframes`가 검사 밖이고, `@import` 한 줄을 지우면 앱에서 사라진 스타일을
+ * 검사는 디스크에서 읽어 통과시킨다. */
+const CSS_DIR = "src/pet/css";
+const cssFiles = [
+  ...readFileSync(resolve(`${CSS_DIR}/index.css`), "utf8").matchAll(
+    /@import\s+"\.\/([\w-]+)\.css"/g,
+  ),
+].map((m) => m[1]);
+const css = 코드만_css(
+  cssFiles.map((n) => readFileSync(resolve(`${CSS_DIR}/${n}.css`), "utf8")).join("\n"),
+);
 const petRs =
   readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
   readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
@@ -92,6 +109,14 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "sassy", sassy: "butt_wiggle" },
 ];
 
+/** `.이름`이 **정확히 그 이름으로** 쓰인 규칙이 있나.
+ *
+ * `toContain(".pg-foot")`은 `.pg-foot--far`에도 걸린다 — 그래서 `.pg-foot` 규칙을
+ * 통째로 지워도 통과했다. 클래스 이름에 쓸 수 있는 문자가 뒤에 오면 다른 클래스다. */
+function hasRule(css: string, cls: string): boolean {
+  return new RegExp(`\\.${cls}(?![\\w-])`).test(css);
+}
+
 /** `name`이 더 긴 이름의 앞부분으로 끼어든 경우를 빼고 센다. */
 function countExact(haystack: string, name: string): number {
   const re = new RegExp(`(?<![\\w-])${name}(?![\\w-])`, "g");
@@ -99,22 +124,32 @@ function countExact(haystack: string, name: string): number {
 }
 
 describe("pet.css 커버리지", () => {
+  it("index_css가_css_폴더의_파일을_전부_읽는다", () => {
+    // 한쪽에만 있으면 갈라진다 — `@import`를 빠뜨리면 앱에서 스타일이 사라지고,
+    // 파일이 없으면 `@import`가 죽은 줄이다.
+    const 디스크 = readdirSync(resolve(CSS_DIR))
+      .filter((f) => f.endsWith(".css") && f !== "index.css")
+      .map((f) => f.replace(/\.css$/, ""))
+      .sort();
+    expect([...cssFiles].sort(), "index.css의 @import 목록과 css 폴더가 다르다").toEqual(디스크);
+  });
+
   it.each(ALL_BEHAVIORS.map((b) => [behaviorClass(b)] as const))(
     "%s 동작에 대응하는 규칙이 있다",
     (cls) => {
-      expect(css).toContain(`.${cls}`);
+      expect(hasRule(css, cls), `.${cls} 규칙이 없다`).toBe(true);
     },
   );
 
   it("세로_방향_클래스가_모두_쓰인다", () => {
     for (const v of ["up", "down"] as Vertical[]) {
-      expect(css).toContain(`.${verticalClass(v)}`);
+      expect(hasRule(css, verticalClass(v)), `.${verticalClass(v)} 규칙이 없다`).toBe(true);
     }
   });
 
   it("핀볼_커서_규칙이_실제로_있다", () => {
     expect(petApp).toContain("pg-pinball");
-    expect(css).toContain(".pg-pinball");
+    expect(hasRule(css, "pg-pinball"), ".pg-pinball 규칙이 없다").toBe(true);
     expect(css).not.toMatch(/\.pg-pinball:not\(/);
   });
 
@@ -148,6 +183,19 @@ describe("창 여백 상수 동기화", () => {
     const b = rustConst(rustName);
     expect(a, `CSS에서 --${cssName}를 못 찾았다`).not.toBeNull();
     expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(a).toBe(b);
+  });
+});
+
+describe("CSS 변수가 팔레트와 같다", () => {
+  // CSS는 TS를 못 부르므로 색이 양쪽에 따로 적힌다. 갈라져도 아무도 안 알려 준다.
+  it.each([["pg-ink", "INK"]])("--%s 가 팔레트의 %s 와 같다", (cssName, tsName) => {
+    const a = css.match(new RegExp(`--${cssName}:\\s*(#[0-9a-fA-F]{6})`))?.[1];
+    const b = readFileSync(resolve(PALETTE_SRC), "utf8").match(
+      new RegExp(`const ${tsName} = "(#[0-9a-fA-F]{6})"`),
+    )?.[1];
+    expect(a, `CSS에서 --${cssName}를 못 찾았다`).toBeDefined();
+    expect(b, `팔레트에서 ${tsName}을 못 찾았다`).toBeDefined();
     expect(a).toBe(b);
   });
 });
@@ -499,6 +547,6 @@ describe("PetApp이 쓰는 클래스에 스타일이 있다", () => {
   });
 
   it.each([...used].map((c) => [c] as const))("%s 에 규칙이 있다", (cls) => {
-    expect(css).toContain(`.${cls}`);
+    expect(hasRule(css, cls), `.${cls} 규칙이 없다`).toBe(true);
   });
 });

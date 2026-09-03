@@ -7,7 +7,7 @@
  * 스윙이 0 → 1로 드러내는 연출이라 `display`로는 안 된다.
  */
 
-import { BAT_GRIP, BAT_WOOD, FISH, FLOAT, INK } from "../palette";
+import { BAT_EDGE, BAT_GRIP, BAT_WOOD, FISH, FLOAT, INK } from "../palette";
 
 export function Gear() {
   return (
@@ -16,6 +16,9 @@ export function Gear() {
         <path
           d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z"
           fill={BAT_WOOD}
+          stroke={BAT_EDGE}
+          strokeWidth="0.9"
+          strokeLinejoin="round"
         />
         <rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill={BAT_GRIP} />
       </g>

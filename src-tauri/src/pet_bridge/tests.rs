@@ -12,6 +12,14 @@ fn 경계(right: f64) -> Bounds {
 }
 
 #[test]
+fn 시작할_때는_아무도_클릭을_통과시키지_않는다() {
+    // 통과는 근거가 있을 때만 켜지는 상태다. 기본이 "클릭을 먹는다"여야
+    // 어떤 실패에서든 펭귄을 누를 수 있다 (R6).
+    let state = PetState::new(crate::pet::Pets::new());
+    assert!(state.click_through.lock().unwrap().is_empty());
+}
+
+#[test]
 fn 경계를_못_읽으면_주_모니터로_떨어진다() {
     let 주 = World::single(경계(1_440.0));
     let got = world_to_cache(None, || Some(주.clone()));

@@ -14,6 +14,7 @@ import {
   BAT_WOOD,
   BELT_GOLD,
   BELT_GOLD_DARK,
+  BELT_LEATHER,
   FISH,
   FLOAT,
   GLOVE,
@@ -101,7 +102,7 @@ function BoxingGloves() {
 function ChampionBelt() {
   return (
     <g className="pg-belt">
-      <rect x="28.5" y="81" width="43" height="12" rx="3" fill={BELT_GOLD_DARK} />
+      <rect x="28.5" y="81" width="43" height="12" rx="3" fill={BELT_LEATHER} />
       <ellipse cx="50" cy="87" rx="11.5" ry="10" fill={BELT_GOLD} />
       <ellipse cx="50" cy="87" rx="6.5" ry="5.4" fill={BELT_GOLD_DARK} opacity="0.5" />
     </g>

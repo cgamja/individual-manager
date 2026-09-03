@@ -115,7 +115,7 @@ pub(super) fn apply_yacha(
     if 판이_있나 {
         apply_depth(app, &깊이, &mut view.depth);
     } else {
-        let ids: Vec<PetId> = view.depth.order().to_vec();
+        let ids: Vec<PetId> = view.depth.touched();
         reset_depth(app, &ids, &mut view.depth);
     }
 

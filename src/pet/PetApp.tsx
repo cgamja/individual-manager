@@ -123,7 +123,11 @@ export function PetApp() {
         }
         prevSnapRef.current = next;
         if (next.speech) loadTaunts().then(setTaunts).catch(() => {});
-        const key = { cls: behaviorClass(next.behavior), whackSeq: next.whack_seq };
+        const key = {
+          cls: behaviorClass(next.behavior),
+          whackSeq: next.whack_seq,
+          punchSeq: next.punch_seq,
+        };
         if (shouldRestart(lastRestartRef.current, key)) setRestartKey((k) => k + 1);
         lastRestartRef.current = key;
       });
@@ -287,6 +291,9 @@ export function PetApp() {
     verticalClass(snapshot?.vertical ?? "level"),
     snapshot?.air ? "pg-air" : "",
     snapshot?.pinball ? "pg-pinball" : "",
+    // **막힘은 국면으로 알 수 없다** — 막히면 맞은 쪽이 `Guard` 그대로라
+    // `Behavior`가 안 바뀐다. 코어가 실어 보낸 신호로만 가른다.
+    snapshot?.punch_blocked ? "pg--punch-blocked" : "",
   ]
     .filter(Boolean)
     .join(" ");

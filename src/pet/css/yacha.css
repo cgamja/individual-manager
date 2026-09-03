@@ -127,21 +127,29 @@
   display: none !important;
 }
 
+.pg--yacha-hurt.pg--punch-blocked .pg-anger {
+  display: none;
+}
+
 .pg--yacha-hurt .pg-anger {
   display: block;
   animation: pg-yacha-anger-pop 0.23s ease-out 1 forwards;
   transform-origin: 88px 28px;
 }
 
-/* 막힌 주먹은 **회색이고 작다** — 가드가 실제로 막았다는 것이 색으로 읽힌다. */
-.pg--yacha-guard .pg-anger {
+/* 막힌 주먹은 **회색이고 작다** — 가드가 실제로 막았다는 것이 색으로 읽힌다.
+   **국면이 아니라 신호에 건다.** `.pg--yacha-guard`에 걸면 정반대가 된다:
+   가드 자세는 링에 도착할 때도, 12%로 고를 때도, 혼자 남은 챔피언도 밟으므로
+   **주먹과 무관하게 번쩍이고**, 정작 실제로 막았을 때는 맞은 쪽이 `Guard`
+   그대로라 클래스가 안 바뀌어 **아무것도 안 뜬다.** 실제로 그렇게 났다. */
+.pg--punch-blocked .pg-anger {
   display: block;
-  fill: var(--pg-anger-blocked);
   animation: pg-yacha-anger-pop 0.23s ease-out 1 forwards;
   transform-origin: 88px 28px;
+  transform: scale(0.72);
 }
 
-.pg--yacha-guard .pg-anger path {
+.pg--punch-blocked .pg-anger path {
   fill: var(--pg-anger-blocked);
 }
 

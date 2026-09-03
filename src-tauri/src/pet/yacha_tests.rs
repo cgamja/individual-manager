@@ -343,6 +343,27 @@ fn 미녀는_오른쪽_밖에서_걸어_들어온다() {
 }
 
 #[test]
+fn 미녀는_챔피언과_같은_높이에_선다() {
+    // 판 바닥에 못 박으면 판이 위쪽에서 끝났을 때 미녀가 챔피언보다 몸 두 개
+    // 아래에 서서 **허공에 벨트를 채운다.** x와 같은 원천에서 y도 가져와야 한다.
+    for seed in [3u64, 11, 20_260_903] {
+        let mut board = 판(4, seed);
+        난투(&mut board, YACHA_BRAWL_MS);
+        let champ = board.standing()[0];
+        let (_, champ_y) = board.xy_of(champ).unwrap();
+        board.crown(YACHA_BRAWL_MS, champ);
+        let queen = board.snapshot().queen.expect("승리 국면부터 미녀가 있다");
+        let (champ_at, _, _) = board.pose_of(champ).unwrap();
+        assert!(
+            (queen.y - champ_at.1).abs() < 1.0,
+            "시드 {seed}: 미녀 y {} vs 챔피언 y {} (오프셋 {champ_y})",
+            queen.y,
+            champ_at.1
+        );
+    }
+}
+
+#[test]
 fn 벨트는_채운_뒤에만_챔피언에게_있다() {
     let mut board = 판(2, 9);
     board.crown(0, board.participants()[0]);

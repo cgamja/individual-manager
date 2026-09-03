@@ -120,7 +120,11 @@ pub struct PetSummary {
 /// 웹뷰가 보는 "겉모습" — 이게 바뀔 때만 상태를 다시 알린다.
 /// **CSS 클래스에 영향을 주는 값은 빠짐없이 들어가야 한다.** 하나라도 빠지면
 /// 그 값만 바뀌는 전이가 웹뷰에 영영 도달하지 않는다(조용한 실패).
-pub type Look = (Behavior, Facing, Vertical, bool, Option<u64>, u64, bool);
+/// **`punch_seq`가 들어 있는 이유는 `whack_seq`가 들어 있는 이유와 같다.**
+/// 난투 중에는 연타가 흔한데(스윙 뒤 또 스윙이 64%) 그때 국면은 `Punch` 그대로고,
+/// 막힌 주먹은 맞은 쪽을 `Guard` 그대로 둔다. 번호를 안 보면 **그 스냅샷이
+/// 아예 안 나가** 퍽이 유실되고 그림도 안 다시 뜬다.
+pub type Look = (Behavior, Facing, Vertical, bool, Option<u64>, u64, bool, u64);
 
 pub fn look_of(snapshot: &Snapshot) -> Look {
     (
@@ -131,6 +135,7 @@ pub fn look_of(snapshot: &Snapshot) -> Look {
         snapshot.speech.map(|s| s.seq),
         snapshot.whack_seq,
         snapshot.pinball,
+        snapshot.punch_seq,
     )
 }
 

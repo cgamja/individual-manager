@@ -228,3 +228,57 @@ fn 쓰러진_마리가_링에_그대로_눕는다() {
     }
     assert!(봤다, "아무도 안 쓰러졌다");
 }
+
+#[test]
+fn 쓰러뜨린_한_방은_코어가_켠다() {
+    // **프론트가 아니라 코어가 켜는지**를 본다. 프론트 검사는 `punch_down: true`인
+    // 스냅샷을 손으로 만들어 통과하므로, 코어가 그걸 한 번도 안 켜도 초록이었다.
+    let (mut pets, world) = 무리(4);
+    assert_eq!(pets.start_yacha(0, 세계, 8), Ok(()));
+    let mut now = 0;
+    let mut 낮은_한_방 = false;
+    while now < YACHA_MAX_MS {
+        now += 50;
+        for (_, s) in pets.step_all(now, |_| Some(&world)) {
+            if s.punch_down {
+                낮은_한_방 = true;
+            }
+        }
+        if pets.yacha().is_none() {
+            break;
+        }
+    }
+    assert!(낮은_한_방, "판이 다 도는 동안 쓰러뜨린 한 방이 한 번도 안 났다");
+}
+
+#[test]
+fn 막힌_주먹이_신호로_나간다() {
+    // 막히면 맞은 쪽이 `Guard` 그대로라 **국면으로는 알 수 없다.**
+    let (mut pets, world) = 무리(6);
+    assert_eq!(pets.start_yacha(0, 세계, 3), Ok(()));
+    let mut now = 0;
+    let mut 막힘 = false;
+    while now < YACHA_MAX_MS {
+        now += 50;
+        for (_, s) in pets.step_all(now, |_| Some(&world)) {
+            if s.punch_blocked {
+                막힘 = true;
+            }
+        }
+        if pets.yacha().is_none() {
+            break;
+        }
+    }
+    assert!(막힘, "가드가 한 번도 안 막혔다 — 신호가 안 나간다");
+}
+
+#[test]
+fn 판이_도는_중에_펭귄을_꺼도_판이_남지_않는다() {
+    // `clear()`가 판을 안 지우면 `pet_summary().yacha`가 영원히 참으로 남아
+    // 판 버튼 셋이 계속 잠긴다.
+    let (mut pets, _) = 무리(4);
+    assert_eq!(pets.start_yacha(0, 세계, 1), Ok(()));
+    assert!(pets.yacha().is_some());
+    pets.clear();
+    assert!(pets.yacha().is_none(), "펭귄을 껐는데 판이 남아 있다");
+}

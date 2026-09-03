@@ -212,9 +212,16 @@ pub struct Yacha {
     phase_until_ms: u64,
     queen_x: f64,
     queen_target_x: f64,
+    /// 미녀의 세로 오프셋. **챔피언과 같은 원천에서 온다** — 판 바닥에 못 박으면
+    /// 판이 위쪽에서 끝났을 때 미녀가 챔피언보다 몸 두 개 아래에 서서 허공에
+    /// 벨트를 채운다.
+    queen_y: f64,
     belt_on_champion: bool,
     /// 이번 틱에 난 주먹들. 브릿지가 읽어 가고 다음 틱에 비워진다.
     punches: Vec<Punch>,
+    /// 이번 틱에 **넘어간** 마리. 다운은 누적 피격이 정하므로 이번 걸음의 주먹과
+    /// 짝이 안 맞을 수 있어 따로 알린다 — "쓰러뜨린 한 방"의 소리가 그것으로 난다.
+    downed_now: Vec<PetId>,
     deadline_ms: u64,
     rng: u64,
 }
@@ -234,8 +241,10 @@ impl Yacha {
             phase_until_ms: now_ms + YACHA_GATHER_MS,
             queen_x: arena.world_right + PET_SIZE,
             queen_target_x: arena.world_right + PET_SIZE,
+            queen_y: 0.0,
             belt_on_champion: false,
             punches: Vec::new(),
+            downed_now: Vec::new(),
             deadline_ms: now_ms + YACHA_MAX_MS,
             // 시드가 0이면 xorshift가 0에 갇힌다 (`Pet::new_at`과 같은 방어).
             rng: if seed == 0 {
@@ -361,6 +370,11 @@ impl Yacha {
         &self.punches
     }
 
+    /// 이번 틱에 넘어간 마리.
+    pub fn downed_now(&self) -> Vec<PetId> {
+        self.downed_now.clone()
+    }
+
     pub(super) fn expired(&self, now_ms: u64) -> bool {
         now_ms >= self.deadline_ms
     }
@@ -377,7 +391,7 @@ impl Yacha {
         YachaSnapshot {
             queen: self.queen_pose().map(|pose| QueenSnapshot {
                 x: self.queen_x,
-                y: self.arena.top_y(0.0),
+                y: self.arena.top_y(self.queen_y),
                 facing: if self.phase == RingPhase::Exiting {
                     Facing::Right
                 } else {
@@ -430,6 +444,7 @@ impl Yacha {
     /// 이유는 주먹 판정(진행률 42%)이 틱 간격보다 촘촘해서다.
     pub(super) fn step_brawl(&mut self, now_ms: u64) {
         self.punches.clear();
+        self.downed_now.clear();
         // 밀린 틱이 한 번에 몰아치지 않게 상한을 둔다 (`MAX_STEP_MS`와 같은 뜻).
         let 끝 = now_ms.min(self.sim_ms + MAX_STEP_MS);
         while self.sim_ms + YACHA_DT_MS <= 끝 {
@@ -706,6 +721,7 @@ impl Yacha {
                 return; // 덜 맞았다 — 다음 걸음으로 미룬다
             }
             self.fighters.get_mut(&who).unwrap().down_at = Some(t);
+            self.downed_now.push(who);
             // **한 놈이 넘어가면 남은 놈들이 상대를 다시 고른다.** 쓰러진 놈을
             // 노리던 놈은 반드시, 나머지는 절반. 판을 가로지르는 이동이 여기서
             // 나온다 — 안 그러면 붙어 있던 짝이 그대로 굳는다.
@@ -729,12 +745,15 @@ impl Yacha {
         self.phase = RingPhase::Victory;
         self.phase_until_ms = now_ms + YACHA_WIN_MS;
         self.queen_x = self.arena.world_right + PET_SIZE;
-        let 챔프_x = self
+        let (챔프_x, 챔프_y) = self
             .fighters
             .get(&champion)
-            .map(|f| f.x - PET_SIZE / 2.0)
-            .unwrap_or(self.arena.cx);
+            .map(|f| (f.x - PET_SIZE / 2.0, f.y))
+            .unwrap_or((self.arena.cx, 0.0));
         self.queen_target_x = 챔프_x + YACHA_QUEEN_STOP_GAP;
+        // **세로도 챔피언을 따라간다** — 안 그러면 판이 위쪽에서 끝났을 때
+        // 미녀가 허공에 벨트를 채운다.
+        self.queen_y = 챔프_y;
     }
 
     /// 세레모니를 한 틱 굴린다.

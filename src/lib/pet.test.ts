@@ -95,7 +95,7 @@ describe("behaviorClass", () => {
 
 describe("shouldRestart", () => {
   /** 빠따 횟수가 그대로인 평범한 전이. */
-  const k = (cls: string, whackSeq = 0) => ({ cls, whackSeq });
+  const k = (cls: string, whackSeq = 0, punchSeq = 0) => ({ cls, whackSeq, punchSeq });
 
   it("동작이_바뀌면_되감는다", () => {
     expect(shouldRestart(k("pg--fishing-bite"), k("pg--fishing-catch"))).toBe(true);

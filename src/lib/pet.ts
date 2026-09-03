@@ -104,6 +104,10 @@ export interface PetSnapshot {
   punch_seq: number;
   /** 그 한 발이 쓰러뜨린 한 방인가. 반음을 낮춰 더 낮고 길게 낸다. */
   punch_down: boolean;
+  /** 그 한 발이 막혔는가. 화남 표시가 회색으로 뜨고 소리도 둔탁하다.
+   *
+   * **국면으로는 알 수 없다** — 막히면 맞은 쪽이 `Guard` 그대로다. */
+  punch_blocked: boolean;
   behavior: Behavior;
 }
 
@@ -275,6 +279,8 @@ export const isOneShot = (cls: string): boolean =>
 export interface RestartKey {
   cls: string;
   whackSeq: number;
+  /** 야차의 대표 타격 번호. **연타를 구분하는 유일한 값이다.** */
+  punchSeq: number;
 }
 
 /** 한 번짜리 애니메이션을 처음부터 다시 재생해야 하는가.
@@ -293,8 +299,15 @@ export interface RestartKey {
  * 100ms만 반복하며 **영원히 부풀기만 한다.** 그건 이 항목이 고치려는 것과
  * 정확히 반대다. */
 export const shouldRestart = (prev: RestartKey | null, next: RestartKey): boolean => {
+  if (prev === null) return isOneShot(next.cls);
+  // **야차의 연타는 클래스가 안 바뀐다.** 스윙 뒤 또 스윙이 64%라 국면이
+  // `Punch` 그대로고, 막힌 주먹은 맞은 쪽을 `Guard` 그대로 둔다. 그래서
+  // 번호로만 구분된다 — `pg--swing`이 `whackSeq`로 구분되는 것과 같은 자리다.
+  // **일회성 클래스인지 안 따진다**: 막힌 주먹은 `Guard`(반복 자세)인 채로
+  // 화남 표시만 다시 떠야 하기 때문이다.
+  if (next.punchSeq > prev.punchSeq) return true;
   if (!isOneShot(next.cls)) return false;
-  if (prev === null || prev.cls !== next.cls) return true;
+  if (prev.cls !== next.cls) return true;
   return next.cls === "pg--swing" && next.whackSeq > prev.whackSeq;
 };
 

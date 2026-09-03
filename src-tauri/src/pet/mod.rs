@@ -66,6 +66,11 @@ pub struct Snapshot {
     pub punch_seq: u64,
     /// 그 한 발이 **쓰러뜨린 한 방**인가. 웹뷰가 반음을 낮춰 더 낮고 길게 낸다.
     pub punch_down: bool,
+    /// 그 한 발이 **막혔는가.** 화남 표시가 회색으로 작게 뜨고 소리도 둔탁하다.
+    ///
+    /// **국면으로는 알 수 없다** — 막히면 맞은 쪽이 `Guard` 그대로라 `Behavior`가
+    /// 안 바뀐다. 그래서 신호를 따로 싣는다.
+    pub punch_blocked: bool,
     pub behavior: Behavior,
 }
 
@@ -131,6 +136,8 @@ pub struct Pet {
     punch_seq: u64,
     /// 그 대표 타격이 쓰러뜨린 한 방이었는가 (`Snapshot::punch_down`).
     punch_down: bool,
+    /// 그 대표 타격이 막혔는가 (`Snapshot::punch_blocked`).
+    punch_blocked: bool,
     rng: u64,
 }
 
@@ -289,6 +296,10 @@ impl Pets {
         self.pets.clear();
         self.bowling = None;
         self.volleyball = None;
+        // **야차도 지운다.** 안 지우면 마리가 0이 된 뒤 틱이 `ids.is_empty()`에서
+        // 먼저 끊겨 `step_yacha`가 정리할 기회를 못 얻고, `pet_summary().yacha`가
+        // 영원히 `true`로 남아 **판 버튼 셋이 계속 잠긴다.**
+        self.yacha = None;
     }
 
     /// 한 마리를 볼링 판에서 뺀다. 마지막 참여 마리가 빠지면 판을 접는다 (R11).
@@ -808,10 +819,23 @@ impl Pets {
 
                 // **대표 타격 하나만 소리를 낸다** (KTD7). 한 걸음에 주먹이 여럿
                 // 나도 발수는 하나다 — 여덟 마리에서 겹치면 기관총이 된다.
+                //
+                // 신호는 **맞은 쪽**에 실린다. 막힘 여부까지 함께 싣는 이유는
+                // 국면으로는 알 수 없어서다 — 막히면 맞은 쪽이 `Guard` 그대로라
+                // `Behavior`가 안 바뀐다.
                 let punches: Vec<_> = board.punches().to_vec();
                 if let Some(p) = punches.iter().find(|p| !p.blocked).or(punches.first()) {
                     if let Some(pet) = pets.get_mut(&p.to) {
-                        pet.yacha_thud(false);
+                        pet.yacha_thud(false, p.blocked);
+                    }
+                }
+
+                // **쓰러뜨린 한 방은 따로 낸다** — 반음이 낮고 길다. 다운은 누적
+                // 피격이 정하므로 이번 걸음의 주먹과 짝이 안 맞을 수 있고, 그래서
+                // 판이 "이번에 누가 넘어갔나"를 따로 알려 준다.
+                for id in board.downed_now() {
+                    if let Some(pet) = pets.get_mut(&id) {
+                        pet.yacha_thud(true, false);
                     }
                 }
 
@@ -1157,6 +1181,7 @@ impl Pet {
             fishing_until_ms: 0,
             punch_seq: 0,
             punch_down: false,
+            punch_blocked: false,
             rng: if seed == 0 {
                 0x9E37_79B9_7F4A_7C15
             } else {
@@ -1179,6 +1204,7 @@ impl Pet {
             pinball: self.pinball,
             punch_seq: self.punch_seq,
             punch_down: self.punch_down,
+            punch_blocked: self.punch_blocked,
             behavior: self.behavior,
         }
     }

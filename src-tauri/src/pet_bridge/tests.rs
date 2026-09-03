@@ -24,6 +24,7 @@ fn 스냅샷(behavior: crate::pet::Behavior, air: bool) -> Snapshot {
         pinball: false,
         punch_seq: 0,
         punch_down: false,
+        punch_blocked: false,
         behavior,
     }
 }
@@ -451,6 +452,7 @@ fn 겉모습이_그대로면_다시_알리지_않는다() {
         None,
         0,
         false,
+        0,
     );
     assert!(!should_notify(Some(look), look));
     assert!(should_notify(None, look), "처음에는 알려야 한다");
@@ -466,6 +468,7 @@ fn 겉모습_비교에_핀볼이_들어간다() {
         None,
         0,
         false,
+        0,
     );
     let 켜짐 = (
         Behavior::Walk,
@@ -475,8 +478,30 @@ fn 겉모습_비교에_핀볼이_들어간다() {
         None,
         0,
         true,
+        0,
     );
     assert!(should_notify(Some(꺼짐), 켜짐));
+}
+
+/// **`punch_seq`가 빠지면 야차의 연타가 통째로 유실된다** — 국면도 시선도 안
+/// 바뀌는 전이라 이 번호 말고는 달라지는 것이 없다.
+#[test]
+fn 겉모습_비교에_주먹_번호가_들어간다() {
+    let 앞 = (
+        Behavior::Yacha {
+            yacha: crate::pet::YachaPhase::Punch,
+        },
+        Facing::Right,
+        Vertical::Level,
+        true,
+        None,
+        0,
+        false,
+        3,
+    );
+    let mut 뒤 = 앞;
+    뒤.7 = 4;
+    assert!(should_notify(Some(앞), 뒤));
 }
 
 #[test]
@@ -537,6 +562,7 @@ fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     let down = (
         Behavior::Swim,
@@ -546,6 +572,7 @@ fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     assert!(should_notify(Some(up), down));
 }
@@ -560,6 +587,7 @@ fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     let left = (
         Behavior::Walk,
@@ -569,6 +597,7 @@ fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     assert!(should_notify(Some(right), left));
 }
@@ -585,6 +614,7 @@ fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     let air = (
         Behavior::Sassy {
@@ -596,6 +626,7 @@ fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     assert!(should_notify(Some(ground), air));
 }
@@ -612,6 +643,7 @@ fn 유휴_종류가_바뀌면_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     let b = (
         Behavior::Idle {
@@ -623,6 +655,7 @@ fn 유휴_종류가_바뀌면_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     assert!(should_notify(Some(a), b));
 }

@@ -183,8 +183,17 @@
   .pg-belt--held .pg-belt,
   .pg--queen-clap .pg-all,
   .pg--queen-clap .pg-wing-near,
-  .pg--queen-clap .pg-wing-far {
+  .pg--queen-clap .pg-wing-far,
+  .pg--queen-walk-in .pg-wing-near,
+  .pg--queen-walk-out .pg-wing-near,
+  .pg-belt--held .pg-belt {
     animation: none;
     transition: none;
+  }
+
+  /* 벨트는 **자리를 잃으면 안 된다** — 애니메이션만 끄고 옮긴 자리는 남긴다.
+     안 그러면 벨트가 허리로 돌아가 미녀가 빈손으로 걸어온다. */
+  .pg-belt--held .pg-belt {
+    transform: translate(33px, 1px);
   }
 }

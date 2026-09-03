@@ -86,9 +86,15 @@ impl Pet {
     }
 
     /// 이번 라운드의 대표 타격으로 뽑혔다 — 웹뷰가 "퍽"을 한 발 낸다.
-    pub(in crate::pet) fn yacha_thud(&mut self, down: bool) {
+    ///
+    /// **`punch_seq`가 화면 연출의 방아쇠이기도 하다.** 연타는 국면이 `Punch`
+    /// 그대로라 `Behavior`가 안 바뀌는데, 이 번호가 늘면 웹뷰가 그림을 다시
+    /// 튼다 (`shouldRestart`). 그래서 이 값은 `Look`에도 들어가야 한다 —
+    /// 안 그러면 스냅샷 자체가 안 나간다.
+    pub(in crate::pet) fn yacha_thud(&mut self, down: bool, blocked: bool) {
         self.punch_seq += 1;
         self.punch_down = down;
+        self.punch_blocked = blocked;
     }
 
     /// 최후의 1인 — 양 날개를 든다.

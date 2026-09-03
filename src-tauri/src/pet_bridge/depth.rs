@@ -43,6 +43,10 @@ pub const MENU_BAR_LEVEL: isize = 24;
 #[derive(Default)]
 pub struct DepthView {
     order: Vec<PetId>,
+    /// **한 번이라도 레벨을 올린 마리 전부.** `order`는 현재 순서만 담으므로
+    /// 판에서 빠진 마리(드래그·삭제)는 거기서 사라지고, 그것만 되돌리면 빠진
+    /// 마리의 창이 세션 내내 4~10에 남아 다른 모든 펭귄(기본 3)보다 위에 뜬다.
+    touched: std::collections::BTreeSet<PetId>,
     /// 미녀 창에 레벨을 걸어 뒀는가. **창이 생긴 뒤에 걸어야 하므로** 순서와
     /// 따로 기억한다.
     queen: bool,
@@ -52,12 +56,27 @@ impl DepthView {
     /// 판이 끝났다 — 다음 판에서 반드시 다시 걸도록 잊는다.
     pub fn forget(&mut self) {
         self.order.clear();
+        self.touched.clear();
         self.queen = false;
     }
 
-    /// 지금 레벨이 걸려 있는 마리들. 판이 끝날 때 되돌릴 대상이다.
-    pub fn order(&self) -> &[PetId] {
-        &self.order
+    /// 되돌릴 대상 — **한 번이라도 올린 전부**다.
+    pub fn touched(&self) -> Vec<PetId> {
+        self.touched.iter().copied().collect()
+    }
+
+    /// 새 순서를 적어 두고 **다시 걸어야 하는지**를 돌려준다.
+    ///
+    /// 되돌릴 목록(`touched`)은 여기서 **누적**된다 — `order`는 현재 순서만
+    /// 담으므로 판에서 빠진 마리가 거기서 사라지기 때문이다.
+    fn track(&mut self, order: &[PetId], queen: bool) -> bool {
+        if self.order == order && self.queen == queen {
+            return false;
+        }
+        self.order = order.to_vec();
+        self.touched.extend(order.iter().copied());
+        self.queen = queen;
+        true
     }
 }
 
@@ -75,11 +94,9 @@ impl DepthView {
 #[cfg(target_os = "macos")]
 pub fn apply_depth(app: &AppHandle, order: &[PetId], view: &mut DepthView) {
     let 미녀 = app.get_webview_window(QUEEN_LABEL).is_some();
-    if view.order == order && view.queen == 미녀 {
+    if !view.track(order, 미녀) {
         return;
     }
-    view.order = order.to_vec();
-    view.queen = 미녀;
     let app = app.clone();
     let order = order.to_vec();
     let _ = app.clone().run_on_main_thread(move || {
@@ -115,7 +132,7 @@ pub fn apply_depth(_app: &AppHandle, _order: &[PetId], _view: &mut DepthView) {}
 /// 그 마리들이 서로 다른 레벨에 남아, 평소에 겹칠 때 앞뒤가 이상해진다.
 #[cfg(target_os = "macos")]
 pub fn reset_depth(app: &AppHandle, ids: &[PetId], view: &mut DepthView) {
-    if view.order.is_empty() {
+    if view.touched.is_empty() {
         return;
     }
     view.forget();

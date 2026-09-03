@@ -180,10 +180,10 @@ fn 대표_타격만_소리_신호를_올린다() {
     // 맞기만 한 마리는 안 오른다 — 라운드마다 딱 한 마리다.
     pet.yacha_apply(1_000, (300.0, 200.0), YachaPhase::Hurt, Facing::Right);
     assert_eq!(pet.snapshot().punch_seq, 0);
-    pet.yacha_thud(false);
+    pet.yacha_thud(false, false);
     assert_eq!(pet.snapshot().punch_seq, 1);
     assert!(!pet.snapshot().punch_down);
-    pet.yacha_thud(true);
+    pet.yacha_thud(true, false);
     assert_eq!(pet.snapshot().punch_seq, 2);
     assert!(pet.snapshot().punch_down, "쓰러뜨린 한 방이 표시가 안 된다");
 }

@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+afterEach(() => vi.unstubAllGlobals());
 import type { Behavior, PetSnapshot } from "../lib/pet";
 import {
   DEFAULT_VOLUME_STEP,
@@ -351,5 +353,91 @@ describe("voiceOffsetFor — 마리별 목소리", () => {
     expect(voiceOffsetFor("main")).toBe(0);
     expect(voiceOffsetFor("")).toBe(0);
     expect(voiceOffsetFor("pet-")).toBe(0);
+  });
+});
+
+describe("안물 — 유일한 음원 파일", () => {
+  it("안물_동작에_들어가면_소리를_낸다", () => {
+    const prev = snap();
+    const next = snap({ behavior: { kind: "dont_ask" } });
+    expect(soundsFor(prev, next)).toEqual(["dont_ask"]);
+  });
+
+  it("안물이_이어지는_동안에는_다시_안_낸다", () => {
+    const s = snap({ behavior: { kind: "dont_ask" } });
+    expect(soundsFor(s, s)).toEqual([]);
+  });
+
+  it("안물_쿨다운은_동작_길이와_같다", () => {
+    expect(SOUND_COOLDOWN_MS.dont_ask).toBe(5_700);
+  });
+
+  /** 음원을 즉시 내주는 fetch·decode 스텁을 심는다. */
+  function 음원을_심는다(ctx: ReturnType<typeof stubContext>) {
+    const buffer = { duration: 5.673 } as unknown as AudioBuffer;
+    (ctx as unknown as { decodeAudioData: unknown }).decodeAudioData = () =>
+      Promise.resolve(buffer);
+    const fetches: string[] = [];
+    vi.stubGlobal("fetch", (url: string) => {
+      fetches.push(url);
+      return Promise.resolve({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+    });
+    return fetches;
+  }
+
+  it("우클릭이_음원을_미리_받는다", async () => {
+    // 설정 창을 여는 유일한 길이 펭귄 우클릭이라 버튼보다 반드시 앞선다.
+    const ctx = stubContext();
+    const fetches = 음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    player.nudge();
+    await Promise.resolve();
+    expect(fetches).toEqual(["/음원.m4a"]);
+  });
+
+  it("꺼져_있으면_음원을_안_받는다", () => {
+    // 기본 꺼짐이다 — 소리를 안 쓰는 사용자가 창마다 154KB를 받을 이유가 없다.
+    const ctx = stubContext();
+    const fetches = 음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.nudge();
+    expect(fetches).toEqual([]);
+  });
+
+  it("받아_둔_음원을_한_발_재생한다", async () => {
+    const ctx = stubContext();
+    음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    player.nudge();
+    await new Promise((r) => setTimeout(r, 0));
+    player.play("dont_ask", 0);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(1);
+  });
+
+  it("아직_못_받았으면_쿨다운을_안_태운다", async () => {
+    // 태우면 첫 판이 무음인 채로 5.7초 동안 다시 눌러도 조용하다.
+    const ctx = stubContext();
+    음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    player.play("dont_ask", 0);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 0));
+    player.play("dont_ask", 1);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(1);
+  });
+
+  it("효과음이_꺼져_있으면_안물_소리도_안_난다", async () => {
+    const ctx = stubContext();
+    음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    player.nudge();
+    await new Promise((r) => setTimeout(r, 0));
+    player.setEnabled(false);
+    player.play("dont_ask", 0);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(0);
   });
 });

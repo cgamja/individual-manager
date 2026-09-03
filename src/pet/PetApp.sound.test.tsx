@@ -233,3 +233,27 @@ describe("PetApp 소리 배선", () => {
     expect(h.players[0].played).not.toContain("whoosh");
   });
 });
+
+describe("안물 소리와 춤의 분리", () => {
+  it("안물_스냅샷이_오면_dont_ask를_재생한다", async () => {
+    render(<PetApp />);
+    await flush();
+    h.soundCb?.({ sound: true, volume: 2 });
+    h.stateCb?.(snap());
+    h.stateCb?.(snap({ behavior: { kind: "dont_ask" } }));
+    expect(h.players[0].played).toContain("dont_ask");
+  });
+
+  it("효과음이_꺼져도_춤과_말풍선은_나온다", async () => {
+    // 소리와 동작을 묶지 않는다 — 소리 스위치가 모션 on/off가 되면 안 된다.
+    render(<PetApp />);
+    await flush();
+    expect(h.players[0].enabled).toBe(false);
+    h.stateCb?.(snap({ behavior: { kind: "dont_ask" } }));
+    await flush();
+    expect(screen.getByText("묻지 않았습니다~~")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "펭귄" }).getAttribute("class")).toContain(
+      "pg--dont-ask",
+    );
+  });
+});

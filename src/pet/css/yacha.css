@@ -1,0 +1,297 @@
+/* ── 단체 야차 — 한가운데 뭉쳐 복싱 장갑으로 치고받는다 ── */
+
+/* 국면 일곱 (`YachaPhase`). **경기장을 그리지 않는다** — 판도 바닥도 없고,
+   화면에 있는 것은 뭉친 펭귄들뿐이다 (2026-09-03 사용자 지시).
+
+   **전부 공중이다.** 뭉치는 자리가 화면 세로 중앙이라 `.pg-air`가 늘 함께
+   걸린다 (볼링·발리볼과 같다).
+
+   **좌표는 코어가 안 건드린다** — 맞아도 튕겨나가지 않는 것이 이 동작의
+   정의라, 휘청이는 몸짓은 전부 여기 `transform`이다. */
+
+/* ── 복싱 장갑 — 판이 도는 동안에만 낀다 ───────────────────── */
+
+/* **평소에는 `display: none`이다.** `opacity: 0`으로 감추면 후광(`pg-halo`)에
+   잔상이 남는다 — 훌라 차림·얼음낚시 도형과 같은 규칙이고 `pet-css.test.ts`가
+   대조한다. */
+.pg-gloves {
+  display: none;
+}
+
+.pg--yacha-gather .pg-gloves,
+.pg--yacha-guard .pg-gloves,
+.pg--yacha-punch .pg-gloves,
+.pg--yacha-hurt .pg-gloves,
+.pg--yacha-down .pg-gloves,
+.pg--yacha-win .pg-gloves,
+.pg--yacha-champ .pg-gloves {
+  display: block;
+}
+
+/* 먼쪽 장갑은 가드로 올린 채 둔다 — 한 손은 늘 얼굴 앞이라야 복싱으로 읽힌다. */
+.pg-glove--far {
+  transform-origin: 30px 88px;
+}
+
+.pg--yacha-guard .pg-glove--far,
+.pg--yacha-punch .pg-glove--far {
+  transform: translate(4px, -12px);
+}
+
+/* 펀치를 뻗을 때 앞쪽 장갑만 앞으로 나간다 — 몸 전체가 밀리면 "튕겨나갔다"로
+   읽히고 그건 정확히 이 동작이 아닌 것이다. */
+.pg--yacha-punch .pg-glove--near {
+  animation: pg-yacha-jab 0.26s ease-out 1;
+  transform-origin: 66px 88px;
+}
+
+@keyframes pg-yacha-jab {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  35% {
+    transform: translate(16px, -6px) scale(1.18);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+/* ── 벨트 ────────────────────────────────────────────────── */
+
+.pg-belt {
+  display: none;
+}
+
+/* 챔피언만, 그리고 **채워 준 뒤에만** 찬다. `Win`에는 아직 없다 —
+   미녀가 채워 주는 것이 세레모니의 핵심 장면이라, 미리 차고 있으면 그 장면이
+   아무것도 아닌 게 된다. */
+.pg--yacha-champ .pg-belt {
+  display: block;
+}
+
+/* 미녀가 **들고 있는** 벨트. 같은 도형을 자리만 옮겨 쓴다 (그림은 한 벌이다). */
+.pg-belt--held .pg-belt {
+  display: block;
+  transform: translate(26px, -34px) rotate(-14deg) scale(0.82);
+}
+
+/* ── X자 눈 — 쓰러졌을 때 ────────────────────────────────── */
+
+.pg-eye-x {
+  display: none;
+}
+
+.pg--yacha-down .pg-eye-x {
+  display: block;
+}
+
+/* **둘이 겹치면 X 위에 점이 남는다.** 쓰러진 동안에는 평소 눈을 숨긴다. */
+.pg--yacha-down .pg-eye {
+  display: none;
+}
+
+/* ── 화남 표시(💢) — 타격의 순간 ──────────────────────────── */
+
+/* **때린 놈과 맞은 놈 사이에 뜬다.** 맞은 마리가 때린 쪽을 보므로(코어의
+   `yacha_hurt`가 `facing`을 함께 받는다) 보는 쪽 가장자리가 곧 둘 사이다.
+   선도 화살표도 이름표도 없이 짝이 읽힌다. */
+.pg-anger {
+  display: none;
+}
+
+.pg--yacha-hurt .pg-anger {
+  display: block;
+  animation: pg-yacha-anger-pop 0.22s ease-out 1;
+  transform-origin: 90px 28px;
+}
+
+@keyframes pg-yacha-anger-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
+
+/* ── 자세 ────────────────────────────────────────────────── */
+
+/* 가드 — 몸을 살짝 웅크리고 무릎으로 리듬을 탄다. 다음 라운드를 기다리는
+   국면이라 길이가 없다(판이 몬다) — 그래서 무한 반복이다. */
+.pg--yacha-guard .pg-all {
+  animation: pg-yacha-bob 0.62s ease-in-out infinite;
+}
+
+@keyframes pg-yacha-bob {
+  0%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  50% {
+    transform: translateY(2.5px) scale(1.015, 0.985);
+  }
+}
+
+/* 펀치 — 몸이 아주 살짝 앞으로 기운다. **자리는 안 바뀐다.** */
+.pg--yacha-punch .pg-all {
+  animation: pg-yacha-lunge 0.26s ease-out 1;
+}
+
+@keyframes pg-yacha-lunge {
+  0% {
+    transform: translateX(0) rotate(0deg);
+  }
+  35% {
+    transform: translateX(5px) rotate(3deg);
+  }
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+/* 맞음 — 제자리에서 휘청인다. **창은 안 움직인다** — `translate`는 웹뷰 안의
+   변형이라 네이티브 창의 자리와 무관하다. 그게 "서로 튕겨나가지 않는다"를
+   그림으로 지키는 방법이다. */
+.pg--yacha-hurt .pg-all {
+  animation: pg-yacha-reel 0.22s ease-out 1;
+}
+
+@keyframes pg-yacha-reel {
+  0% {
+    transform: translateX(0) rotate(0deg);
+  }
+  30% {
+    transform: translateX(-7px) rotate(-7deg);
+  }
+  60% {
+    transform: translateX(3px) rotate(3deg);
+  }
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+/* 다운 — 뒤로 넘어가 눕는다. 판이 끝날 때까지 이 자세로 있으므로 마지막
+   프레임을 붙든다(`forwards`). */
+.pg--yacha-down .pg-all {
+  animation: pg-yacha-fall 0.5s ease-in 1 forwards;
+}
+
+@keyframes pg-yacha-fall {
+  0% {
+    transform: rotate(0deg) translateY(0);
+  }
+  60% {
+    transform: rotate(-72deg) translateY(14px);
+  }
+  100% {
+    transform: rotate(-86deg) translateY(20px);
+  }
+}
+
+/* 승리 — 양 날개를 번쩍 든다. 글자를 못 쓰는 이 앱에서 링 아나운서의 결과
+   발표를 대신하는 자리라, 크고 분명해야 한다. */
+.pg--yacha-win .pg-all {
+  animation: pg-yacha-raise 0.9s ease-out 1;
+}
+
+@keyframes pg-yacha-raise {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  30% {
+    transform: translateY(-10px) scale(1.06);
+  }
+  60% {
+    transform: translateY(-4px) scale(1.02);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pg--yacha-win .pg-wing-near,
+.pg--yacha-champ .pg-wing-near {
+  transform: rotate(-42deg);
+  transform-origin: 66px 52px;
+}
+
+.pg--yacha-win .pg-wing-far,
+.pg--yacha-champ .pg-wing-far {
+  transform: rotate(42deg);
+  transform-origin: 38px 52px;
+}
+
+/* 세레모니 — 벨트를 차고 좌우로 흔든다. */
+.pg--yacha-champ .pg-all {
+  animation: pg-yacha-strut 0.8s ease-in-out infinite;
+}
+
+@keyframes pg-yacha-strut {
+  0%,
+  100% {
+    transform: rotate(-3.5deg);
+  }
+  50% {
+    transform: rotate(3.5deg);
+  }
+}
+
+/* 모이기 — 날아서 간다. 헤엄의 날갯짓을 그대로 쓴다 (볼링·발리볼과 같다). */
+.pg--yacha-gather .pg-wing-near {
+  animation: pg-paddle 0.2s ease-in-out infinite;
+  transform-origin: 66px 52px;
+}
+
+.pg--yacha-gather .pg-wing-far {
+  animation: pg-paddle-far 0.2s ease-in-out infinite;
+  transform-origin: 38px 52px;
+}
+
+/* ── 화장 — 미녀 펭귄만 ──────────────────────────────────── */
+
+/* 얼굴이지 옷이 아니다. 훌라 차림(`pg-luau`)과 섞이지 않는다 — 저쪽은
+   비치발리볼 판의 옷이고, 여기 나오면 두 판이 섞인다. */
+.pg-glam {
+  display: none;
+}
+
+.pg-glam-on .pg-glam {
+  display: block;
+}
+
+.pg-lash,
+.pg-blush,
+.pg-lip {
+  pointer-events: none;
+}
+
+/* ── 움직임 감소 ─────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .pg--yacha-gather .pg-wing-near,
+  .pg--yacha-gather .pg-wing-far,
+  .pg--yacha-guard .pg-all,
+  .pg--yacha-punch .pg-all,
+  .pg--yacha-punch .pg-glove--near,
+  .pg--yacha-hurt .pg-all,
+  .pg--yacha-hurt .pg-anger,
+  .pg--yacha-down .pg-all,
+  .pg--yacha-win .pg-all,
+  .pg--yacha-champ .pg-all {
+    animation: none;
+    transition: none;
+  }
+
+  /* 쓰러진 자세는 애니메이션이 아니라 **결과**다 — 끄면 서 있는 채로 죽는다. */
+  .pg--yacha-down .pg-all {
+    transform: rotate(-86deg) translateY(20px);
+  }
+}

@@ -111,6 +111,18 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 <circle class="pg-eye" cx="57.5" cy="27.5" r="2.5" fill="#1b1f24">
 </circle>
 </g>
+<path class="pg-eye-x" d="M54.6 24.6 L60.4 30.4 M60.4 24.6 L54.6 30.4" stroke="#1b1f24" stroke-width="1.9" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-glam">
+<path class="pg-lash" d="M60.5 24.4 C62.6 22.8 63.6 22.4 64.6 22.6
+           M61.4 26.4 C63.8 25.6 64.9 25.6 65.8 26.0
+           M61.2 28.6 C63.4 28.6 64.4 28.9 65.2 29.5" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
+</path>
+<ellipse class="pg-blush" cx="53" cy="34" rx="4.2" ry="2.6" fill="#f7a8bb" opacity="0.75">
+</ellipse>
+<path class="pg-lip" d="M64.6 35.4 C68.6 35.0 72.2 34.6 75.4 33.8" stroke="#e0466b" stroke-width="2.4" stroke-linecap="round" fill="none">
+</path>
 </g>
 <g class="pg-luau">
 <g class="pg-luau-skirt">
@@ -167,6 +179,38 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 </path>
 <circle cx="81" cy="106" r="0.9" fill="#1b1f24">
 </circle>
+</g>
+<g class="pg-gloves">
+<g class="pg-glove--far">
+<ellipse cx="30" cy="88" rx="10" ry="9" fill="#8d1520">
+</ellipse>
+<path d="M22 84 C24 79 30 78 33 81" stroke="#c8242e" stroke-width="4" stroke-linecap="round" fill="none">
+</path>
+<rect x="26" y="94" width="9" height="3.4" rx="1.7" fill="#f2e4d0" opacity="0.75">
+</rect>
+</g>
+<g class="pg-glove--near">
+<ellipse cx="73" cy="89" rx="11.5" ry="10.5" fill="#c8242e">
+</ellipse>
+<path d="M82 84 C80 78 73 77 70 80" stroke="#8d1520" stroke-width="4.5" stroke-linecap="round" fill="none">
+</path>
+<ellipse cx="76" cy="85" rx="4" ry="3" fill="#f2e4d0" opacity="0.35">
+</ellipse>
+<rect x="67" y="96" width="11" height="4" rx="2" fill="#f2e4d0">
+</rect>
+</g>
+</g>
+<g class="pg-belt">
+<path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
+</path>
+<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+</circle>
+<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
+</circle>
+</g>
+<g class="pg-anger">
+<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+</path>
 </g>
 </g>
 </g>
@@ -210,6 +254,18 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 <circle class="pg-eye" cx="57.5" cy="27.5" r="2.5" fill="#1b1f24">
 </circle>
 </g>
+<path class="pg-eye-x" d="M54.6 24.6 L60.4 30.4 M60.4 24.6 L54.6 30.4" stroke="#1b1f24" stroke-width="1.9" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-glam">
+<path class="pg-lash" d="M60.5 24.4 C62.6 22.8 63.6 22.4 64.6 22.6
+           M61.4 26.4 C63.8 25.6 64.9 25.6 65.8 26.0
+           M61.2 28.6 C63.4 28.6 64.4 28.9 65.2 29.5" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
+</path>
+<ellipse class="pg-blush" cx="53" cy="34" rx="4.2" ry="2.6" fill="#f7a8bb" opacity="0.75">
+</ellipse>
+<path class="pg-lip" d="M64.6 35.4 C68.6 35.0 72.2 34.6 75.4 33.8" stroke="#e0466b" stroke-width="2.4" stroke-linecap="round" fill="none">
+</path>
 </g>
 <g class="pg-luau">
 <g class="pg-luau-skirt">
@@ -266,6 +322,38 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 </path>
 <circle cx="81" cy="106" r="0.9" fill="#1b1f24">
 </circle>
+</g>
+<g class="pg-gloves">
+<g class="pg-glove--far">
+<ellipse cx="30" cy="88" rx="10" ry="9" fill="#8d1520">
+</ellipse>
+<path d="M22 84 C24 79 30 78 33 81" stroke="#c8242e" stroke-width="4" stroke-linecap="round" fill="none">
+</path>
+<rect x="26" y="94" width="9" height="3.4" rx="1.7" fill="#f2e4d0" opacity="0.75">
+</rect>
+</g>
+<g class="pg-glove--near">
+<ellipse cx="73" cy="89" rx="11.5" ry="10.5" fill="#c8242e">
+</ellipse>
+<path d="M82 84 C80 78 73 77 70 80" stroke="#8d1520" stroke-width="4.5" stroke-linecap="round" fill="none">
+</path>
+<ellipse cx="76" cy="85" rx="4" ry="3" fill="#f2e4d0" opacity="0.35">
+</ellipse>
+<rect x="67" y="96" width="11" height="4" rx="2" fill="#f2e4d0">
+</rect>
+</g>
+</g>
+<g class="pg-belt">
+<path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
+</path>
+<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+</circle>
+<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
+</circle>
+</g>
+<g class="pg-anger">
+<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+</path>
 </g>
 </g>
 </svg>"
@@ -314,6 +402,18 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 <circle class="pg-eye" cx="57.5" cy="27.5" r="2.5" fill="#1b1f24">
 </circle>
 </g>
+<path class="pg-eye-x" d="M54.6 24.6 L60.4 30.4 M60.4 24.6 L54.6 30.4" stroke="#1b1f24" stroke-width="1.9" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-glam">
+<path class="pg-lash" d="M60.5 24.4 C62.6 22.8 63.6 22.4 64.6 22.6
+           M61.4 26.4 C63.8 25.6 64.9 25.6 65.8 26.0
+           M61.2 28.6 C63.4 28.6 64.4 28.9 65.2 29.5" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
+</path>
+<ellipse class="pg-blush" cx="53" cy="34" rx="4.2" ry="2.6" fill="#f7a8bb" opacity="0.75">
+</ellipse>
+<path class="pg-lip" d="M64.6 35.4 C68.6 35.0 72.2 34.6 75.4 33.8" stroke="#e0466b" stroke-width="2.4" stroke-linecap="round" fill="none">
+</path>
 </g>
 <g class="pg-luau">
 <g class="pg-luau-skirt">
@@ -370,6 +470,38 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 </path>
 <circle cx="81" cy="106" r="0.9" fill="#1b1f24">
 </circle>
+</g>
+<g class="pg-gloves">
+<g class="pg-glove--far">
+<ellipse cx="30" cy="88" rx="10" ry="9" fill="#8d1520">
+</ellipse>
+<path d="M22 84 C24 79 30 78 33 81" stroke="#c8242e" stroke-width="4" stroke-linecap="round" fill="none">
+</path>
+<rect x="26" y="94" width="9" height="3.4" rx="1.7" fill="#f2e4d0" opacity="0.75">
+</rect>
+</g>
+<g class="pg-glove--near">
+<ellipse cx="73" cy="89" rx="11.5" ry="10.5" fill="#c8242e">
+</ellipse>
+<path d="M82 84 C80 78 73 77 70 80" stroke="#8d1520" stroke-width="4.5" stroke-linecap="round" fill="none">
+</path>
+<ellipse cx="76" cy="85" rx="4" ry="3" fill="#f2e4d0" opacity="0.35">
+</ellipse>
+<rect x="67" y="96" width="11" height="4" rx="2" fill="#f2e4d0">
+</rect>
+</g>
+</g>
+<g class="pg-belt">
+<path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
+</path>
+<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+</circle>
+<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
+</circle>
+</g>
+<g class="pg-anger">
+<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+</path>
 </g>
 </g>
 </g>
@@ -413,6 +545,18 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 <circle class="pg-eye" cx="57.5" cy="27.5" r="2.5" fill="#1b1f24">
 </circle>
 </g>
+<path class="pg-eye-x" d="M54.6 24.6 L60.4 30.4 M60.4 24.6 L54.6 30.4" stroke="#1b1f24" stroke-width="1.9" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-glam">
+<path class="pg-lash" d="M60.5 24.4 C62.6 22.8 63.6 22.4 64.6 22.6
+           M61.4 26.4 C63.8 25.6 64.9 25.6 65.8 26.0
+           M61.2 28.6 C63.4 28.6 64.4 28.9 65.2 29.5" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
+</path>
+<ellipse class="pg-blush" cx="53" cy="34" rx="4.2" ry="2.6" fill="#f7a8bb" opacity="0.75">
+</ellipse>
+<path class="pg-lip" d="M64.6 35.4 C68.6 35.0 72.2 34.6 75.4 33.8" stroke="#e0466b" stroke-width="2.4" stroke-linecap="round" fill="none">
+</path>
 </g>
 <g class="pg-luau">
 <g class="pg-luau-skirt">
@@ -469,6 +613,329 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 </path>
 <circle cx="81" cy="106" r="0.9" fill="#1b1f24">
 </circle>
+</g>
+<g class="pg-gloves">
+<g class="pg-glove--far">
+<ellipse cx="30" cy="88" rx="10" ry="9" fill="#8d1520">
+</ellipse>
+<path d="M22 84 C24 79 30 78 33 81" stroke="#c8242e" stroke-width="4" stroke-linecap="round" fill="none">
+</path>
+<rect x="26" y="94" width="9" height="3.4" rx="1.7" fill="#f2e4d0" opacity="0.75">
+</rect>
+</g>
+<g class="pg-glove--near">
+<ellipse cx="73" cy="89" rx="11.5" ry="10.5" fill="#c8242e">
+</ellipse>
+<path d="M82 84 C80 78 73 77 70 80" stroke="#8d1520" stroke-width="4.5" stroke-linecap="round" fill="none">
+</path>
+<ellipse cx="76" cy="85" rx="4" ry="3" fill="#f2e4d0" opacity="0.35">
+</ellipse>
+<rect x="67" y="96" width="11" height="4" rx="2" fill="#f2e4d0">
+</rect>
+</g>
+</g>
+<g class="pg-belt">
+<path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
+</path>
+<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+</circle>
+<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
+</circle>
+</g>
+<g class="pg-anger">
+<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+</path>
+</g>
+</g>
+</svg>"
+`;
+
+exports[`펭귄 그림 > 화장한_미녀_펭귄_그림이_그대로다 1`] = `
+"<svg class="penguin pg-female pg-glam-on" viewBox="0 0 100 130" role="img" aria-label="펭귄" xmlns="http://www.w3.org/2000/svg">
+<g class="pg-halo" aria-hidden="true">
+<ellipse class="pg-shadow" cx="50" cy="123" rx="23" ry="4.5" fill="#1b1f24" opacity="0.18">
+</ellipse>
+<ellipse class="pg-hole" cx="88" cy="121" rx="12" ry="3.8" fill="#2f4a63">
+</ellipse>
+<g class="pg-all">
+<path class="pg-tail" d="M33 98 L16 111 L35 106 Z" fill="#1b1f24">
+</path>
+<path class="pg-wing-far" d="M36 52 C27 59 24 76 29 88 C31 92 35 91 36 87 C38 75 39 61 39 54 Z" fill="#1b1f24" opacity="0.72">
+</path>
+<g class="pg-foot--far">
+<rect x="44" y="104" width="4" height="9" rx="2" fill="#e3a892" opacity="0.85">
+</rect>
+<path d="M46 112 L38 120 L52 120 Z" fill="#e3a892" opacity="0.85">
+</path>
+</g>
+<g class="pg-foot--near">
+<rect x="54" y="104" width="4" height="9" rx="2" fill="#e3a892">
+</rect>
+<path d="M56 112 L48 120 L63 120 Z" fill="#e3a892">
+</path>
+</g>
+<g class="pg-body">
+<path d="M50 40 C64 40 71 58 71 80 C71 101 62 113 50 113 C38 113 29 101 29 80 C29 58 36 40 50 40 Z" fill="#1b1f24">
+</path>
+<ellipse cx="47" cy="82" rx="14.5" ry="26" fill="#f7f9fb">
+</ellipse>
+</g>
+<g class="pg-head">
+<circle cx="50" cy="30" r="16" fill="#1b1f24">
+</circle>
+<path d="M64 29 L77 32.5 L64 36.5 Z" fill="#4a2f2f">
+</path>
+<path class="pg-beak-lower" d="M64 33 L76 33.5 L64 38.5 Z" fill="#4a2f2f">
+</path>
+<ellipse cx="57" cy="27" rx="5.2" ry="6.2" fill="#f7f9fb">
+</ellipse>
+<g class="pg-gaze">
+<circle class="pg-eye" cx="57.5" cy="27.5" r="2.5" fill="#1b1f24">
+</circle>
+</g>
+<path class="pg-eye-x" d="M54.6 24.6 L60.4 30.4 M60.4 24.6 L54.6 30.4" stroke="#1b1f24" stroke-width="1.9" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-glam">
+<path class="pg-lash" d="M60.5 24.4 C62.6 22.8 63.6 22.4 64.6 22.6
+           M61.4 26.4 C63.8 25.6 64.9 25.6 65.8 26.0
+           M61.2 28.6 C63.4 28.6 64.4 28.9 65.2 29.5" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
+</path>
+<ellipse class="pg-blush" cx="53" cy="34" rx="4.2" ry="2.6" fill="#f7a8bb" opacity="0.75">
+</ellipse>
+<path class="pg-lip" d="M64.6 35.4 C68.6 35.0 72.2 34.6 75.4 33.8" stroke="#e0466b" stroke-width="2.4" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-luau">
+<g class="pg-luau-skirt">
+<path d="M31 87 C38 82.5 56 82.5 63 87" stroke="#c8912e" stroke-width="5" stroke-linecap="round" fill="none">
+</path>
+<path d="M32 88 C39 84.5 55 84.5 62 88
+               L60.5 98 L58.5 105 L57 97 L54 110 L52 98 L50 111.5
+               L48 99 L46 111 L44 99 L41.5 108 L39.5 98 L37 104 L35.5 96 L33.5 97 Z" fill="#c8912e">
+</path>
+<path d="M41 89 L40 104 M47 89.5 L47 107 M54 89 L54.5 106" stroke="#8f6414" stroke-width="1.3" stroke-linecap="round" fill="none" opacity="0.7">
+</path>
+<path d="M31.5 88 C38.5 84 55.5 84 62.5 88" stroke="#8f6414" stroke-width="1.8" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-luau-top">
+<path d="M32.5 58.5 C40 62.5 55 62.5 62.5 58.5" stroke="#8f6414" stroke-width="2" stroke-linecap="round" fill="none">
+</path>
+<path d="M40 60 L47 49.5 L55 60" stroke="#8f6414" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" fill="none">
+</path>
+<path d="M34.5 60.5 L47 60.5 L41 72.5 Z" fill="#c8912e" stroke="#8f6414" stroke-width="1.4" stroke-linejoin="round">
+</path>
+<path d="M47 60.5 L59.5 60.5 L53.5 72.5 Z" fill="#c8912e" stroke="#8f6414" stroke-width="1.4" stroke-linejoin="round">
+</path>
+</g>
+<g class="pg-lei">
+<path d="M34 52 C40 62 55 62 62 52" stroke="#e8543f" stroke-width="5.5" stroke-linecap="round" fill="none">
+</path>
+<circle cx="39" cy="57" r="2.6" fill="#f2c14e">
+</circle>
+<circle cx="48" cy="60" r="2.8" fill="#f2c14e">
+</circle>
+<circle cx="57" cy="57" r="2.6" fill="#f2c14e">
+</circle>
+</g>
+</g>
+<path class="pg-wing-near" d="M66 50 C76 57 80 75 74 89 C72 93 68 91 67 87 C64 74 63 60 64 52 Z" fill="#1b1f24">
+</path>
+<g class="pg-bat">
+<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#d59a55" stroke="#6b4520" stroke-width="0.9" stroke-linejoin="round">
+</path>
+<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#3a2a1a">
+</rect>
+</g>
+<path class="pg-rod" d="M70 87 L98 95" stroke="#d59a55" stroke-width="2.6" stroke-linecap="round" fill="none">
+</path>
+<path class="pg-line" d="M98 95 L90 116" stroke="#1b1f24" stroke-width="0.9" fill="none" opacity="0.55">
+</path>
+<circle class="pg-float" cx="90" cy="117" r="2.8" fill="#d94f3d">
+</circle>
+<g class="pg-fish">
+<ellipse cx="85" cy="107" rx="7" ry="3.6" fill="#8fb3c9">
+</ellipse>
+<path d="M92 107 L97 103.5 L97 110.5 Z" fill="#8fb3c9">
+</path>
+<circle cx="81" cy="106" r="0.9" fill="#1b1f24">
+</circle>
+</g>
+<g class="pg-gloves">
+<g class="pg-glove--far">
+<ellipse cx="30" cy="88" rx="10" ry="9" fill="#8d1520">
+</ellipse>
+<path d="M22 84 C24 79 30 78 33 81" stroke="#c8242e" stroke-width="4" stroke-linecap="round" fill="none">
+</path>
+<rect x="26" y="94" width="9" height="3.4" rx="1.7" fill="#f2e4d0" opacity="0.75">
+</rect>
+</g>
+<g class="pg-glove--near">
+<ellipse cx="73" cy="89" rx="11.5" ry="10.5" fill="#c8242e">
+</ellipse>
+<path d="M82 84 C80 78 73 77 70 80" stroke="#8d1520" stroke-width="4.5" stroke-linecap="round" fill="none">
+</path>
+<ellipse cx="76" cy="85" rx="4" ry="3" fill="#f2e4d0" opacity="0.35">
+</ellipse>
+<rect x="67" y="96" width="11" height="4" rx="2" fill="#f2e4d0">
+</rect>
+</g>
+</g>
+<g class="pg-belt">
+<path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
+</path>
+<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+</circle>
+<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
+</circle>
+</g>
+<g class="pg-anger">
+<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+</path>
+</g>
+</g>
+</g>
+<ellipse class="pg-shadow" cx="50" cy="123" rx="23" ry="4.5" fill="#1b1f24" opacity="0.18">
+</ellipse>
+<ellipse class="pg-hole" cx="88" cy="121" rx="12" ry="3.8" fill="#2f4a63">
+</ellipse>
+<g class="pg-all">
+<path class="pg-tail" d="M33 98 L16 111 L35 106 Z" fill="#1b1f24">
+</path>
+<path class="pg-wing-far" d="M36 52 C27 59 24 76 29 88 C31 92 35 91 36 87 C38 75 39 61 39 54 Z" fill="#1b1f24" opacity="0.72">
+</path>
+<g class="pg-foot--far">
+<rect x="44" y="104" width="4" height="9" rx="2" fill="#e3a892" opacity="0.85">
+</rect>
+<path d="M46 112 L38 120 L52 120 Z" fill="#e3a892" opacity="0.85">
+</path>
+</g>
+<g class="pg-foot--near">
+<rect x="54" y="104" width="4" height="9" rx="2" fill="#e3a892">
+</rect>
+<path d="M56 112 L48 120 L63 120 Z" fill="#e3a892">
+</path>
+</g>
+<g class="pg-body">
+<path d="M50 40 C64 40 71 58 71 80 C71 101 62 113 50 113 C38 113 29 101 29 80 C29 58 36 40 50 40 Z" fill="#1b1f24">
+</path>
+<ellipse cx="47" cy="82" rx="14.5" ry="26" fill="#f7f9fb">
+</ellipse>
+</g>
+<g class="pg-head">
+<circle cx="50" cy="30" r="16" fill="#1b1f24">
+</circle>
+<path d="M64 29 L77 32.5 L64 36.5 Z" fill="#4a2f2f">
+</path>
+<path class="pg-beak-lower" d="M64 33 L76 33.5 L64 38.5 Z" fill="#4a2f2f">
+</path>
+<ellipse cx="57" cy="27" rx="5.2" ry="6.2" fill="#f7f9fb">
+</ellipse>
+<g class="pg-gaze">
+<circle class="pg-eye" cx="57.5" cy="27.5" r="2.5" fill="#1b1f24">
+</circle>
+</g>
+<path class="pg-eye-x" d="M54.6 24.6 L60.4 30.4 M60.4 24.6 L54.6 30.4" stroke="#1b1f24" stroke-width="1.9" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-glam">
+<path class="pg-lash" d="M60.5 24.4 C62.6 22.8 63.6 22.4 64.6 22.6
+           M61.4 26.4 C63.8 25.6 64.9 25.6 65.8 26.0
+           M61.2 28.6 C63.4 28.6 64.4 28.9 65.2 29.5" stroke="#1b1f24" stroke-width="1.3" stroke-linecap="round" fill="none">
+</path>
+<ellipse class="pg-blush" cx="53" cy="34" rx="4.2" ry="2.6" fill="#f7a8bb" opacity="0.75">
+</ellipse>
+<path class="pg-lip" d="M64.6 35.4 C68.6 35.0 72.2 34.6 75.4 33.8" stroke="#e0466b" stroke-width="2.4" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-luau">
+<g class="pg-luau-skirt">
+<path d="M31 87 C38 82.5 56 82.5 63 87" stroke="#c8912e" stroke-width="5" stroke-linecap="round" fill="none">
+</path>
+<path d="M32 88 C39 84.5 55 84.5 62 88
+               L60.5 98 L58.5 105 L57 97 L54 110 L52 98 L50 111.5
+               L48 99 L46 111 L44 99 L41.5 108 L39.5 98 L37 104 L35.5 96 L33.5 97 Z" fill="#c8912e">
+</path>
+<path d="M41 89 L40 104 M47 89.5 L47 107 M54 89 L54.5 106" stroke="#8f6414" stroke-width="1.3" stroke-linecap="round" fill="none" opacity="0.7">
+</path>
+<path d="M31.5 88 C38.5 84 55.5 84 62.5 88" stroke="#8f6414" stroke-width="1.8" stroke-linecap="round" fill="none">
+</path>
+</g>
+<g class="pg-luau-top">
+<path d="M32.5 58.5 C40 62.5 55 62.5 62.5 58.5" stroke="#8f6414" stroke-width="2" stroke-linecap="round" fill="none">
+</path>
+<path d="M40 60 L47 49.5 L55 60" stroke="#8f6414" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" fill="none">
+</path>
+<path d="M34.5 60.5 L47 60.5 L41 72.5 Z" fill="#c8912e" stroke="#8f6414" stroke-width="1.4" stroke-linejoin="round">
+</path>
+<path d="M47 60.5 L59.5 60.5 L53.5 72.5 Z" fill="#c8912e" stroke="#8f6414" stroke-width="1.4" stroke-linejoin="round">
+</path>
+</g>
+<g class="pg-lei">
+<path d="M34 52 C40 62 55 62 62 52" stroke="#e8543f" stroke-width="5.5" stroke-linecap="round" fill="none">
+</path>
+<circle cx="39" cy="57" r="2.6" fill="#f2c14e">
+</circle>
+<circle cx="48" cy="60" r="2.8" fill="#f2c14e">
+</circle>
+<circle cx="57" cy="57" r="2.6" fill="#f2c14e">
+</circle>
+</g>
+</g>
+<path class="pg-wing-near" d="M66 50 C76 57 80 75 74 89 C72 93 68 91 67 87 C64 74 63 60 64 52 Z" fill="#1b1f24">
+</path>
+<g class="pg-bat">
+<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#d59a55" stroke="#6b4520" stroke-width="0.9" stroke-linejoin="round">
+</path>
+<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#3a2a1a">
+</rect>
+</g>
+<path class="pg-rod" d="M70 87 L98 95" stroke="#d59a55" stroke-width="2.6" stroke-linecap="round" fill="none">
+</path>
+<path class="pg-line" d="M98 95 L90 116" stroke="#1b1f24" stroke-width="0.9" fill="none" opacity="0.55">
+</path>
+<circle class="pg-float" cx="90" cy="117" r="2.8" fill="#d94f3d">
+</circle>
+<g class="pg-fish">
+<ellipse cx="85" cy="107" rx="7" ry="3.6" fill="#8fb3c9">
+</ellipse>
+<path d="M92 107 L97 103.5 L97 110.5 Z" fill="#8fb3c9">
+</path>
+<circle cx="81" cy="106" r="0.9" fill="#1b1f24">
+</circle>
+</g>
+<g class="pg-gloves">
+<g class="pg-glove--far">
+<ellipse cx="30" cy="88" rx="10" ry="9" fill="#8d1520">
+</ellipse>
+<path d="M22 84 C24 79 30 78 33 81" stroke="#c8242e" stroke-width="4" stroke-linecap="round" fill="none">
+</path>
+<rect x="26" y="94" width="9" height="3.4" rx="1.7" fill="#f2e4d0" opacity="0.75">
+</rect>
+</g>
+<g class="pg-glove--near">
+<ellipse cx="73" cy="89" rx="11.5" ry="10.5" fill="#c8242e">
+</ellipse>
+<path d="M82 84 C80 78 73 77 70 80" stroke="#8d1520" stroke-width="4.5" stroke-linecap="round" fill="none">
+</path>
+<ellipse cx="76" cy="85" rx="4" ry="3" fill="#f2e4d0" opacity="0.35">
+</ellipse>
+<rect x="67" y="96" width="11" height="4" rx="2" fill="#f2e4d0">
+</rect>
+</g>
+</g>
+<g class="pg-belt">
+<path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
+</path>
+<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
+</circle>
+<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
+</circle>
+</g>
+<g class="pg-anger">
+<path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+</path>
 </g>
 </g>
 </svg>"

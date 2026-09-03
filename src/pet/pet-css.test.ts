@@ -101,6 +101,13 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "volleyball", volley: "bump" },
   { kind: "volleyball", volley: "cheer" },
   { kind: "volleyball", volley: "sulk" },
+  { kind: "yacha", yacha: "gather" },
+  { kind: "yacha", yacha: "guard" },
+  { kind: "yacha", yacha: "punch" },
+  { kind: "yacha", yacha: "hurt" },
+  { kind: "yacha", yacha: "down" },
+  { kind: "yacha", yacha: "win" },
+  { kind: "yacha", yacha: "champ" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },
   { kind: "ice_fishing", fishing: "bite" },
@@ -332,6 +339,8 @@ describe("동작 길이 동기화", () => {
     ["pg--freakout-pant", "FREAKOUT_PANT_MS"],
     ["pg--bowling-scatter", "BOWLING_SCATTER_MS"],
     ["pg--volley-bump", "VOLLEY_BUMP_MS"],
+    ["pg--yacha-punch", "YACHA_PUNCH_MS"],
+    ["pg--yacha-hurt", "YACHA_HURT_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
     const b = rustMs(konst);

@@ -27,6 +27,16 @@ export type BowlingPhase = "gather" | "ready" | "scatter";
  *
  * `cheer`/`sulk`는 **싸가지 반응의 그림을 CSS에서 재사용한다.** 국면을
  * `Volleyball` 안에 남긴 이유는 그래야 축하하는 동안에도 옷이 남기 때문이다. */
+/** 단체 야차의 마리 국면. 판 국면은 Rust가 갖고 웹뷰는 이것만 본다. */
+export type YachaPhase =
+  | "gather"
+  | "guard"
+  | "punch"
+  | "hurt"
+  | "down"
+  | "win"
+  | "champ";
+
 export type VolleyPhase =
   | "gather"
   | "ready"
@@ -63,7 +73,8 @@ export type Behavior =
   | { kind: "slide" }
   | { kind: "ice_fishing"; fishing: FishingPhase }
   | { kind: "bowling"; bowling: BowlingPhase }
-  | { kind: "volleyball"; volley: VolleyPhase };
+  | { kind: "volleyball"; volley: VolleyPhase }
+  | { kind: "yacha"; yacha: YachaPhase };
 
 /** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
 export interface Speech {
@@ -225,6 +236,7 @@ export const behaviorClass = (behavior: Behavior): string => {
   if (behavior.kind === "freakout") return `pg--freakout-${kebab(behavior.freakout)}`;
   if (behavior.kind === "bowling") return `pg--bowling-${kebab(behavior.bowling)}`;
   if (behavior.kind === "volleyball") return `pg--volley-${kebab(behavior.volley)}`;
+  if (behavior.kind === "yacha") return `pg--yacha-${kebab(behavior.yacha)}`;
   return `pg--${kebab(behavior.kind)}`;
 };
 
@@ -242,6 +254,9 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--volley-bump" ||
   cls === "pg--volley-cheer" ||
   cls === "pg--volley-sulk" ||
+  cls === "pg--yacha-punch" ||
+  cls === "pg--yacha-hurt" ||
+  cls === "pg--yacha-win" ||
   cls === "pg--swing" ||
   cls.startsWith("pg--sassy-") ||
   (cls.startsWith("pg--fishing-") && cls !== "pg--fishing-wait");

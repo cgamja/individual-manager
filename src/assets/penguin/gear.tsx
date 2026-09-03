@@ -1,4 +1,4 @@
-/** 펭귄이 드는 것 — 방망이 · 낚싯대 · 낚싯줄 · 찌 · 물고기.
+/** 펭귄이 드는 것 — 방망이 · 낚싯대 · 낚싯줄 · 찌 · 물고기 · 야차 차림.
  *
  * **얼음구멍(`pg-hole`)은 `body.tsx`의 `Ground()`에 있다** — `.pg-all` 밖이라야
  * 착지 포즈에 안 눌린다. 낚시를 손보려면 두 파일을 다 연다.
@@ -7,7 +7,21 @@
  * 스윙이 0 → 1로 드러내는 연출이라 `display`로는 안 된다.
  */
 
-import { BAT_EDGE, BAT_GRIP, BAT_WOOD, FISH, FLOAT, INK } from "../palette";
+import {
+  ANGER,
+  BAT_EDGE,
+  BAT_GRIP,
+  BAT_WOOD,
+  BELT_GOLD,
+  BELT_GOLD_DARK,
+  BELT_LEATHER,
+  FISH,
+  FLOAT,
+  GLOVE,
+  GLOVE_DARK,
+  GLOVE_LACE,
+  INK,
+} from "../palette";
 
 export function Gear() {
   return (
@@ -45,6 +59,68 @@ export function Gear() {
         <path d="M92 107 L97 103.5 L97 110.5 Z" fill={FISH} />
         <circle cx="81" cy="106" r="0.9" fill={INK} />
       </g>
+
+      <BoxingGloves />
+      <ChampionBelt />
+      <AngryMark />
     </>
+  );
+}
+
+/** 복싱 장갑 — 날개 끝 둘에 끼운다. 야차가 무엇인지 말하는 **단 하나의 신호**라
+ * 크고 둥글게 그린다. */
+function BoxingGloves() {
+  return (
+    <g className="pg-gloves">
+      {/* 먼쪽 날개 끝 */}
+      <g className="pg-glove--far">
+        <ellipse cx="30" cy="88" rx="10" ry="9" fill={GLOVE_DARK} />
+        <path d="M22 84 C24 79 30 78 33 81" stroke={GLOVE} strokeWidth="4" strokeLinecap="round" fill="none" />
+        <rect x="26" y="94" width="9" height="3.4" rx="1.7" fill={GLOVE_LACE} opacity="0.75" />
+      </g>
+      {/* 가까운쪽 날개 끝 */}
+      <g className="pg-glove--near">
+        <ellipse cx="73" cy="89" rx="11.5" ry="10.5" fill={GLOVE} />
+        <path d="M82 84 C80 78 73 77 70 80" stroke={GLOVE_DARK} strokeWidth="4.5" strokeLinecap="round" fill="none" />
+        <ellipse cx="76" cy="85" rx="4" ry="3" fill={GLOVE_LACE} opacity="0.35" />
+        <rect x="67" y="96" width="11" height="4" rx="2" fill={GLOVE_LACE} />
+      </g>
+    </g>
+  );
+}
+
+/** 챔피언 벨트 — 허리를 두르는 가죽 띠 + 가운데 금빛 원판.
+ *
+ * **그림이 한 벌이다.** 챔피언의 허리와 미녀가 든 벨트가 같은 도형을 쓰고,
+ * 자리만 CSS가 옮긴다 (`pg-belt--held`). */
+function ChampionBelt() {
+  return (
+    <g className="pg-belt">
+      <path
+        d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z"
+        fill={BELT_LEATHER}
+      />
+      <circle cx="50" cy="96.5" r="7.5" fill={BELT_GOLD} stroke={BELT_GOLD_DARK} strokeWidth="1.4" />
+      <circle cx="50" cy="96.5" r="3.4" fill={BELT_GOLD_DARK} opacity="0.55" />
+    </g>
+  );
+}
+
+/** 화남 표시(💢) — 만화의 분노 핏줄. 십자로 모인 갈매기꼴 넷.
+ *
+ * **맞은 마리의 보는 쪽 가장자리에 뜬다.** 뭉쳐 싸우므로 그 자리가 곧 때린 놈과
+ * 맞은 놈 사이라, 선도 화살표도 없이 짝이 읽힌다. 자리는 CSS가 정한다. */
+function AngryMark() {
+  return (
+    <g className="pg-anger">
+      <path
+        d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34"
+        stroke={ANGER}
+        strokeWidth="3.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </g>
   );
 }

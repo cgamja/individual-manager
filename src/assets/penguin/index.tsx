@@ -5,17 +5,27 @@
 
 import { BodyBack, Ground, WingNear } from "./body";
 import { Gear } from "./gear";
+import { Glam } from "./glam";
 import { Hula } from "./hula";
 
 interface PenguinOwnProps {
   /** 암컷인가 — 훌라 상의를 입힐지 정한다. 창 라벨에서 결정적으로 파생한다. */
   female?: boolean;
+  /** 화장한 미녀 펭귄인가 — 야차 세레모니의 배우 하나뿐이다. */
+  glam?: boolean;
 }
 
 type PenguinProps = React.ComponentPropsWithoutRef<"svg"> & PenguinOwnProps;
 
-export function Penguin({ className = "penguin", female = false, ...rest }: PenguinProps) {
-  const cls = female ? `${className} pg-female` : className;
+export function Penguin({
+  className = "penguin",
+  female = false,
+  glam = false,
+  ...rest
+}: PenguinProps) {
+  const cls = [className, female && "pg-female", glam && "pg-glam-on"]
+    .filter(Boolean)
+    .join(" ");
   return (
     <svg
       className={cls}
@@ -47,6 +57,7 @@ function Shapes() {
 
       <g className="pg-all">
         <BodyBack />
+        <Glam />
         <Hula />
         <WingNear />
         <Gear />

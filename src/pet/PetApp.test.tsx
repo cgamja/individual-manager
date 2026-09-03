@@ -290,3 +290,86 @@ describe("시선 추적", () => {
     expect(gazeX()).toBe("0px");
   });
 });
+
+describe("클릭 통과 요청", () => {
+  /** 무대의 자리를 고정한다 — 창 244×220 안의 140×140 무대다. */
+  function stage(): void {
+    const el = document.querySelector(".pg-stage") as HTMLElement;
+    el.getBoundingClientRect = () =>
+      ({ left: 52, top: 80, width: 140, height: 140 }) as DOMRect;
+  }
+
+  function 요청들(calls: Call[]): unknown[] {
+    return calls.filter((c) => c.cmd === "pet_set_click_through").map((c) => c.args.on);
+  }
+
+  it("여백으로_나가면_통과를_요청한다", async () => {
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    // 창 왼쪽 끝 — 방망이 여백이다.
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([true]);
+  });
+
+  it("펭귄_위로_들어오면_요청을_거둔다", async () => {
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+    pointer("pointermove", window as unknown as Element, { clientX: 122, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([true, false]);
+  });
+
+  it("같은_구역_안에서_움직이면_두_번_보내지_않는다", async () => {
+    // 매 pointermove마다 IPC를 쏘면 커서를 움직이는 내내 왕복이 쌓인다.
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    for (const x of [10, 12, 14, 16]) {
+      pointer("pointermove", window as unknown as Element, { clientX: x, clientY: 150 });
+      await flush();
+    }
+
+    expect(요청들(calls)).toEqual([true]);
+  });
+
+  it("펭귄_위에서는_아무것도_안_보낸다", async () => {
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 122, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([]);
+  });
+
+  it("드래그_중에는_통과를_요청하지_않는다", async () => {
+    // 들고 있는 동안 커서는 창 어디로든 간다. 통과가 걸리면 드래그가 끊긴다.
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+    const el = penguin();
+
+    pointer("pointerdown", el, { screenX: 100, screenY: 100 });
+    await flush();
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([]);
+  });
+});

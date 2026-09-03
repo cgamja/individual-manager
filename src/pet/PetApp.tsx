@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Penguin } from "../assets/penguin";
+import { shouldClickThrough } from "../assets/penguin/hit";
 import { advance, newDragTrack, pushSample, type DragTrack } from "../lib/drag";
 import { loadPetSettings, loadTaunts } from "../lib/settings";
 import { SoundPlayer, soundsFor } from "./sound";
@@ -18,6 +19,7 @@ import {
   onPetSound,
   onPetState,
   openPetPopover,
+  setPetClickThrough,
   startPetDrag,
   tauntFor,
   DEFAULT_TAUNTS,
@@ -63,6 +65,8 @@ export function PetApp() {
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
   /** 무대의 실제 자리 — 창 전역 리스너가 포인터를 여기 기준으로 정규화한다. */
   const stageRef = useRef<HTMLDivElement | null>(null);
+  /** Rust에 마지막으로 보낸 통과 요청. 바뀔 때만 보내려고 들고 있다. */
+  const clickThroughRef = useRef(false);
   /** 사용자가 팝오버에서 고칠 수 있으므로 저장소가 원천이다. */
   const [taunts, setTaunts] = useState<readonly string[]>(DEFAULT_TAUNTS);
   /** 이 창의 소리 전부 — 켜짐/꺼짐·쿨다운·컨텍스트 수명을 소유한다. */
@@ -206,10 +210,11 @@ export function PetApp() {
     return () => document.body.classList.remove("pg-pinball-mode");
   }, [snapshot?.pinball]);
 
-  /** 시선 추적 (R7) — **창 전역에서 듣는다.**
+  /** 시선 추적(R7)과 클릭 통과 요청 — **창 전역에서 듣는다.**
    *
-   * 실루엣만 포인터를 받게 되면서(`base.css`의 `pointer-events`) SVG에 걸어
-   * 두면 눈동자가 펭귄 몸 위에서만 움직인다. 드래그는 포인터 캡처를 쓰므로
+   * 시선은 실루엣만 포인터를 받게 되면서(`base.css`의 `pointer-events`) SVG에
+   * 걸어 두면 눈동자가 펭귄 몸 위에서만 움직인다. 통과 요청은 애초에 여백에서
+   * 나야 하므로 창 전역 말고는 걸 자리가 없다. 드래그는 포인터 캡처를 쓰므로
    * SVG에 그대로 둔다. */
   useEffect(() => {
     const stage = stageRef.current;
@@ -220,6 +225,22 @@ export function PetApp() {
       const nx = (e.clientX - rect.left) / rect.width - 0.5;
       const ny = (e.clientY - rect.top) / rect.height - 0.5;
       setGaze({ x: clampGaze(nx * 4), y: clampGaze(ny * 4) });
+
+      // 무대의 실제 자리에서 치수를 뽑는다 — CSS 변수를 파싱하지 않는다.
+      // 무대가 커지거나 여백이 바뀌어도 저절로 따라간다.
+      const want = shouldClickThrough(e.clientX, e.clientY, {
+        size: rect.width,
+        padX: rect.left,
+        padTop: rect.top,
+      });
+      // **바뀔 때만 보낸다.** 매 pointermove마다 IPC를 쏘면 커서를 움직이는
+      // 내내 왕복이 쌓인다. 실패하면 요청이 안 걸린 것으로 되돌려 다음
+      // 이동에서 다시 시도한다 — 실패의 방향은 언제나 "클릭을 먹는다"다.
+      if (want === clickThroughRef.current) return;
+      clickThroughRef.current = want;
+      void setPetClickThrough(want).catch(() => {
+        clickThroughRef.current = false;
+      });
     };
     // `pointerout`은 도형 사이를 지날 때마다 터져 시선이 계속 0으로 튄다.
     // `pointerleave`는 이 요소의 subtree를 **정말 벗어날 때만** 온다.

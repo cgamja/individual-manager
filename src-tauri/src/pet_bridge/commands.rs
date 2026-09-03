@@ -172,9 +172,7 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
 #[tauri::command]
 pub fn pet_get_state(window: WebviewWindow, state: State<'_, PetState>) -> Option<Snapshot> {
     let id = caller_pet(&window)?;
-    // **웹뷰가 새로 떴다는 신호이기도 하다** (마운트에서 한 번 부른다). HMR이나
-    // 크래시로 다시 뜨면 이전 웹뷰가 남긴 통과 요청은 근거를 잃으므로 지운다 —
-    // 안 지우면 아무도 안 쳐다보는 요청이 남는다.
+    // 웹뷰가 새로 떴다는 신호이기도 하다 — 이전 웹뷰가 남긴 통과 요청을 지운다.
     state.click_through.lock().unwrap().remove(&id);
     let snapshot = state.pets.lock().unwrap().get(id).map(|p| p.snapshot());
     snapshot
@@ -182,12 +180,8 @@ pub fn pet_get_state(window: WebviewWindow, state: State<'_, PetState>) -> Optio
 
 /// 웹뷰가 "포인터가 펭귄 밖이다 — 창을 통과시켜 달라"고 알린다.
 ///
-/// **요청을 남길 뿐 창을 건드리지 않는다.** 플래그를 걸고 되돌리는 것은 틱이
-/// 한다 (`apply_click_through`): 통과 중에는 웹뷰에 포인터 이벤트가 안 오므로
-/// 웹뷰는 스스로 되돌릴 수 없고, 커서가 다시 펭귄 위로 왔는지 볼 수 있는 것은
-/// 틱뿐이다.
-///
-/// `on = false`는 요청을 거두는 것이다 — 그 자체로 즉시 클릭을 먹게 만든다.
+/// **요청을 남길 뿐 창을 건드리지 않는다** — 플래그를 걸고 되돌리는 것은 틱이
+/// 한다 (`apply_click_through`). 되돌릴 때 이 요청도 함께 지워진다(걸쇠).
 #[tauri::command]
 pub fn pet_set_click_through(on: bool, window: WebviewWindow, state: State<'_, PetState>) {
     let Some(id) = caller_pet(&window) else {

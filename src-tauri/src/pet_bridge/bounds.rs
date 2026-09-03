@@ -50,12 +50,9 @@ pub(super) fn primary_bounds(window: &WebviewWindow) -> Option<Bounds> {
         .and_then(|m| monitor_bounds(&m))
 }
 
-/// 지금 이 창이 선 화면의 배율. 커서는 **물리 px**로 오고 창 좌표는 **논리 px**
-/// 이라 둘을 견주려면 이게 필요하다.
-///
-/// **못 읽으면 `None`이고, 그러면 부르는 쪽은 클릭 통과를 아예 안 한다.**
-/// 낡은 값으로 어림하면 커서가 펭귄 위로 돌아온 것을 영영 못 알아보고 창이
-/// 통과 상태로 굳는다 — "펭귄을 아예 못 누른다"로 가는 길이다.
+/// 이 창이 선 화면의 배율. 커서는 **물리 px**, 창 좌표는 **논리 px**이라
+/// 둘을 견주려면 필요하다. **못 읽으면 `None`이고 부르는 쪽은 클릭 통과를
+/// 아예 안 한다** — 어림한 배율로 판정하면 통과가 안 풀린다.
 pub(super) fn current_scale(window: &WebviewWindow) -> Option<f64> {
     window
         .current_monitor()

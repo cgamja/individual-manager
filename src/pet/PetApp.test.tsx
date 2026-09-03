@@ -316,7 +316,9 @@ describe("클릭 통과 요청", () => {
     expect(요청들(calls)).toEqual([true]);
   });
 
-  it("펭귄_위로_들어오면_요청을_거둔다", async () => {
+  it("거두는_것은_보내지_않는다", async () => {
+    // 되돌리는 것은 Rust 몫이다 — 웹뷰는 요청만 한다. `false`를 보내면
+    // 되돌리는 주체가 둘이 되고, 통과 중에는 어차피 못 보낸다.
     const calls = mockPet();
     render(<PetApp />);
     await flush();
@@ -327,11 +329,11 @@ describe("클릭 통과 요청", () => {
     pointer("pointermove", window as unknown as Element, { clientX: 122, clientY: 150 });
     await flush();
 
-    expect(요청들(calls)).toEqual([true, false]);
+    expect(요청들(calls)).toEqual([true]);
   });
 
-  it("같은_구역_안에서_움직이면_두_번_보내지_않는다", async () => {
-    // 매 pointermove마다 IPC를 쏘면 커서를 움직이는 내내 왕복이 쌓인다.
+  it("여백을_헤매도_요청이_쌓이지_않는다", async () => {
+    // 창이 아직 안 바뀐 채 커서가 여백에서 움직이면 매 이동마다 IPC가 나간다.
     const calls = mockPet();
     render(<PetApp />);
     await flush();
@@ -343,6 +345,24 @@ describe("클릭 통과 요청", () => {
     }
 
     expect(요청들(calls)).toEqual([true]);
+  });
+
+  it("펭귄_위를_지났다_다시_여백으로_가면_또_요청한다", async () => {
+    // **Rust는 되돌릴 때 요청을 지운다(걸쇠).** 웹뷰가 "이미 보냈다"를 믿으면
+    // 그 뒤로 다시는 통과가 안 걸린다 — 관측으로 다시 판단해야 한다.
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+    pointer("pointermove", window as unknown as Element, { clientX: 122, clientY: 150 });
+    await flush();
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([true, true]);
   });
 
   it("펭귄_위에서는_아무것도_안_보낸다", async () => {

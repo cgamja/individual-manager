@@ -11,6 +11,45 @@ fn 경계(right: f64) -> Bounds {
     }
 }
 
+/// 자세 판정만 보는 최소 스냅샷.
+fn 스냅샷(behavior: crate::pet::Behavior, air: bool) -> Snapshot {
+    Snapshot {
+        x: 0.0,
+        y: 0.0,
+        facing: crate::pet::Facing::Right,
+        vertical: crate::pet::Vertical::Level,
+        air,
+        speech: None,
+        whack_seq: 0,
+        pinball: false,
+        behavior,
+    }
+}
+
+#[test]
+fn 서_있는_국면은_상자_안이다() {
+    use crate::pet::Behavior::*;
+    for b in [Walk, Sleep, Swing, Squawk] {
+        assert!(pose_of(&스냅샷(b, false)).in_box(), "{b:?}");
+    }
+}
+
+#[test]
+fn 그림이_상자를_넘는_국면은_통과를_접는다() {
+    // 이 목록이 비면 슬라이딩·굴러떨어지기 중에 그려진 펭귄을 눌렀는데 클릭이
+    // 아래 앱으로 샌다 — 이 설계가 없애려던 갈래다.
+    use crate::pet::Behavior::*;
+    for b in [Slide, Tumble, Splat, Sprawl, Thrown, Dragged] {
+        assert!(!pose_of(&스냅샷(b, false)).in_box(), "{b:?}");
+    }
+}
+
+#[test]
+fn 공중에_있으면_동작과_무관하게_통과를_접는다() {
+    // 헤엄은 오르내릴 때 SVG 루트가 통째로 기운다(`air.css`).
+    assert!(!pose_of(&스냅샷(crate::pet::Behavior::Swim, true)).in_box());
+}
+
 #[test]
 fn 시작할_때는_아무도_클릭을_통과시키지_않는다() {
     // 통과는 근거가 있을 때만 켜지는 상태다. 기본이 "클릭을 먹는다"여야

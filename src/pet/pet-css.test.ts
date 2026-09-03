@@ -570,15 +570,16 @@ describe("클릭은 칠해진 자리에서만 받는다", () => {
   /** 네이티브 히트 상자(`pet_bridge/hit.rs`) 밖으로 나가거나 안 보이는 채로
    * 클릭을 먹는 것들. 한쪽 층만 빼면 "웹뷰는 반응하는데 창은 통과시키는"
    * 갈래가 생긴다. */
-  const 클릭_없는_부위 = [
-    "pg-bat",
-    "pg-rod",
-    "pg-line",
-    "pg-float",
-    "pg-fish",
-    "pg-hole",
-    "pg-shadow",
-  ];
+  const 클릭_없는_부위 = ["pg-bat", "pg-rod", "pg-line", "pg-float", "pg-fish", "pg-hole"];
+
+  it("바닥_그림자는_클릭을_받는다", () => {
+    // 그림자는 히트 상자 **안**이다. 빼면 창은 클릭을 먹는데 아무도 반응하지
+    // 않는 띠가 발밑에 생긴다 — 사용자가 겪은 것과 같은 증상이다.
+    const 뺀_규칙 = 포인터규칙().filter(
+      (r) => /\.pg-shadow(?![\w-])/.test(r.sel) && r.value === "none",
+    );
+    expect(뺀_규칙, ".pg-shadow 가 클릭에서 빠져 있다").toHaveLength(0);
+  });
 
   it.each(클릭_없는_부위.map((c) => [c] as const))("%s 는 클릭을 안 받는다", (cls) => {
     const 규칙 = 포인터규칙().filter(

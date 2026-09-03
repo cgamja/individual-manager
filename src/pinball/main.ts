@@ -1,8 +1,13 @@
+import { installBatCursor } from "../assets/props/bat";
 import { setPetPinball } from "../lib/pet";
 import { savePetSettings } from "../lib/settings";
 import "./pinball.css";
 
 /** 핀볼 판 — 화면 전체를 덮는 투명 창의 웹뷰. */
+
+// **커서 방망이를 심는다.** 펭귄 창과 같은 그림을 같은 이름으로 받지만,
+// 창끼리 CSS를 공유하지 않으므로(KTD8) 각자 심는다.
+installBatCursor();
 
 /** 핀볼을 끈다 — **거는 것과 저장을 둘 다** 한다. */
 async function turnOff(): Promise<void> {

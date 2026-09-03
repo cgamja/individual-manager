@@ -96,12 +96,23 @@ function BoxingGloves() {
 function ChampionBelt() {
   return (
     <g className="pg-belt">
+      {/* 띠 */}
       <path
         d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z"
         fill={BELT_LEATHER}
       />
-      <circle cx="50" cy="96.5" r="7.5" fill={BELT_GOLD} stroke={BELT_GOLD_DARK} strokeWidth="1.4" />
-      <circle cx="50" cy="96.5" r="3.4" fill={BELT_GOLD_DARK} opacity="0.55" />
+      {/* 큰 타원 판 — 작고 동그란 원판이면 "금색 덩어리"로 보인다 */}
+      <ellipse
+        cx="50"
+        cy="96.5"
+        rx="11"
+        ry="8.4"
+        fill={BELT_GOLD}
+        stroke={BELT_GOLD_DARK}
+        strokeWidth="1.6"
+      />
+      {/* 가운데 장식 */}
+      <ellipse cx="50" cy="96.5" rx="4.6" ry="3.4" fill={BELT_GOLD_DARK} opacity="0.5" />
     </g>
   );
 }

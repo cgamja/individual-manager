@@ -203,10 +203,10 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 <g class="pg-belt">
 <path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
 </path>
-<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
-</circle>
-<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
-</circle>
+<ellipse cx="50" cy="96.5" rx="11" ry="8.4" fill="#e8c15a" stroke="#a8842c" stroke-width="1.6">
+</ellipse>
+<ellipse cx="50" cy="96.5" rx="4.6" ry="3.4" fill="#a8842c" opacity="0.5">
+</ellipse>
 </g>
 <g class="pg-anger">
 <path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -346,10 +346,10 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 <g class="pg-belt">
 <path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
 </path>
-<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
-</circle>
-<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
-</circle>
+<ellipse cx="50" cy="96.5" rx="11" ry="8.4" fill="#e8c15a" stroke="#a8842c" stroke-width="1.6">
+</ellipse>
+<ellipse cx="50" cy="96.5" rx="4.6" ry="3.4" fill="#a8842c" opacity="0.5">
+</ellipse>
 </g>
 <g class="pg-anger">
 <path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -494,10 +494,10 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 <g class="pg-belt">
 <path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
 </path>
-<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
-</circle>
-<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
-</circle>
+<ellipse cx="50" cy="96.5" rx="11" ry="8.4" fill="#e8c15a" stroke="#a8842c" stroke-width="1.6">
+</ellipse>
+<ellipse cx="50" cy="96.5" rx="4.6" ry="3.4" fill="#a8842c" opacity="0.5">
+</ellipse>
 </g>
 <g class="pg-anger">
 <path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -637,10 +637,10 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 <g class="pg-belt">
 <path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
 </path>
-<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
-</circle>
-<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
-</circle>
+<ellipse cx="50" cy="96.5" rx="11" ry="8.4" fill="#e8c15a" stroke="#a8842c" stroke-width="1.6">
+</ellipse>
+<ellipse cx="50" cy="96.5" rx="4.6" ry="3.4" fill="#a8842c" opacity="0.5">
+</ellipse>
 </g>
 <g class="pg-anger">
 <path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -785,10 +785,10 @@ exports[`펭귄 그림 > 화장한_미녀_펭귄_그림이_그대로다 1`] = `
 <g class="pg-belt">
 <path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
 </path>
-<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
-</circle>
-<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
-</circle>
+<ellipse cx="50" cy="96.5" rx="11" ry="8.4" fill="#e8c15a" stroke="#a8842c" stroke-width="1.6">
+</ellipse>
+<ellipse cx="50" cy="96.5" rx="4.6" ry="3.4" fill="#a8842c" opacity="0.5">
+</ellipse>
 </g>
 <g class="pg-anger">
 <path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -928,10 +928,10 @@ exports[`펭귄 그림 > 화장한_미녀_펭귄_그림이_그대로다 1`] = `
 <g class="pg-belt">
 <path d="M31 92 C38 96 62 96 69 92 L69 99 C62 103 38 103 31 99 Z" fill="#3a2a1a">
 </path>
-<circle cx="50" cy="96.5" r="7.5" fill="#e8c15a" stroke="#a8842c" stroke-width="1.4">
-</circle>
-<circle cx="50" cy="96.5" r="3.4" fill="#a8842c" opacity="0.55">
-</circle>
+<ellipse cx="50" cy="96.5" rx="11" ry="8.4" fill="#e8c15a" stroke="#a8842c" stroke-width="1.6">
+</ellipse>
+<ellipse cx="50" cy="96.5" rx="4.6" ry="3.4" fill="#a8842c" opacity="0.5">
+</ellipse>
 </g>
 <g class="pg-anger">
 <path d="M88 14 L94 20 L88 26 M96 22 L102 28 L96 34 M86 30 L92 36 L86 42 M78 22 L84 28 L78 34" stroke="#e03131" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none">

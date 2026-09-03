@@ -30,6 +30,9 @@ export type BowlingPhase = "gather" | "ready" | "scatter";
 /** 단체 야차의 마리 국면. 판 국면은 Rust가 갖고 웹뷰는 이것만 본다. */
 export type YachaPhase =
   | "gather"
+  | "hunt"
+  | "circle"
+  | "back"
   | "guard"
   | "punch"
   | "hurt"

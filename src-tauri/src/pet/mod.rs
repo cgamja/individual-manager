@@ -25,7 +25,7 @@ use bowling::{dist2_to_segment, pin_positions};
 
 pub use volleyball::{Court, CourtPhase, Side, VolleyBallSnapshot, VolleySnapshot, Volleyball};
 
-pub use yacha::{Huddle, QueenPose, QueenSnapshot, RingPhase, Yacha, YachaSnapshot};
+pub use yacha::{Arena, Punch, QueenPose, QueenSnapshot, RingPhase, Yacha, YachaSnapshot};
 use volleyball::{assign_sides, both_sides_present};
 
 pub use behavior::{
@@ -127,9 +127,6 @@ pub struct Pet {
     /// 지금 하는 얼음낚시 한 판이 끝나는 시각. **절대 시각 하나로 갖는다** —
     /// 국면마다 남은 시간을 빼 나가면 국면이 늘 때마다 계산이 갈라진다.
     fishing_until_ms: u64,
-    /// 야차에서 지금까지 맞은 횟수. **쓰러질 마리를 고르는 유일한 기준이다**
-    /// (KTD5) — 고정 임계값이 아니라 다운 시각의 **최댓값**으로 정한다.
-    yacha_hits: u32,
     /// 야차에서 대표 타격으로 뽑힌 횟수 (`Snapshot::punch_seq`).
     punch_seq: u64,
     /// 그 대표 타격이 쓰러뜨린 한 방이었는가 (`Snapshot::punch_down`).
@@ -708,7 +705,7 @@ impl Pets {
         if self.yacha.is_some() || self.bowling.is_some() || self.volleyball.is_some() {
             return Err(YachaRefusal::BoardBusy);
         }
-        let Some(huddle) = Huddle::new(bounds) else {
+        let Some(arena) = Arena::new(bounds) else {
             return Err(YachaRefusal::NoRoom);
         };
         let ids = self.ids();
@@ -716,23 +713,17 @@ impl Pets {
             return Err(YachaRefusal::TooFew);
         }
 
-        let board = Yacha::new(ids, huddle, now_ms, seed);
+        let board = Yacha::new(ids, arena, now_ms, seed);
         let 참가: Vec<PetId> = board
             .participants()
             .into_iter()
             .filter(|id| {
-                let Some(spot) = board.stance_for(*id) else {
+                let Some((at, _, face)) = board.pose_of(*id) else {
                     return false;
-                };
-                // 가운데를 보고 선다 — 등을 지고 서면 누구를 치는지 안 읽힌다.
-                let face = if spot.0 + PET_SIZE / 2.0 < huddle.cx() {
-                    Facing::Right
-                } else {
-                    Facing::Left
                 };
                 self.pets
                     .get_mut(id)
-                    .is_some_and(|pet| pet.start_yacha(now_ms, spot, face))
+                    .is_some_and(|pet| pet.start_yacha(now_ms, at, face))
             })
             .collect();
 
@@ -776,9 +767,9 @@ impl Pets {
         };
 
         // 1) 판을 떠난 마리를 추린다 (드래그·빠따·삭제).
+        //
         // **`in_yacha`로 본다 — `is_yachaing`이 아니다.** 그쪽은 `Champ`을 빼는데,
-        // 여기서 그걸 쓰면 벨트를 찬 챔피언이 판에서 쫓겨나 `Done`에서 아무도
-        // 안 풀려나고 90초짜리 안전 상한까지 벨트를 찬 채 공중에 떠 있는다.
+        // 여기서 그걸 쓰면 벨트를 찬 챔피언이 판에서 쫓겨나 아무도 안 풀려난다.
         let 참여 = board.participants();
         for id in 참여 {
             if !pets.get(&id).is_some_and(Pet::in_yacha) {
@@ -786,24 +777,13 @@ impl Pets {
             }
         }
 
-        let bounds = board.huddle().bounds();
+        let bounds = board.arena().bounds();
+        let 세레모니 = !matches!(board.phase(), RingPhase::Gathering | RingPhase::Brawl);
 
         // 2) 아무도 안 남았으면 접는다. **세레모니 중에는 안 접는다** — 그때는
         //    챔피언이 `Champ`이라 참여자에서 빠지므로, 접었다가는 벨트 수여가
-        //    나오기 전에 링이 사라진다 (발리볼의 `Point`와 같은 자리).
-        let 세레모니 = !matches!(board.phase(), RingPhase::Gathering | RingPhase::Brawl);
-        if !세레모니 && board.standing().is_empty() {
-            for id in board.participants() {
-                if let Some(pet) = pets.get_mut(&id) {
-                    pet.leave_ring(now_ms, bounds);
-                }
-            }
-            *yacha = None;
-            return;
-        }
-
-        // 3) 판이 시간을 다 썼으면 접는다 (종료 증명 ③).
-        if board.expired(now_ms) {
+        //    나오기 전에 미녀가 사라진다.
+        if (!세레모니 && board.standing().is_empty()) || board.expired(now_ms) {
             for id in board.participants() {
                 if let Some(pet) = pets.get_mut(&id) {
                     pet.leave_ring(now_ms, bounds);
@@ -819,93 +799,63 @@ impl Pets {
                     .participants()
                     .iter()
                     .all(|id| pets.get(id).is_some_and(Pet::yacha_stood));
-                if 다_섰다 {
+                if 다_섰다 || board.phase_over(now_ms) {
                     board.begin_brawl(now_ms);
                 }
             }
             RingPhase::Brawl => {
-                // 한 마리만 남았으면 그대로 챔피언이다.
-                if board.standing().len() <= 1 {
-                    if let Some(champ) = board.standing().first().copied() {
+                board.step_brawl(now_ms);
+
+                // **대표 타격 하나만 소리를 낸다** (KTD7). 한 걸음에 주먹이 여럿
+                // 나도 발수는 하나다 — 여덟 마리에서 겹치면 기관총이 된다.
+                let punches: Vec<_> = board.punches().to_vec();
+                if let Some(p) = punches.iter().find(|p| !p.blocked).or(punches.first()) {
+                    if let Some(pet) = pets.get_mut(&p.to) {
+                        pet.yacha_thud(false);
+                    }
+                }
+
+                // 자리와 자세를 마리에게 받아 적힌다.
+                for id in board.participants() {
+                    if let Some((at, phase, face)) = board.pose_of(id) {
+                        if let Some(pet) = pets.get_mut(&id) {
+                            pet.yacha_apply(now_ms, at, phase, face);
+                        }
+                    }
+                }
+
+                // **예산이 다 되어야 끝난다.** 마지막 다운이 일찍 나도 난투는
+                // 14초를 채운다 — 그래야 한 판 길이가 마릿수와 무관하다.
+                // 그 사이 챔피언은 혼자 `Idle`이라 허공에 주먹을 안 내지른다.
+                let up = board.standing();
+                if board.phase_over(now_ms) {
+                    if let Some(champ) = up.first().copied() {
                         board.crown(now_ms, champ);
                         if let Some(pet) = pets.get_mut(&champ) {
                             pet.yacha_win(now_ms);
                         }
                     }
-                    return;
-                }
-
-                if board.round_due(now_ms) {
-                    let 자리: Vec<(PetId, f64)> = board
-                        .standing()
-                        .iter()
-                        .filter_map(|id| pets.get(id).map(|p| (*id, p.center_x())))
-                        .collect();
-                    let outcome = board.plan_round(now_ms, &자리);
-                    for (때린놈, 맞은놈) in &outcome.punches {
-                        let 대상_x = pets.get(맞은놈).map(Pet::center_x);
-                        if let Some((pet, tx)) = pets.get_mut(때린놈).zip(대상_x) {
-                            let toward = if tx >= pet.center_x() {
-                                Facing::Right
-                            } else {
-                                Facing::Left
-                            };
-                            pet.yacha_punch(now_ms, toward);
-                        }
-                        // 맞은 놈은 **때린 쪽을 본다** — 화남 표시가 둘 사이에
-                        // 뜨게 하는 유일한 장치다 (KTD9d).
-                        let 때린_x = pets.get(때린놈).map(Pet::center_x);
-                        if let Some((pet, ax)) = pets.get_mut(맞은놈).zip(때린_x) {
-                            let from = if ax >= pet.center_x() {
-                                Facing::Right
-                            } else {
-                                Facing::Left
-                            };
-                            pet.yacha_hurt(now_ms, from);
-                        }
-                    }
-                    // **대표 타격 하나만 소리를 낸다** (KTD7).
-                    if let Some(thud) = outcome.thud {
-                        if let Some(pet) = pets.get_mut(&thud) {
-                            pet.yacha_thud(false);
-                        }
-                    }
-                }
-
-                if board.down_due(now_ms) {
-                    let hits: Vec<(PetId, u32)> = board
-                        .standing()
-                        .iter()
-                        .filter_map(|id| pets.get(id).map(|p| (*id, p.yacha_hits())))
-                        .collect();
-                    if let Some(쓰러진) = board.take_down(&hits) {
-                        if let Some(pet) = pets.get_mut(&쓰러진) {
-                            pet.yacha_down(now_ms);
-                            // 쓰러뜨린 한 방은 더 낮고 길게 들린다.
-                            pet.yacha_thud(true);
-                        }
-                        // **남은 놈들이 가운데로 붙는다.** 안 붙이면 여덟 마리
-                        // 판의 끝에서 양 끝 둘만 남아 사정거리 밖이 된다.
-                        let 남은 = board.standing();
-                        for id in &남은 {
-                            if let Some(spot) = board.stance_for(*id) {
-                                if let Some(pet) = pets.get_mut(id) {
-                                    pet.yacha_restance(spot);
-                                }
-                            }
-                        }
-                    }
                 }
             }
             _ => {
-                let dt = 0.05;
                 let 이전 = board.phase();
-                board.step(now_ms, dt);
+                board.step_ceremony(now_ms, 0.05);
                 // 벨트를 채우고 나면 챔피언이 세레모니 자세로 넘어간다.
                 if 이전 != RingPhase::Ceremony && board.phase() == RingPhase::Ceremony {
                     if let Some(champ) = board.champion() {
                         if let Some(pet) = pets.get_mut(&champ) {
                             pet.yacha_champ(now_ms);
+                        }
+                    }
+                }
+                // 쓰러진 놈들은 세레모니 내내 그 자리에 누워 있는다.
+                for id in board.participants() {
+                    if board.champion() == Some(id) {
+                        continue;
+                    }
+                    if let Some((at, phase, face)) = board.pose_of(id) {
+                        if let Some(pet) = pets.get_mut(&id) {
+                            pet.yacha_apply(now_ms, at, phase, face);
                         }
                     }
                 }
@@ -1205,7 +1155,6 @@ impl Pet {
             swim_descending: false,
             freakout_until_ms: 0,
             fishing_until_ms: 0,
-            yacha_hits: 0,
             punch_seq: 0,
             punch_down: false,
             rng: if seed == 0 {
@@ -1248,6 +1197,11 @@ impl Pet {
         } else {
             Vertical::Level
         }
+    }
+
+    #[cfg(test)]
+    pub(in crate::pet) fn behavior_until_for_test(&self) -> u64 {
+        self.behavior_until_ms
     }
 
     pub fn behavior(&self) -> Behavior {

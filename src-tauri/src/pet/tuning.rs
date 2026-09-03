@@ -567,109 +567,103 @@ const _: () = assert!(VOLLEY_MAX_MS > VOLLEY_SESSION_MS.1 + VOLLEY_POINT_MS);
 
 // ── 단체 야차 ──────────────────────────────────────────────────
 //
-// 야차(=야차클럽 유래의 맞장 은어)의 다인전은 battle royal이다. 판은 볼링·
-// 비치발리볼과 같은 자리에 선다 — **화면 세로 중앙**. 근거와 설계는
-// `MOTIONS.md`의 "단체 야차" 절에 있다.
+// 야차(=야차클럽 유래의 맞장 은어)의 다인전은 battle royal이다. **경기장을
+// 그리지 않고 대형도 없다** — 각자 상대를 골라 사방으로 붙었다 빠진다.
+//
+// **값은 전부 아티팩트에서 왔다** (2026-09-03 사용자 지시). 옮겨 적은 명세는
+// `docs/plans/2026-09-03-027-feat-yacha-brawl-plan.md`의 "난투 명세" 절에 있다 —
+// 여기 값과 그쪽이 어긋나면 그쪽이 이긴다.
 
 /// 판을 열 수 있는 최소 마릿수. **한 마리면 때릴 상대가 없다** (R3).
 /// **홀수 제약은 없다** — 팀이 없는 난투라 세 마리도 정상이다.
 pub(super) const YACHA_MIN_PETS: usize = 2;
 const _: () = assert!(YACHA_MIN_PETS >= 2);
 
-/// **뭉치는 반폭은 마릿수를 따라 자란다.** 고정으로 두면 두 마리가 양 끝에 놓여
-/// 232px 떨어진 채 "1대1인데 안 붙은" 그림이 나온다 (실제로 그렇게 났다).
-/// 두 마리는 몸통 반폭, 마리가 늘 때마다 조금씩 넓어진다.
-pub(super) const YACHA_HUDDLE_BASE: f64 = PET_SIZE / 2.0;
-/// 한 마리 늘 때마다 넓어지는 양.
-pub(super) const YACHA_HUDDLE_PER_PET: f64 = 12.0;
+/// 시뮬레이션 한 걸음 (ms). **틱(50ms)과 다르다** — 한 틱에 두세 걸음을 돌린다.
+/// 걸음을 잘게 두는 이유는 주먹 판정(진행률 42%)이 틱 간격보다 촘촘해서다.
+pub(super) const YACHA_DT_MS: u64 = 20;
+const _: () = assert!(YACHA_DT_MS < MAX_STEP_MS);
 
-/// 뭉치는 범위의 가로 반폭 **상한**. **대형을 만들지 않는다** — 중앙 좁은 데 몰아넣어
-/// 서로 겹치게 한다 (2026-09-03 사용자 지시). `PET_SIZE`보다 조금 넓을 뿐이라
-/// 여덟 마리면 반드시 물린다.
-pub(super) const YACHA_HUDDLE_HALF: f64 = 130.0;
+/// 다니는 가로 반폭. **닿는 거리와 따로다** — 판을 넓히면 쫓아다니는 그림이
+/// 늘고 주먹은 그대로라 붙어야만 맞는다.
+pub(super) const YACHA_ARENA_HALF: f64 = 408.0;
 
-/// 뭉치는 범위의 세로 반폭. **깊이를 만드는 값이다** — 아래에 있는 마리가 앞으로
-/// 읽힌다. 창 z 순서는 제어할 수 없으므로 앞뒤는 y로만 말한다.
-pub(super) const YACHA_HUDDLE_DEPTH: f64 = 46.0;
+/// 다니는 세로 범위 (발밑 기준). 위로 갈수록 멀고 작다.
+pub(super) const YACHA_ARENA_Y: (f64, f64) = (-214.0, 96.0);
+const _: () = assert!(YACHA_ARENA_Y.0 < YACHA_ARENA_Y.1);
 
-/// 두 마리가 이보다 가까우면 한 마리로 보인다 — 자리를 다시 뽑는다.
-pub(super) const YACHA_HUDDLE_MIN_GAP: f64 = 38.0;
-const _: () = assert!(YACHA_HUDDLE_MIN_GAP < YACHA_HUDDLE_HALF);
+/// 주먹이 닿는 거리. **판을 넓혀도 이건 안 건드린다.**
+pub(super) const YACHA_REACH: f64 = 118.0;
 
-/// 겹친 둘의 y가 이만큼은 달라야 "붙어 있다"로 읽힌다. 같으면 한 마리가 다른
-/// 마리를 뚫고 나온 것처럼 보인다.
-pub(super) const YACHA_HUDDLE_MIN_DY: f64 = 12.0;
-const _: () = assert!(YACHA_HUDDLE_MIN_DY < YACHA_HUDDLE_DEPTH);
+/// 이보다 가까우면 "붙었다"로 친다.
+pub(super) const YACHA_NEAR: f64 = 84.0;
+const _: () = assert!(YACHA_NEAR < YACHA_REACH);
 
-/// 자리 뽑기를 몇 번까지 다시 하나. **여덟 마리를 좁은 데 넣으므로 실패가
-/// 정상이다** — 다 쓰면 그때까지 중 가장 먼 후보를 쓴다.
-pub(super) const YACHA_HUDDLE_TRIES: u32 = 24;
+/// 이보다 겹치지 않는다. **밀려나는 게 아니라 비켜서는 것**이다.
+pub(super) const YACHA_SEP: f64 = 46.0;
+const _: () = assert!(YACHA_SEP < YACHA_NEAR);
 
-/// 펀치가 닿는 가로 거리 (몸통 가운데 사이).
-///
-/// **`YACHA_STANCE_GAP`보다 커야 한다.** 이게 KTD5의 종료 증명 ②를 떠받친다:
-/// 서 있는 마리가 둘 이상인 동안 이웃은 **항상** 사정거리 안이므로 피격 수가
-/// 매 라운드 반드시 늘고, 그래서 다운이 반드시 일어난다. 뒤집히면 아무도 안
-/// 맞아 판이 예산이 다 될 때까지 헛돈다.
-pub(super) const YACHA_REACH_X: f64 = 360.0;
-/// **뭉친 범위를 통째로 덮어야 한다.** 두 마리가 양 끝에 놓여도 `2 × HALF`이므로
-/// 사정거리가 그보다 짧으면 서로 못 친다. 뭉쳐 있으니 누구든 칠 수 있는 것이 맞고,
-/// 그래서 서 있는 마리가 둘 이상인 동안 피격 수가 매 라운드 반드시 는다 —
-/// **종료 증명 ②가 이 한 줄에 걸려 있다.**
-const _: () = assert!(YACHA_REACH_X >= 2.0 * YACHA_HUDDLE_HALF);
+/// 세로 1px을 가로보다 얼마나 멀게 세나 (원근).
+pub(super) const YACHA_YW: f64 = 1.35;
+const _: () = assert!(YACHA_YW > 1.0);
 
-/// **실제로 겹쳐야 한다.** 가장 먼 두 마리가 몸통 둘보다 좁게 놓여야 "얽혔다"로
-/// 읽힌다 — 넓으면 그냥 흩어져 선 것이다.
-const _: () = assert!(2.0 * YACHA_HUDDLE_HALF < 2.0 * PET_SIZE);
+/// 걸음 (논리 px/ms). `hunt` 기준이고 맴돌기·빼기는 계수가 다르다.
+/// **판이 넓어진 만큼 걸음도 크다** — 안 그러면 쫓아만 다니다 판이 끝난다.
+pub(super) const YACHA_STEP_PER_MS: f64 = 0.124;
 
-/// 이보다 좁은 세계에서는 판을 열지 않는다 — 뭉칠 자리가 안 나온다.
-pub(super) const YACHA_MIN_WORLD_WIDTH: f64 = 2.0 * (YACHA_HUDDLE_HALF + PET_SIZE);
+/// 깊이 배율의 기울기 — 아래(가까이)에 있을수록 크다. `1 + yOff / 이 값`.
+pub(super) const YACHA_DEPTH_SPAN: f64 = 700.0;
+const _: () = assert!(YACHA_DEPTH_SPAN > YACHA_ARENA_Y.1 - YACHA_ARENA_Y.0);
 
-/// 세로로도 이만큼은 있어야 한다 — 링이 화면 세로 중앙에 뜨고 그 위에서
-/// 쓰러지는 그림에 여유가 필요하다.
-pub(super) const YACHA_MIN_WORLD_HEIGHT: f64 = 360.0;
-const _: () = assert!(YACHA_MIN_WORLD_HEIGHT > YACHA_HUDDLE_DEPTH * 2.0 + PET_SIZE);
+/// 주먹 한 번의 길이. **고정이다** — v5는 150~240에서 뽑아 놓고 진행도를 220으로
+/// 나눠서 자세와 판정이 어긋나 있었다.
+pub(super) const YACHA_SWING_MS: u64 = 180;
+/// 주먹의 **판정 지점** (진행률). 뻗는 도중에 닿는다.
+pub(super) const YACHA_SWING_HIT_AT: f64 = 0.42;
+const _: () = assert!(YACHA_SWING_HIT_AT > 0.0 && YACHA_SWING_HIT_AT < 1.0);
 
-/// 링으로 **날아가는** 속도. 볼링·발리볼과 같은 값·같은 이유다.
-pub(super) const YACHA_GATHER_SPEED: f64 = 420.0;
-const _: () = assert!(YACHA_GATHER_SPEED > SWIM_SPEED);
-const _: () = assert!(YACHA_GATHER_SPEED < FREAKOUT_SPEED);
+/// 맞고 휘청이는 길이. **짧다** — 빨리 복귀해야 연타가 안 끊긴다.
+pub(super) const YACHA_HURT_MS: u64 = 140;
+const _: () = assert!(YACHA_HURT_MS < YACHA_SWING_MS);
 
-/// 이웃이 쓰러졌을 때 **가운데로 다시 붙는** 속도. 걷기보다 빠르되 뛰는
-/// 것으로는 안 보여야 한다 — 자리를 고쳐 서는 것이지 도망가는 게 아니다.
-/// 뭉쳐 있으므로 옮기는 거리는 짧다.
-pub(super) const YACHA_CLOSE_SPEED: f64 = 150.0;
-const _: () = assert!(YACHA_CLOSE_SPEED > WALK_SPEED);
-const _: () = assert!(YACHA_CLOSE_SPEED < YACHA_GATHER_SPEED);
+/// 난투 예산. 아티팩트의 `brawl` 국면 길이 그대로다.
+pub(super) const YACHA_BRAWL_MS: u64 = 14_000;
+/// 예산 안에 주먹이 충분히 들어가야 "치고받는다"로 보인다.
+const _: () = assert!(YACHA_BRAWL_MS / YACHA_SWING_MS >= 40);
 
-/// 난투 한 라운드의 주기. 이 주기마다 **서 있는 마리의 절반**이 이웃을 친다.
-pub(super) const YACHA_ROUND_MS: u64 = 340;
+/// 상태 고르기 확률 — **닿을 때만 친다** (헛스윙은 화면에서 아무 일도 아니다).
+/// 멀 때: hunt / 나머지는 circle.
+pub(super) const YACHA_P_HUNT: f64 = 0.78;
+/// 붙었을 때 칠 확률. **방금 쳤으면 더 친다 — 이게 퍽퍽퍽 연타다.**
+pub(super) const YACHA_P_SWING: (f64, f64) = (0.52, 0.64);
+const _: () = assert!(YACHA_P_SWING.0 < YACHA_P_SWING.1);
+/// 칠 확률 위로 얹히는 몫 — 가드, 그다음 빼기. 나머지가 맴돌기다.
+pub(super) const YACHA_P_GUARD_ADD: f64 = 0.15;
+pub(super) const YACHA_P_BACK_ADD: f64 = 0.29;
+const _: () = assert!(YACHA_P_GUARD_ADD < YACHA_P_BACK_ADD);
+const _: () = assert!(YACHA_P_SWING.1 + YACHA_P_BACK_ADD < 1.0);
+/// 상대를 다시 고를 확률.
+pub(super) const YACHA_P_RETARGET: f64 = 0.32;
 
-/// 펀치를 뻗은 자세의 길이.
-pub(super) const YACHA_PUNCH_MS: u64 = 260;
-const _: () = assert!(YACHA_PUNCH_MS < YACHA_ROUND_MS);
+/// 상태 지속 — 멀 때 / 붙었을 때 (`lo`, `범위`).
+pub(super) const YACHA_HOLD_FAR_MS: (u64, u64) = (200, 320);
+pub(super) const YACHA_HOLD_NEAR_MS: (u64, u64) = (140, 280);
 
-/// 맞고 휘청이는 자세의 길이. **자리는 안 변한다** (R7).
-pub(super) const YACHA_HURT_MS: u64 = 220;
-const _: () = assert!(YACHA_HURT_MS < YACHA_ROUND_MS);
-
-/// 난투 예산 범위 — 시드로 뽑는다. 다운 일정이 이 안에 배치된다.
-pub(super) const YACHA_BRAWL_MS: (u64, u64) = (14_000, 18_000);
-const _: () = assert!(YACHA_BRAWL_MS.1 >= YACHA_BRAWL_MS.0);
-/// 예산 안에 라운드가 충분히 들어가야 "치고받는" 것으로 보인다.
-const _: () = assert!(YACHA_BRAWL_MS.0 / YACHA_ROUND_MS >= 30);
-/// **여덟 마리에서도 다운 간격이 눈에 보여야 한다.** 일곱 번의 다운이 예산을
-/// 나눠 가지므로 한 칸이 라운드 몇 번은 돼야 "맞다가 쓰러진다"로 읽힌다.
-const _: () = assert!(YACHA_BRAWL_MS.0 / 8 > YACHA_ROUND_MS * 3);
-
-/// 이만큼은 맞아야 쓰러진다. **한 대도 안 맞고 넘어가는 그림을 막는다** —
-/// 다운 시각이 됐는데 최다 피격이 이보다 적으면 다음 틱으로 미룬다.
-pub(super) const YACHA_MIN_HITS: u32 = 3;
+/// 이만큼은 맞아야 쓰러진다 — 한 대도 안 맞고 넘어가는 그림을 막는다.
+pub(super) const YACHA_MIN_HITS: u32 = 2;
 const _: () = assert!(YACHA_MIN_HITS >= 1);
 
 /// 최후의 1인이 양 날개를 드는 시간. **`SASSY_MS`와 같아야 한다** — CSS가
 /// 싸가지 반응의 keyframe을 참조하므로 어긋나면 자세가 중간에 멈춘다.
 pub(super) const YACHA_WIN_MS: u64 = SASSY_MS;
+
+/// 링으로 **날아오는** 속도. 볼링·발리볼과 같은 값·같은 이유다.
+pub(super) const YACHA_GATHER_SPEED: f64 = 420.0;
+const _: () = assert!(YACHA_GATHER_SPEED > SWIM_SPEED);
+const _: () = assert!(YACHA_GATHER_SPEED < FREAKOUT_SPEED);
+
+/// 모이는 데 주는 시간. 아티팩트의 `gather` 국면이다.
+pub(super) const YACHA_GATHER_MS: u64 = 2_500;
 
 /// 미녀 펭귄이 **걸어오는** 속도. 다른 마리들이 날아온 것과 대비되어야 한다.
 pub(super) const YACHA_QUEEN_SPEED: f64 = 220.0;
@@ -680,24 +674,30 @@ const _: () = assert!(YACHA_QUEEN_SPEED < YACHA_GATHER_SPEED);
 pub(super) const YACHA_QUEEN_STOP_GAP: f64 = 110.0;
 const _: () = assert!(YACHA_QUEEN_STOP_GAP < PET_SIZE);
 
+/// 미녀가 걸어 들어오는 데 주는 시간.
+pub(super) const YACHA_QUEEN_MS: u64 = 2_000;
 /// 벨트를 채우는 동안.
 pub(super) const YACHA_BELT_MS: u64 = 1_200;
-
-/// 세레모니 — 벨트를 차고 양 날개를 들어 흔든다.
+/// 세레모니.
 pub(super) const YACHA_CEREMONY_MS: u64 = 2_500;
-const _: () = assert!(YACHA_CEREMONY_MS > YACHA_BELT_MS);
-
-/// 미녀가 오른쪽으로 걸어 나가는 동안. 같은 시간에 링이 걷히고 쓰러진 마리가
-/// 일어난다.
+/// 미녀가 나가고 쓰러진 놈들이 일어나는 동안.
 pub(super) const YACHA_EXIT_MS: u64 = 1_200;
 
-/// 판이 어떤 이유로도 마리를 이보다 오래 붙들지 못한다 (KTD5의 종료 증명 ③).
+/// 판이 어떤 이유로도 마리를 이보다 오래 붙들지 못한다 (종료 증명 ③).
 pub(super) const YACHA_MAX_MS: u64 = 90_000;
 const _: () = assert!(
     YACHA_MAX_MS
-        > YACHA_BRAWL_MS.1
+        > YACHA_GATHER_MS
+            + YACHA_BRAWL_MS
             + YACHA_WIN_MS
+            + YACHA_QUEEN_MS
             + YACHA_BELT_MS
             + YACHA_CEREMONY_MS
             + YACHA_EXIT_MS
 );
+
+/// 이보다 좁은 세계에서는 판을 열지 않는다 — 붙었다 빠질 자리가 안 나온다.
+pub(super) const YACHA_MIN_WORLD_WIDTH: f64 = 2.0 * (YACHA_REACH + PET_SIZE);
+/// 세로로도 이만큼은 있어야 한다.
+pub(super) const YACHA_MIN_WORLD_HEIGHT: f64 = 360.0;
+const _: () = assert!(YACHA_MIN_WORLD_HEIGHT > PET_SIZE);

@@ -1,4 +1,8 @@
-//! 단체 야차 판의 검사. 국면 전이·다운 일정·종료 증명이 핵심이다.
+//! 단체 야차 판의 검사.
+//!
+//! **성질을 본다, 값이 아니라.** 아티팩트와 난수 구현이 다르므로 초당 펀치가
+//! 정확히 같을 수는 없다 — 플랜의 "합격 기준" 절이 못 박은 성질 셋을 본다:
+//! ① 박자가 없다 ② 마릿수가 늘수록 초당 펀치가 는다 ③ 난투 길이는 마릿수와 무관하다.
 
 use super::*;
 
@@ -9,55 +13,42 @@ const 세계: Bounds = Bounds {
     floor_y: 800.0,
 };
 
-fn 자리들() -> Huddle {
-    Huddle::new(세계).expect("이 세계에는 뭉칠 자리가 있다")
-}
-
 fn 판(n: usize, seed: u64) -> Yacha {
     let ids: Vec<PetId> = (1..=n as PetId).collect();
-    Yacha::new(ids, 자리들(), 0, seed)
+    let arena = Arena::new(세계).expect("이 세계에는 판이 들어간다");
+    let mut b = Yacha::new(ids, arena, 0, seed);
+    b.begin_brawl(0);
+    b
 }
 
-/// 서 있는 마리를 스탠스 순서대로 (id, 몸통 가운데 x)로 만든다.
-fn 자리(board: &Yacha) -> Vec<(PetId, f64)> {
-    board
-        .standing()
+/// 난투를 `ms`만큼 돌린다. 반환값은 (모든 주먹의 시각, 마리별 이동폭).
+fn 난투(board: &mut Yacha, ms: u64) -> (Vec<u64>, Vec<f64>) {
+    let ids = board.participants();
+    let mut 시각 = Vec::new();
+    let mut 범위: BTreeMap<PetId, (f64, f64)> = ids
         .iter()
         .map(|id| {
-            let (x, _) = board.stance_for(*id).expect("서 있는 마리는 자리가 있다");
-            (*id, x + PET_SIZE / 2.0)
+            let (x, _) = board.xy_of(*id).unwrap();
+            (*id, (x, x))
         })
-        .collect()
-}
-
-/// 난투를 끝까지 돌린다. 반환값은 (최후의 1인, 그때 시각).
-fn 난투를_끝까지(board: &mut Yacha, n: usize) -> (PetId, u64) {
-    let mut hits: std::collections::BTreeMap<PetId, u32> = std::collections::BTreeMap::new();
+        .collect();
     let mut now = 0u64;
-    while now < YACHA_MAX_MS {
+    while now < ms {
         now += 50; // 20Hz 틱
-        if board.round_due(now) {
-            let outcome = board.plan_round(now, &자리(board));
-            for (_, target) in &outcome.punches {
-                *hits.entry(*target).or_insert(0) += 1;
-            }
+        board.step_brawl(now);
+        for p in board.punches() {
+            let _ = p;
+            시각.push(now);
         }
-        if board.down_due(now) {
-            let 후보: Vec<(PetId, u32)> = board
-                .standing()
-                .iter()
-                .map(|id| (*id, hits.get(id).copied().unwrap_or(0)))
-                .collect();
-            if let Some(쓰러진) = board.take_down(&후보) {
-                hits.remove(&쓰러진);
+        for id in &ids {
+            if let Some((x, _)) = board.xy_of(*id) {
+                let e = 범위.get_mut(id).unwrap();
+                e.0 = e.0.min(x);
+                e.1 = e.1.max(x);
             }
-        }
-        if board.standing().len() <= 1 {
-            let champ = board.standing()[0];
-            return (champ, now);
         }
     }
-    panic!("{n}마리 판이 안 끝났다");
+    (시각, 범위.values().map(|(lo, hi)| hi - lo).collect())
 }
 
 #[test]
@@ -68,33 +59,142 @@ fn 세계가_좁으면_판이_안_열린다() {
         top: 0.0,
         floor_y: 800.0,
     };
-    assert!(Huddle::new(좁다).is_none());
+    assert!(Arena::new(좁다).is_none());
     let 낮다 = Bounds {
         left: 0.0,
         right: 1_440.0,
         top: 0.0,
         floor_y: 100.0,
     };
-    assert!(Huddle::new(낮다).is_none());
+    assert!(Arena::new(낮다).is_none());
 }
 
 #[test]
 fn 같은_시드는_같은_판을_낳는다() {
-    let a = 판(5, 12_345);
-    let b = 판(5, 12_345);
-    assert_eq!(a.order(), b.order(), "서는 순서가 다르다");
-    assert_eq!(a.down_schedule(), b.down_schedule(), "다운 일정이 다르다");
-    assert_eq!(a.brawl_until_ms(), b.brawl_until_ms(), "예산이 다르다");
+    let mut a = 판(5, 12_345);
+    let mut b = 판(5, 12_345);
+    let (ta, _) = 난투(&mut a, 6_000);
+    let (tb, _) = 난투(&mut b, 6_000);
+    assert_eq!(ta, tb, "같은 시드인데 주먹 시각이 다르다");
+    for id in a.participants() {
+        assert_eq!(a.xy_of(id), b.xy_of(id), "{id}번의 자리가 다르다");
+    }
 }
 
 #[test]
-fn 다른_시드는_다른_대진을_낳는다() {
-    // 다섯 마리의 순열은 120가지다 — 시드 몇 개 중 하나라도 달라야 섞은 것이다.
-    let 기준 = 판(5, 1).order();
+fn 다른_시드는_다른_판을_낳는다() {
+    let mut a = 판(4, 1);
+    let mut b = 판(4, 99);
+    let (ta, _) = 난투(&mut a, 6_000);
+    let (tb, _) = 난투(&mut b, 6_000);
+    assert_ne!(ta, tb);
+}
+
+#[test]
+fn 박자가_없다() {
+    // 마리마다 제 상태 기계라 같은 시각에 몰리지 않는다. 다 같이 치면
+    // "퍽퍽퍽퍽"이 아니라 메트로놈이 된다.
+    let mut board = 판(6, 20_260_903);
+    let (시각, _) = 난투(&mut board, 10_000);
+    assert!(시각.len() >= 20, "주먹이 {}발뿐이다", 시각.len());
+    let mut 셈: BTreeMap<u64, usize> = BTreeMap::new();
+    for t in &시각 {
+        *셈.entry(*t).or_insert(0) += 1;
+    }
+    let 최다 = *셈.values().max().unwrap();
     assert!(
-        (2..40).any(|s| 판(5, s).order() != 기준),
-        "시드를 바꿔도 서는 순서가 그대로다 — 안 섞고 있다"
+        최다 <= 3,
+        "한 틱에 {최다}발이 몰렸다 — 박자가 생겼다"
     );
+}
+
+#[test]
+fn 마릿수가_늘면_초당_펀치가_는다() {
+    let mut 앞 = 0.0;
+    for n in [2usize, 4, 8] {
+        let mut board = 판(n, 20_260_903);
+        let (시각, _) = 난투(&mut board, YACHA_BRAWL_MS);
+        let 초당 = 시각.len() as f64 / (YACHA_BRAWL_MS as f64 / 1_000.0);
+        assert!(
+            초당 > 앞,
+            "{n}마리가 {초당:.1}발/초 — 앞({앞:.1})보다 안 늘었다"
+        );
+        앞 = 초당;
+    }
+}
+
+#[test]
+fn 헛스윙이_거의_없다() {
+    // v5는 사정거리 밖에서도 스윙을 골라 4마리 14초에 29발뿐이었다.
+    // **닿을 때만 친다**로 바꾼 것이 이 판의 밀도다.
+    let mut board = 판(4, 20_260_903);
+    let (시각, _) = 난투(&mut board, YACHA_BRAWL_MS);
+    let 초당 = 시각.len() as f64 / (YACHA_BRAWL_MS as f64 / 1_000.0);
+    assert!(초당 >= 2.0, "4마리에 {초당:.1}발/초 — 너무 성기다");
+}
+
+#[test]
+fn 사방으로_다닌다() {
+    // 제자리에서 치고받으면 "움직임이 거의 없다"가 된다.
+    let mut board = 판(4, 20_260_903);
+    let (_, 이동폭) = 난투(&mut board, YACHA_BRAWL_MS);
+    let 최대 = 이동폭.iter().cloned().fold(0.0f64, f64::max);
+    assert!(최대 > 40.0, "가장 많이 움직인 마리가 {최대:.0}px뿐이다");
+}
+
+#[test]
+fn 판_밖으로_안_나간다() {
+    let mut board = 판(8, 7);
+    난투(&mut board, YACHA_BRAWL_MS);
+    for id in board.participants() {
+        let (x, y) = board.xy_of(id).unwrap();
+        assert!(
+            (세계.left..=세계.right).contains(&x),
+            "{id}번이 가로로 나갔다: {x}"
+        );
+        assert!(
+            y >= YACHA_ARENA_Y.0 - 1.0 && y <= YACHA_ARENA_Y.1 + 1.0,
+            "{id}번이 세로로 나갔다: {y}"
+        );
+    }
+}
+
+#[test]
+fn 완전히_포개지지는_않는다() {
+    // 비켜서기(`separate`)가 도는지 본다.
+    let mut board = 판(8, 5);
+    난투(&mut board, 8_000);
+    let ids = board.standing();
+    for i in 0..ids.len() {
+        for j in (i + 1)..ids.len() {
+            let (ax, ay) = board.xy_of(ids[i]).unwrap();
+            let (bx, by) = board.xy_of(ids[j]).unwrap();
+            let d = (bx - ax).hypot((by - ay) * YACHA_YW);
+            assert!(d > 1.0, "{}번과 {}번이 같은 자리다", ids[i], ids[j]);
+        }
+    }
+}
+
+#[test]
+fn 가드는_실제로_막는다() {
+    let mut board = 판(2, 3);
+    let ids = board.participants();
+    let (a, b) = (ids[0], ids[1]);
+    board.set_act(b, Act::Guard, 100_000);
+    let 맞기_전 = board.hits_of(b);
+    // a를 b 옆에 붙여 두고 몇 초 돌린다.
+    let mut now = 0;
+    while now < 6_000 {
+        now += 50;
+        board.step_brawl(now);
+        board.set_act(b, Act::Guard, 100_000); // 계속 가드로 붙들어 둔다
+    }
+    assert_eq!(
+        board.hits_of(b),
+        맞기_전,
+        "가드 중인데 맞았다"
+    );
+    let _ = a;
 }
 
 #[test]
@@ -108,7 +208,7 @@ fn 다운_일정이_증가하고_예산_안에_있다() {
                 assert!(w[0] < w[1], "{n}마리 시드 {seed}: 다운 일정이 안 는다");
             }
             assert!(
-                *일정.last().unwrap() < board.brawl_until_ms(),
+                *일정.last().unwrap() < YACHA_BRAWL_MS,
                 "{n}마리 시드 {seed}: 마지막 다운이 예산을 넘는다"
             );
         }
@@ -116,278 +216,93 @@ fn 다운_일정이_증가하고_예산_안에_있다() {
 }
 
 #[test]
-fn 다운_간격이_고르다() {
-    // 앞에 몰려 쓰러지고 뒤가 비면 "하나씩 줄어드는" 리듬이 죽는다.
-    // 구조적으로 참인 것을 못 박는다: 한 칸은 라운드 몇 번은 되고(눈에 보인다),
-    // 평균의 두 배를 넘지 않는다(빈 구간이 안 생긴다).
-    for n in [3usize, 5, 8] {
-        for seed in [1u64, 4_242, 77, 90_210] {
-            let board = 판(n, seed);
-            let 일정 = board.down_schedule();
-            let mut 간격: Vec<u64> = vec![일정[0]];
-            for w in 일정.windows(2) {
-                간격.push(w[1] - w[0]);
-            }
-            let 평균 = board.brawl_until_ms() / n as u64;
-            for (k, g) in 간격.iter().enumerate() {
-                assert!(
-                    *g >= YACHA_ROUND_MS,
-                    "{n}마리 시드 {seed}: {k}번째 다운이 앞 다운과 {g}ms밖에 안 떨어졌다"
-                );
-                assert!(
-                    *g <= 평균 * 2,
-                    "{n}마리 시드 {seed}: {k}번째 다운 전에 {g}ms(평균 {평균}ms)나 빈다"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn 판_길이가_마릿수에_비례하지_않는다() {
-    let (_, 둘) = 난투를_끝까지(&mut 판(2, 777), 2);
-    let (_, 여덟) = 난투를_끝까지(&mut 판(8, 777), 8);
-    let (작, 큰) = if 둘 < 여덟 { (둘, 여덟) } else { (여덟, 둘) };
-    assert!(
-        큰 < 작 * 2,
-        "두 마리 {둘}ms vs 여덟 마리 {여덟}ms — 마릿수에 비례한다"
-    );
-}
-
-#[test]
 fn 아무리_오래_돌아도_최후의_1인이_나온다() {
     for n in [2usize, 3, 4, 5, 6, 7, 8] {
         for seed in [1u64, 31, 500, 90_210] {
             let mut board = 판(n, seed);
-            let (champ, at) = 난투를_끝까지(&mut board, n);
-            assert!(board.participants().contains(&champ));
-            assert!(
-                at <= YACHA_BRAWL_MS.1 + 2_000,
-                "{n}마리 시드 {seed}: 난투가 {at}ms나 걸렸다"
+            난투(&mut board, YACHA_BRAWL_MS + 2_000);
+            assert_eq!(
+                board.standing().len(),
+                1,
+                "{n}마리 시드 {seed}: {}마리가 남았다",
+                board.standing().len()
             );
         }
     }
 }
 
 #[test]
-fn 가장_많이_맞은_마리가_쓰러진다() {
-    let mut board = 판(4, 5);
-    let 언제 = board.down_schedule()[0];
-    assert!(!board.down_due(언제 - 1));
-    assert!(board.down_due(언제));
-    // 3번이 몰아 맞았다.
-    let 후보 = vec![(1, 1u32), (2, 2), (3, 9), (4, 0)];
-    assert_eq!(board.take_down(&후보), Some(3));
-    assert!(!board.standing().contains(&3));
+fn 난투_길이는_마릿수와_무관하다() {
+    // **예산이 판을 끝낸다.** 마지막 다운이 일찍 나도 난투는 예산을 채우고,
+    // 그 사이 챔피언은 혼자 `Idle`이다 — 그래야 한 판 길이가 늘 같다.
+    for n in [2usize, 4, 8] {
+        let board = 판(n, 20_260_903);
+        assert!(!board.phase_over(YACHA_BRAWL_MS - 100), "{n}마리가 일찍 끝난다");
+        assert!(board.phase_over(YACHA_BRAWL_MS + 100), "{n}마리가 안 끝난다");
+    }
 }
 
 #[test]
-fn 세_대도_안_맞았으면_다운이_미뤄진다() {
-    let mut board = 판(4, 5);
-    let 후보 = vec![(1, 0u32), (2, 1), (3, 2), (4, 0)];
-    assert_eq!(board.take_down(&후보), None, "덜 맞았는데 쓰러졌다");
-    assert_eq!(board.standing().len(), 4);
+fn 혼자_남으면_아무도_안_친다() {
+    // 허공에 주먹을 내지르면 이긴 게 아니라 이상해 보인다.
+    let mut board = 판(2, 11);
+    난투(&mut board, YACHA_BRAWL_MS + 2_000);
+    let 챔프 = board.standing()[0];
+    let mut now = YACHA_BRAWL_MS + 2_000;
+    let mut 뒤 = 0;
+    while 뒤 < 2_000 {
+        now += 50;
+        뒤 += 50;
+        board.step_brawl(now);
+        assert!(board.punches().is_empty(), "혼자인데 주먹이 났다");
+    }
+    assert_eq!(board.act_of(챔프), Some(Act::Idle));
 }
 
 #[test]
-fn 최다_피격이_같으면_id가_작은_쪽이_쓰러진다() {
-    let mut board = 판(4, 5);
-    let 후보 = vec![(1, 5u32), (2, 5), (3, 5), (4, 5)];
-    assert_eq!(board.take_down(&후보), Some(1));
-}
-
-#[test]
-fn 이웃은_항상_사정거리_안이다() {
-    // 종료 증명 ② — 뭉쳐 있으므로 누구든 칠 수 있고, 서 있는 마리가 둘 이상인
-    // 동안 피격 수가 반드시 는다.
-    for n in 2..=8 {
-        for seed in [1u64, 42, 7_777] {
-            let board = 판(n, seed);
-            let 자리: Vec<f64> = board
-                .participants()
-                .iter()
-                .map(|id| board.stance_for(*id).unwrap().0 + PET_SIZE / 2.0)
-                .collect();
-            for (i, a) in 자리.iter().enumerate() {
-                let 가장_가까운 = 자리
-                    .iter()
-                    .enumerate()
-                    .filter(|(j, _)| *j != i)
-                    .map(|(_, b)| (a - b).abs())
-                    .fold(f64::INFINITY, f64::min);
-                assert!(
-                    가장_가까운 <= YACHA_REACH_X,
-                    "{n}마리 시드 {seed}: {i}번의 가장 가까운 이웃이 {가장_가까운}px다"
-                );
-            }
+fn 쓰러진_놈은_안_맞는다() {
+    let mut board = 판(4, 13);
+    난투(&mut board, YACHA_BRAWL_MS + 2_000);
+    let 서있는 = board.standing();
+    let mut now = YACHA_BRAWL_MS + 2_000;
+    for _ in 0..40 {
+        now += 50;
+        board.step_brawl(now);
+        for p in board.punches() {
+            assert!(서있는.contains(&p.to), "쓰러진 놈을 쳤다");
         }
     }
-}
-
-#[test]
-fn 대형을_만들지_않는다() {
-    // 사용자 지시 — 줄 세우면 안 된다. 간격이 전부 같으면 그게 대형이다.
-    let board = 판(6, 31);
-    let mut x: Vec<f64> = board
-        .participants()
-        .iter()
-        .map(|id| board.stance_for(*id).unwrap().0)
-        .collect();
-    x.sort_by(f64::total_cmp);
-    let 간격: Vec<f64> = x.windows(2).map(|w| w[1] - w[0]).collect();
-    let 최대 = 간격.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let 최소 = 간격.iter().cloned().fold(f64::INFINITY, f64::min);
-    assert!(최대 - 최소 > 8.0, "간격이 고르다 — 줄을 세우고 있다: {간격:?}");
-}
-
-#[test]
-fn 서로_겹친다() {
-    // "얽히고 섥히는 느낌" — 마리마다 실루엣이 물리는 이웃이 하나는 있어야 한다.
-    for n in [2usize, 4, 6, 8] {
-        for seed in [1u64, 5, 42, 90_210] {
-            let board = 판(n, seed);
-            let 자리: Vec<f64> = board
-                .participants()
-                .iter()
-                .map(|id| board.stance_for(*id).unwrap().0)
-                .collect();
-            for (i, a) in 자리.iter().enumerate() {
-                let 가장_가까운 = 자리
-                    .iter()
-                    .enumerate()
-                    .filter(|(j, _)| *j != i)
-                    .map(|(_, b)| (a - b).abs())
-                    .fold(f64::INFINITY, f64::min);
-                assert!(
-                    가장_가까운 < PET_SIZE,
-                    "{n}마리 시드 {seed}: {i}번이 이웃과 {가장_가까운}px 떨어져 안 겹친다"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn 완전히_포개지지는_않는다() {
-    for n in 2..=8 {
-        for seed in [1u64, 42, 7_777, 90_210] {
-            let board = 판(n, seed);
-            let 자리: Vec<(f64, f64)> = board
-                .participants()
-                .iter()
-                .map(|id| board.stance_for(*id).unwrap())
-                .collect();
-            for i in 0..자리.len() {
-                for j in (i + 1)..자리.len() {
-                    let d = (자리[i].0 - 자리[j].0).hypot(자리[i].1 - 자리[j].1);
-                    assert!(d > 1.0, "{n}마리 시드 {seed}: {i}번과 {j}번이 같은 자리다");
-                }
-            }
-        }
-    }
-}
-
-#[test]
-fn 깊게_겹친_둘은_y가_다르다() {
-    // 창 z 순서를 제어할 수 없으므로 깊이는 y로만 말한다 (KTD9c).
-    for seed in [1u64, 42, 7_777, 90_210, 5] {
-        let board = 판(8, seed);
-        let 자리: Vec<(f64, f64)> = board
-            .participants()
-            .iter()
-            .map(|id| board.stance_for(*id).unwrap())
-            .collect();
-        for i in 0..자리.len() {
-            for j in (i + 1)..자리.len() {
-                if (자리[i].0 - 자리[j].0).abs() > PET_SIZE / 2.0 {
-                    continue;
-                }
-                assert!(
-                    (자리[i].1 - 자리[j].1).abs() >= YACHA_HUDDLE_MIN_DY,
-                    "시드 {seed}: 깊게 겹친 {i}·{j}번의 y가 같다"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn 펀치는_좌표를_만들지_않는다() {
-    // 판이 돌려주는 것은 id 쌍뿐이다 — 좌표가 없으니 밀어낼 방법도 없다 (R7).
-    let mut board = 판(4, 3);
-    let outcome = board.plan_round(YACHA_ROUND_MS, &자리(&board));
-    assert!(!outcome.punches.is_empty());
-    for (때린놈, 맞은놈) in &outcome.punches {
-        assert_ne!(때린놈, 맞은놈, "자기를 때린다");
-        assert!(board.standing().contains(맞은놈));
-    }
-}
-
-#[test]
-fn 라운드마다_대표_타격은_하나뿐이다() {
-    let mut board = 판(8, 11);
-    let mut now = 0;
-    for _ in 0..10 {
-        now += YACHA_ROUND_MS;
-        let outcome = board.plan_round(now, &자리(&board));
-        assert!(
-            outcome.thud.is_some(),
-            "치는 마리가 있는데 대표가 없다"
-        );
-        assert!(board.standing().contains(&outcome.thud.unwrap()));
-    }
-}
-
-#[test]
-fn 라운드마다_치는_쪽이_바뀐다() {
-    // 홀짝 교대라 두 라운드를 합치면 서 있는 마리 전부가 한 번씩 친다.
-    let mut board = 판(4, 8);
-    let a = board.plan_round(YACHA_ROUND_MS, &자리(&board));
-    let b = board.plan_round(YACHA_ROUND_MS * 2, &자리(&board));
-    let mut 친놈: Vec<PetId> = a
-        .punches
-        .iter()
-        .chain(b.punches.iter())
-        .map(|(p, _)| *p)
-        .collect();
-    친놈.sort_unstable();
-    친놈.dedup();
-    assert_eq!(친놈.len(), 4, "두 라운드에 네 마리가 다 안 쳤다: {친놈:?}");
 }
 
 #[test]
 fn 참여가_하나로_줄면_그대로_챔피언이다() {
     let mut board = 판(2, 2);
-    board.leave(1);
-    assert_eq!(board.standing(), vec![2]);
-    assert_eq!(board.participants(), vec![2]);
+    board.leave(board.participants()[0]);
+    assert_eq!(board.standing().len(), 1);
 }
 
 #[test]
-fn 판에서_빠지면_다운_일정이_짧아진다() {
-    // 남은 마리가 줄면 남은 다운도 줄어야 한다 — 안 그러면 영영 안 끝난다.
+fn 판에서_빠지면_남은_다운도_준다() {
     let mut board = 판(5, 6);
     assert_eq!(board.down_schedule().len(), 4);
-    board.leave(1);
-    board.leave(2);
-    assert!(
-        board.down_schedule().len() <= 2,
-        "빠진 만큼 다운이 안 줄었다"
-    );
+    let ids = board.participants();
+    board.leave(ids[0]);
+    board.leave(ids[1]);
+    assert!(board.down_schedule().len() <= 2, "빠진 만큼 다운이 안 줄었다");
 }
 
 #[test]
 fn 세레모니는_정해진_순서로_간다() {
     let mut board = 판(2, 9);
-    board.crown(1_000, 1);
+    let champ = board.participants()[0];
+    board.crown(1_000, champ);
     assert_eq!(board.phase(), RingPhase::Victory);
-    assert_eq!(board.champion(), Some(1));
 
     let mut now = 1_000;
     let mut 본_국면 = vec![RingPhase::Victory];
-    while board.phase() != RingPhase::Done {
+    while board.phase() != RingPhase::Done && now < 60_000 {
         now += 50;
-        board.step(now, 0.05);
+        board.step_ceremony(now, 0.05);
         if *본_국면.last().unwrap() != board.phase() {
             본_국면.push(board.phase());
         }
@@ -408,37 +323,42 @@ fn 세레모니는_정해진_순서로_간다() {
 #[test]
 fn 미녀는_오른쪽_밖에서_걸어_들어온다() {
     let mut board = 판(2, 9);
-    board.crown(0, 1);
+    board.crown(0, board.participants()[0]);
     let 처음 = board.snapshot().queen.expect("승리 국면부터 미녀가 있다");
-    assert!(
-        처음.x > 세계.right,
-        "미녀가 화면 안에서 튀어나온다 (x={})",
-        처음.x
-    );
+    assert!(처음.x > 세계.right, "미녀가 화면 안에서 튀어나온다");
     let mut now = 0;
-    while board.phase() != RingPhase::Belting && now < YACHA_MAX_MS {
+    while board.phase() != RingPhase::Belting && now < 60_000 {
         now += 50;
-        board.step(now, 0.05);
+        board.step_ceremony(now, 0.05);
     }
     let 도착 = board.snapshot().queen.expect("벨트 국면에도 미녀가 있다");
     assert!(도착.x < 세계.right, "미녀가 화면 안으로 안 들어왔다");
-    assert!(
-        도착.x > board.stance_for(1).expect("챔피언은 서 있다").0,
-        "미녀가 챔피언을 지나쳐 갔다"
-    );
 }
 
 #[test]
 fn 벨트는_채운_뒤에만_챔피언에게_있다() {
     let mut board = 판(2, 9);
-    board.crown(0, 1);
+    board.crown(0, board.participants()[0]);
     assert!(!board.belt_on_champion(), "승리하자마자 벨트를 차고 있다");
     let mut now = 0;
-    while board.phase() != RingPhase::Ceremony && now < YACHA_MAX_MS {
+    while board.phase() != RingPhase::Ceremony && now < 60_000 {
         now += 50;
-        board.step(now, 0.05);
+        board.step_ceremony(now, 0.05);
     }
     assert!(board.belt_on_champion(), "세레모니인데 벨트가 없다");
+}
+
+#[test]
+fn 깊이는_위에_있는_놈이_뒤다() {
+    let mut board = 판(6, 4);
+    난투(&mut board, 5_000);
+    let 순서 = board.snapshot().depth;
+    let mut 앞 = f64::NEG_INFINITY;
+    for id in 순서 {
+        let (_, y) = board.xy_of(id).unwrap();
+        assert!(y >= 앞 - 1e-9, "깊이 순서가 y와 어긋난다");
+        앞 = y;
+    }
 }
 
 #[test]

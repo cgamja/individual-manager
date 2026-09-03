@@ -19,6 +19,9 @@
 }
 
 .pg--yacha-gather .pg-gloves,
+.pg--yacha-hunt .pg-gloves,
+.pg--yacha-circle .pg-gloves,
+.pg--yacha-back .pg-gloves,
 .pg--yacha-guard .pg-gloves,
 .pg--yacha-punch .pg-gloves,
 .pg--yacha-hurt .pg-gloves,
@@ -38,10 +41,16 @@
   transform: translate(4px, -12px);
 }
 
+/* 가드는 **얼굴 앞으로** 둘 다 올린다 — 실제로 막는 국면이라 그림이 달라야
+   "왜 안 맞았지"가 안 생긴다. */
+.pg--yacha-guard .pg-glove--near {
+  transform: translate(-13px, -34px);
+}
+
 /* 펀치를 뻗을 때 앞쪽 장갑만 앞으로 나간다 — 몸 전체가 밀리면 "튕겨나갔다"로
    읽히고 그건 정확히 이 동작이 아닌 것이다. */
 .pg--yacha-punch .pg-glove--near {
-  animation: pg-yacha-jab 0.26s ease-out 1;
+  animation: pg-yacha-jab 0.18s ease-out 1;
   transform-origin: 66px 88px;
 }
 
@@ -70,10 +79,12 @@
   display: block;
 }
 
-/* 미녀가 **들고 있는** 벨트. 같은 도형을 자리만 옮겨 쓴다 (그림은 한 벌이다). */
+/* 미녀가 **들고 있는** 벨트. 같은 도형을 자리만 옮겨 쓴다 (그림은 한 벌이다).
+   **발치가 아니라 날개 높이에서 앞으로 내민다** — 허리 아래에 작게 두면
+   금색 덩어리가 떠 있는 것으로 보인다 (2026-09-03 사용자). */
 .pg-belt--held .pg-belt {
   display: block;
-  transform: translate(26px, -34px) rotate(-14deg) scale(0.82);
+  transform: translate(30px, -44px) rotate(-10deg) scale(1.05);
 }
 
 /* ── X자 눈 — 쓰러졌을 때 ────────────────────────────────── */
@@ -102,7 +113,7 @@
 
 .pg--yacha-hurt .pg-anger {
   display: block;
-  animation: pg-yacha-anger-pop 0.22s ease-out 1;
+  animation: pg-yacha-anger-pop 0.14s ease-out 1;
   transform-origin: 90px 28px;
 }
 
@@ -123,6 +134,45 @@
 
 /* ── 자세 ────────────────────────────────────────────────── */
 
+/* **자리는 Rust가 창을 옮겨 정한다.** 여기서 그리는 것은 기울기와 몸짓뿐이다.
+   다가감·맴돎·뺌은 기울기로 갈린다 — 아티팩트의 `lean` 값 그대로다. */
+.pg--yacha-hunt .pg-all {
+  transform: rotate(5deg);
+}
+
+.pg--yacha-circle .pg-all {
+  transform: rotate(1.5deg);
+}
+
+.pg--yacha-back .pg-all {
+  transform: rotate(-6deg);
+}
+
+/* 다니는 동안 발을 번갈아 딛는다 — 미끄러지듯 흐르면 유령이 된다. */
+.pg--yacha-hunt .pg-foot--near,
+.pg--yacha-back .pg-foot--near,
+.pg--yacha-circle .pg-foot--near {
+  animation: pg-yacha-step 0.34s ease-in-out infinite;
+  transform-origin: 56px 104px;
+}
+
+.pg--yacha-hunt .pg-foot--far,
+.pg--yacha-back .pg-foot--far,
+.pg--yacha-circle .pg-foot--far {
+  animation: pg-yacha-step 0.34s ease-in-out infinite reverse;
+  transform-origin: 46px 104px;
+}
+
+@keyframes pg-yacha-step {
+  0%,
+  100% {
+    transform: translateX(-3.5px);
+  }
+  50% {
+    transform: translateX(3.5px);
+  }
+}
+
 /* 가드 — 몸을 살짝 웅크리고 무릎으로 리듬을 탄다. 다음 라운드를 기다리는
    국면이라 길이가 없다(판이 몬다) — 그래서 무한 반복이다. */
 .pg--yacha-guard .pg-all {
@@ -132,16 +182,16 @@
 @keyframes pg-yacha-bob {
   0%,
   100% {
-    transform: translateY(0) scale(1, 1);
+    transform: translateY(0) rotate(-2deg) scale(1, 1);
   }
   50% {
-    transform: translateY(2.5px) scale(1.015, 0.985);
+    transform: translateY(2.5px) rotate(-2deg) scale(1.015, 0.985);
   }
 }
 
 /* 펀치 — 몸이 아주 살짝 앞으로 기운다. **자리는 안 바뀐다.** */
 .pg--yacha-punch .pg-all {
-  animation: pg-yacha-lunge 0.26s ease-out 1;
+  animation: pg-yacha-lunge 0.18s ease-out 1;
 }
 
 @keyframes pg-yacha-lunge {
@@ -160,7 +210,7 @@
    변형이라 네이티브 창의 자리와 무관하다. 그게 "서로 튕겨나가지 않는다"를
    그림으로 지키는 방법이다. */
 .pg--yacha-hurt .pg-all {
-  animation: pg-yacha-reel 0.22s ease-out 1;
+  animation: pg-yacha-reel 0.14s ease-out 1;
 }
 
 @keyframes pg-yacha-reel {
@@ -278,6 +328,12 @@
 @media (prefers-reduced-motion: reduce) {
   .pg--yacha-gather .pg-wing-near,
   .pg--yacha-gather .pg-wing-far,
+  .pg--yacha-hunt .pg-foot--near,
+  .pg--yacha-hunt .pg-foot--far,
+  .pg--yacha-circle .pg-foot--near,
+  .pg--yacha-circle .pg-foot--far,
+  .pg--yacha-back .pg-foot--near,
+  .pg--yacha-back .pg-foot--far,
   .pg--yacha-guard .pg-all,
   .pg--yacha-punch .pg-all,
   .pg--yacha-punch .pg-glove--near,

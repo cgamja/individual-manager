@@ -102,6 +102,9 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "volleyball", volley: "cheer" },
   { kind: "volleyball", volley: "sulk" },
   { kind: "yacha", yacha: "gather" },
+  { kind: "yacha", yacha: "hunt" },
+  { kind: "yacha", yacha: "circle" },
+  { kind: "yacha", yacha: "back" },
   { kind: "yacha", yacha: "guard" },
   { kind: "yacha", yacha: "punch" },
   { kind: "yacha", yacha: "hurt" },
@@ -339,7 +342,7 @@ describe("동작 길이 동기화", () => {
     ["pg--freakout-pant", "FREAKOUT_PANT_MS"],
     ["pg--bowling-scatter", "BOWLING_SCATTER_MS"],
     ["pg--volley-bump", "VOLLEY_BUMP_MS"],
-    ["pg--yacha-punch", "YACHA_PUNCH_MS"],
+    ["pg--yacha-punch", "YACHA_SWING_MS"],
     ["pg--yacha-hurt", "YACHA_HURT_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
@@ -656,6 +659,14 @@ describe("평소 숨기는 도형", () => {
     "pg-fish",
     "pg-beak-lower",
     "pg-luau",
+    // 야차의 새 도형들. **후광(`pg-halo`)이 같은 도형을 한 번 더 그리므로**
+    // `opacity: 0`으로 감추면 후광에만 잔상이 남는다 — 어두운 바탕에서 검은
+    // 몸이 묻히는 것을 후광이 막고 있어서, 한쪽만 숨으면 그 방어가 깨진다.
+    "pg-gloves",
+    "pg-belt",
+    "pg-anger",
+    "pg-eye-x",
+    "pg-glam",
   ];
 
   /** 선택자에 이 클래스가 정확히 등장하는 모든 규칙 블록의 본문. */

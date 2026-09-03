@@ -49,6 +49,11 @@ impl DepthView {
     pub fn forget(&mut self) {
         self.order.clear();
     }
+
+    /// 지금 레벨이 걸려 있는 마리들. 판이 끝날 때 되돌릴 대상이다.
+    pub fn order(&self) -> &[PetId] {
+        &self.order
+    }
 }
 
 /// `order`는 **뒤에서 앞** 순서다 (먼 마리가 앞).

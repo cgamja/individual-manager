@@ -90,6 +90,8 @@ pub fn close_queen_window(app: &AppHandle) {
 /// 틱이 들고 다니는 캐시. 판이 끝나면 전부 비운다.
 #[derive(Default)]
 pub struct YachaView {
+    /// 겹친 마리의 앞뒤 — 창 레벨로 잡는다 (`pet_bridge/depth.rs`).
+    depth: DepthView,
     at: Option<(f64, f64)>,
     size: Option<(f64, f64)>,
     look: Option<QueenSnapshot>,
@@ -106,6 +108,17 @@ pub(super) fn apply_yacha(
     view: &mut YachaView,
     scale: f64,
 ) {
+    let 판이_있나 = board.is_some();
+    let 깊이: Vec<PetId> = board.as_ref().map(|s| s.depth.clone()).unwrap_or_default();
+    // **겹친 마리의 앞뒤는 창 레벨로 잡는다.** 순서로는 못 잡는다 —
+    // macOS에서 같은 레벨 안의 순서는 클릭할 때마다 바뀐다.
+    if 판이_있나 {
+        apply_depth(app, &깊이, &mut view.depth);
+    } else {
+        let ids: Vec<PetId> = view.depth.order().to_vec();
+        reset_depth(app, &ids, &mut view.depth);
+    }
+
     let queen = board.and_then(|s| s.queen);
     let Some(queen) = queen else {
         // **`||`를 쓰면 안 된다 — 단축평가가 뒤쪽 `take()`를 건너뛴다.**
@@ -118,7 +131,6 @@ pub(super) fn apply_yacha(
         }
         // 판 자체가 끝났을 때만 설정 창에 알린다 — 난투 중에는 미녀가 없을 뿐
         // 판은 살아 있다.
-        let 판이_있나 = board.is_some();
         if bowling_over(view.board_alive, 판이_있나) {
             let _ = app.emit(EVENT_YACHA_OVER, ());
         }
@@ -171,7 +183,7 @@ fn 실패(app: &AppHandle, view: &mut YachaView, err: tauri::Error) {
         // 사이에 커맨드가 판을 바꿀 수 있다.
         let state = app.state::<PetState>();
         let mut pets = state.pets.lock().unwrap();
-        if let Some(bounds) = pets.yacha().map(|b| b.huddle().bounds()) {
+        if let Some(bounds) = pets.yacha().map(|b| b.arena().bounds()) {
             pets.end_yacha(now_ms(), bounds);
         }
         drop(pets);

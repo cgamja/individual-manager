@@ -37,7 +37,13 @@
 
 ```text
 src/
-  pet/                펭귄 창 웹뷰 — Penguin.tsx(SVG), PetApp.tsx, sound·synth
+  assets/             **그림과 색은 전부 여기 있다** — 로직 파일에 SVG를 두지 않는다
+    palette.ts        모든 색. 부위별 이름 하나씩
+    penguin/          index(조립·겹침 순서) · body · hula(훌라 차림) · gear(방망이·낚시)
+    props/            소품 — bat(커서 방망이) · bowling-ball · beach-ball · court
+                      **React를 쓰지 않는다** (바닐라 창이 쓴다)
+    assets.test.ts    그림 렌더 스냅샷 + props의 React 무의존 검사
+  pet/                펭귄 창 웹뷰 — PetApp.tsx, sound·synth
     css/              동작별 스타일 (base·ground·air·react·pinball·drag·
                       fishing·freakout·rest·speech·bowling·volleyball)
                       — index.css가 묶는다
@@ -75,6 +81,8 @@ Rust는 아무 말도 하지 않는다.
 
 - **`main`에 직접 커밋하지 않는다.** 브랜치는 `타입/기능-설명-번호` (예: `feat/f3-ice-fishing-01`).
 - **커밋은 한국어 Angular 컨벤션**, `타입: 제목` 50자 이내, 기능 단위로 묶는다.
+- **주석은 WHAT을 간단히.** 결정 과정·실패 이력은 주석이 아니라 `MOTIONS.md`·`TODO.md`·
+  `docs/solutions/*`에 두고 한 줄로 가리킨다 (2026-09-02·09-03 사용자 지시, 두 번 받았다).
 - **TDD** — 핵심 로직(`pet/motion/*`의 상태 전이·경계 판정)은 실패 테스트 먼저.
   **테스트 이름은 한국어** (예: `공중에서_클릭하면_제자리에서_반응한다`). UI 테스트는 선택.
 - **PR 하나는 `TODO.md` 체크박스 하나**를 넘지 않는다. `.github/TEMPLATE/PR.md` 템플릿을 쓴다.
@@ -157,6 +165,19 @@ Rust는 아무 말도 하지 않는다.
   네이티브 창은 클릭을 그대로 먹는다. 클릭 통과와 창 레벨은 서로를 대신하지 못하므로
   **둘 다** 건다. →
   `docs/solutions/best-practices/tauri-ignore-cursor-events-is-async.md`
+- **그림은 두 러너·타입 검사·리뷰를 전부 통과하면서 바뀔 수 있다.** 그래서
+  `src/assets/assets.test.ts`가 **렌더 스냅샷**으로 못 박아 뒀다 — 펭귄 둘(암·수)과
+  소품 다섯. **`-u`로 덮는 것은 "그림을 바꾸겠다"는 선언**이지 통과시키는 방법이
+  아니다. **다만 스냅샷은 마크업만 본다** — CSS는 한 줄도 안 덮으므로 중복
+  `@keyframes`로 애니메이션이 죽는 것은 여전히 스냅샷 밖이다.
+- **소스 텍스트를 읽는 검사는 주석에 걸려 헛돈다.** 호출을 주석 처리해도 이름이
+  남아 통과한다. **새로 쓴 소스 대조 검사는 반드시 돌연변이로 한 번 빨갛게 만들어
+  본다** — 에셋 리팩터링에서 이 방법으로만 일곱 개가 헛돈다는 게 드러났다. →
+  `docs/solutions/best-practices/source-text-tests-pass-on-comments.md`
+- **CSS `cursor`는 키워드를 목록 맨 끝에만 허용한다.** `cursor: var(--x, grab), grab`은
+  `--x`가 없을 때 `grab, grab`이 되는데 **무효라 선언이 통째로 버려진다** — 대체값이
+  아무것도 막지 못하는데 보기에는 방어처럼 읽힌다. 값 전체(`url(…) 10 30, grab`)를
+  프로퍼티에 담고 `cursor: var(--x, grab)`으로 받는다.
 - **화면을 넘나드는 좌표는 배율부터 의심한다.** 창 하나로 여러 화면을 덮으면 그 창은
   배율 하나만 쓰므로 배율이 다른 화면에서 어긋난다. 화면마다 창을 따로 만든다.
 - **사용자를 막는 기능에는 나가는 문이 둘 있어야 한다.** 핀볼 판은 화면 전체의 클릭을

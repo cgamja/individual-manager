@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { Penguin } from "./Penguin";
+import { Penguin } from "../assets/penguin";
 import { advance, newDragTrack, pushSample, type DragTrack } from "../lib/drag";
 import { loadPetSettings, loadTaunts } from "../lib/settings";
 import { SoundPlayer, soundsFor } from "./sound";

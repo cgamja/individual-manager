@@ -1,3 +1,4 @@
+import { installBatCursor } from "../assets/props/bat";
 import { setPetPinball } from "../lib/pet";
 import { savePetSettings } from "../lib/settings";
 import "./pinball.css";
@@ -16,3 +17,7 @@ window.addEventListener("keydown", (e) => {
   e.preventDefault();
   void turnOff();
 });
+
+// 커서 방망이를 심는다. 인자는 `pinball.css`의 `var()` 대체값과 같아야 한다.
+// **Esc 등록보다 뒤다** — 앞이면 여기서 던졌을 때 나가는 문 하나가 사라진다.
+installBatCursor("default");

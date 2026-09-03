@@ -1,4 +1,5 @@
 import { getVolleyState, onVolleyState, type VolleyBallSnapshot } from "../lib/pet";
+import { BEACH_BALL_SVG } from "../assets/props/beach-ball";
 import "./ball.css";
 
 /**
@@ -10,24 +11,10 @@ import "./ball.css";
  * 끄는 것뿐이다.
  */
 
-/** 비치볼 — 흰 바탕에 색 조각 셋. 펭귄만큼 공들이지 않는다. */
-const BALL_SVG = `
-<svg class="vb-ball" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <g class="vb-ball-body">
-    <circle cx="32" cy="32" r="30" fill="#fdfcf7" stroke="#c9c2b0" stroke-width="1.6" />
-    <path d="M32 2 A30 30 0 0 1 60 22 Q 36 26 32 2 Z" fill="#ff6f9c" />
-    <path d="M60 22 A30 30 0 0 1 46 57 Q 34 36 60 22 Z" fill="#3fb8d8" />
-    <path d="M46 57 A30 30 0 0 1 8 46 Q 28 34 46 57 Z" fill="#ffd35c" />
-    <circle cx="32" cy="32" r="30" fill="none" stroke="#b9b1a0" stroke-width="1.6" />
-    <ellipse cx="22" cy="18" rx="8" ry="5" fill="#ffffff" opacity="0.55"
-             transform="rotate(-28 22 18)" />
-  </g>
-</svg>`;
-
 const root = document.getElementById("vball-root");
 
 if (root) {
-  root.innerHTML = BALL_SVG;
+  root.innerHTML = BEACH_BALL_SVG;
   root.addEventListener("contextmenu", (e) => e.preventDefault());
 
   const paint = (ball: VolleyBallSnapshot) => {
@@ -47,5 +34,3 @@ if (root) {
     })
     .catch(() => {});
 }
-
-export { BALL_SVG };

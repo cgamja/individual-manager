@@ -75,3 +75,10 @@ keyframes). 이 사고는 반대 방향이다 — 이름이 **너무 많이** �
 - 이 부류(컴파일·테스트·경고가 전부 통과하고 런타임에서만 조용히 틀리는 것)를 만나면
   **소스를 직접 대조하는 테스트**를 만든다. 커맨드 등록 누락과 같은 처방이다 →
   `docs/solutions/best-practices/tauri-command-registration-silent-failure.md`
+- **그림 자체는 렌더 스냅샷으로 못 박는다** (2026-09-03 에셋 리팩터링에서 추가).
+  `src/assets/assets.test.ts`가 펭귄 둘과 소품 다섯을 렌더해 마크업을 굳혀 둔다 —
+  도형·좌표·겹침 순서가 조용히 바뀌는 것은 이걸로 잡힌다. **다만 이 사고는 여전히
+  스냅샷 밖이다**: 스냅샷은 마크업만 보고 CSS는 한 줄도 안 덮으므로, `@keyframes`가
+  겹쳐 애니메이션이 죽어도 스냅샷은 미동도 없다. 위 두 검사가 계속 본체다.
+- **위 처방을 따라 만든 소스 대조 테스트가 주석에 걸려 헛돌 수 있다** —
+  그 함정과 확인 방법은 `docs/solutions/best-practices/source-text-tests-pass-on-comments.md`

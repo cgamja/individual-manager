@@ -12,6 +12,7 @@ import {
   throwVelocity,
   type BallSnapshot,
 } from "../lib/pet";
+import { BOWLING_BALL_SVG } from "../assets/props/bowling-ball";
 import "./ball.css";
 
 /**
@@ -21,19 +22,6 @@ import "./ball.css";
  * 속도만 보내고, 창 위치의 소유자는 Rust 하나다. 그래서 화면 좌표 → 세계 좌표
  * 변환이 여기에도 저기에도 없다.
  */
-
-/** 공 그림 — 원 하나에 손가락 구멍 셋. 펭귄만큼 공들이지 않는다 (A6). */
-const BALL_SVG = `
-<svg class="bw-ball" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <g class="bw-ball-body">
-    <circle cx="32" cy="32" r="30" fill="#2b2f4a" stroke="#12142a" stroke-width="2" />
-    <path d="M12 18 A30 30 0 0 1 34 5" stroke="#6f76a8" stroke-width="5"
-          stroke-linecap="round" fill="none" opacity="0.55" />
-    <circle cx="25" cy="24" r="4.4" fill="#0d0f1e" />
-    <circle cx="38" cy="21" r="4.4" fill="#0d0f1e" />
-    <circle cx="32" cy="34" r="4.4" fill="#0d0f1e" />
-  </g>
-</svg>`;
 
 interface BallDrag extends DragTrack {
   /** 코어가 공을 **실제로 집었는지.** 그 전의 이동량은 `pending`에 모은다. */
@@ -46,7 +34,7 @@ interface BallDrag extends DragTrack {
 const root = document.getElementById("ball-root");
 
 if (root) {
-  root.innerHTML = BALL_SVG;
+  root.innerHTML = BOWLING_BALL_SVG;
 
   // **상태는 track 안에 산다.** 모듈 변수로 빼면 새 드래그가 앞 드래그의
   // 정산을 가로채 버퍼가 뒤섞인다.

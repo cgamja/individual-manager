@@ -17,10 +17,13 @@ export const FOOT = "#e3a892";
 
 // ── 펭귄이 드는 것 ──
 
-/** 방망이 나무결. */
-export const BAT_WOOD = "#a1712f";
+/** 방망이·낚싯대의 나무결. **커서 방망이와 같은 색이다** — 밝아야 검은 몸통에서
+ * 분리된다(전에는 `#a1712f`라 몸통 가장자리에 묻혔다). */
+export const BAT_WOOD = "#d59a55";
+/** 방망이 테두리. 커서처럼 배경 위에 뜰 때 실루엣이 뭉개지지 않게 준다. */
+export const BAT_EDGE = "#6b4520";
 /** 방망이 손잡이. */
-export const BAT_GRIP = "#26262b";
+export const BAT_GRIP = "#3a2a1a";
 /** 얼음 구멍 속. */
 export const HOLE = "#2f4a63";
 /** 찌. */
@@ -40,16 +43,6 @@ export const STRAW_DARK = "#8f6414";
 /** 목에 거는 레이(꽃목걸이). */
 export const LEI = "#e8543f";
 export const LEI_ALT = "#f2c14e";
-
-// ── 커서 방망이 ──
-// **펭귄이 든 방망이(`BAT_*`)와 색이 다르다.** 통일 여부는 `TODO.md`에 열려 있다.
-
-/** 커서 방망이 나무결. */
-export const CURSOR_BAT_WOOD = "#d59a55";
-/** 커서 방망이 테두리 — 48px에서 실루엣이 뭉개지지 않게 준다. */
-export const CURSOR_BAT_EDGE = "#6b4520";
-/** 커서 방망이 손잡이. */
-export const CURSOR_BAT_GRIP = "#3a2a1a";
 
 // ── 볼링 공 ──
 

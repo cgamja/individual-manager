@@ -149,12 +149,12 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 <path class="pg-wing-near" d="M66 50 C76 57 80 75 74 89 C72 93 68 91 67 87 C64 74 63 60 64 52 Z" fill="#1b1f24">
 </path>
 <g class="pg-bat">
-<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#a1712f">
+<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#d59a55" stroke="#6b4520" stroke-width="0.9" stroke-linejoin="round">
 </path>
-<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#26262b">
+<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#3a2a1a">
 </rect>
 </g>
-<path class="pg-rod" d="M70 87 L98 95" stroke="#a1712f" stroke-width="2.6" stroke-linecap="round" fill="none">
+<path class="pg-rod" d="M70 87 L98 95" stroke="#d59a55" stroke-width="2.6" stroke-linecap="round" fill="none">
 </path>
 <path class="pg-line" d="M98 95 L90 116" stroke="#1b1f24" stroke-width="0.9" fill="none" opacity="0.55">
 </path>
@@ -248,12 +248,12 @@ exports[`펭귄 그림 > 수컷_펭귄_그림이_그대로다 1`] = `
 <path class="pg-wing-near" d="M66 50 C76 57 80 75 74 89 C72 93 68 91 67 87 C64 74 63 60 64 52 Z" fill="#1b1f24">
 </path>
 <g class="pg-bat">
-<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#a1712f">
+<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#d59a55" stroke="#6b4520" stroke-width="0.9" stroke-linejoin="round">
 </path>
-<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#26262b">
+<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#3a2a1a">
 </rect>
 </g>
-<path class="pg-rod" d="M70 87 L98 95" stroke="#a1712f" stroke-width="2.6" stroke-linecap="round" fill="none">
+<path class="pg-rod" d="M70 87 L98 95" stroke="#d59a55" stroke-width="2.6" stroke-linecap="round" fill="none">
 </path>
 <path class="pg-line" d="M98 95 L90 116" stroke="#1b1f24" stroke-width="0.9" fill="none" opacity="0.55">
 </path>
@@ -352,12 +352,12 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 <path class="pg-wing-near" d="M66 50 C76 57 80 75 74 89 C72 93 68 91 67 87 C64 74 63 60 64 52 Z" fill="#1b1f24">
 </path>
 <g class="pg-bat">
-<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#a1712f">
+<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#d59a55" stroke="#6b4520" stroke-width="0.9" stroke-linejoin="round">
 </path>
-<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#26262b">
+<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#3a2a1a">
 </rect>
 </g>
-<path class="pg-rod" d="M70 87 L98 95" stroke="#a1712f" stroke-width="2.6" stroke-linecap="round" fill="none">
+<path class="pg-rod" d="M70 87 L98 95" stroke="#d59a55" stroke-width="2.6" stroke-linecap="round" fill="none">
 </path>
 <path class="pg-line" d="M98 95 L90 116" stroke="#1b1f24" stroke-width="0.9" fill="none" opacity="0.55">
 </path>
@@ -451,12 +451,12 @@ exports[`펭귄 그림 > 암컷_펭귄_그림이_그대로다 1`] = `
 <path class="pg-wing-near" d="M66 50 C76 57 80 75 74 89 C72 93 68 91 67 87 C64 74 63 60 64 52 Z" fill="#1b1f24">
 </path>
 <g class="pg-bat">
-<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#a1712f">
+<path d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z" fill="#d59a55" stroke="#6b4520" stroke-width="0.9" stroke-linejoin="round">
 </path>
-<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#26262b">
+<rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill="#3a2a1a">
 </rect>
 </g>
-<path class="pg-rod" d="M70 87 L98 95" stroke="#a1712f" stroke-width="2.6" stroke-linecap="round" fill="none">
+<path class="pg-rod" d="M70 87 L98 95" stroke="#d59a55" stroke-width="2.6" stroke-linecap="round" fill="none">
 </path>
 <path class="pg-line" d="M98 95 L90 116" stroke="#1b1f24" stroke-width="0.9" fill="none" opacity="0.55">
 </path>

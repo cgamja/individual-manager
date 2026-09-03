@@ -10,7 +10,7 @@
  * React를 쓰지 않는다 (KTD7) — 판 창이 바닐라다.
  */
 
-import { CURSOR_BAT_EDGE, CURSOR_BAT_GRIP, CURSOR_BAT_WOOD } from "../palette";
+import { BAT_EDGE, BAT_GRIP, BAT_WOOD } from "../palette";
 
 /** 든 자세의 회전각. */
 const HELD_DEG = 55;
@@ -29,9 +29,9 @@ export function batCursorUrl(deg: number): string {
   const svg =
     `<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'>` +
     `<g transform='rotate(${deg} ${HOTSPOT})'>` +
-    `<path d='M10 30 L17 23' stroke='${CURSOR_BAT_GRIP}' stroke-width='4' stroke-linecap='round'/>` +
+    `<path d='M10 30 L17 23' stroke='${BAT_GRIP}' stroke-width='4' stroke-linecap='round'/>` +
     `<path d='M15 25 C20 20 25 14 29 9 C31.5 6.5 34 9 31.5 11.5 C27 17 21 22 17 25 Z' ` +
-    `fill='${CURSOR_BAT_WOOD}' stroke='${CURSOR_BAT_EDGE}' stroke-width='2' stroke-linejoin='round'/>` +
+    `fill='${BAT_WOOD}' stroke='${BAT_EDGE}' stroke-width='2' stroke-linejoin='round'/>` +
     `</g></svg>`;
   return `url("data:image/svg+xml,${encode(svg)}") ${HOTSPOT}`;
 }

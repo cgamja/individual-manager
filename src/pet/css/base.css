@@ -13,8 +13,10 @@
   --pg-ink: #1b1f24;
 }
 
-/* 창은 펭귄보다 크다 — 위쪽은 말풍선, 좌우는 방망이 자리다. */
+/* 창은 펭귄보다 크다 — 위쪽은 말풍선, 좌우는 방망이 자리다.
+   아래 길이는 전부 **배율 1 기준**이고, 줄이는 일은 `--pg-scale`이 혼자 한다. */
 :root {
+  --pg-scale: 1;
   --pg-size: 140px;
   --pg-pad-x: 52px;
   --pg-pad-top: 80px;
@@ -32,6 +34,16 @@ body,
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* 창은 배율만큼 작고 안쪽은 배율 1 기준으로 짜여 있다 — 무대를 통째로 줄인다.
+   합성 레이어 하나를 스케일하므로 자식의 애니메이션 변환도 함께 줄어든다.
+   **커서 그림은 변환을 안 따라온다** — 그건 `props/bat.ts`가 따로 그린다. */
+#pet-root {
+  width: calc(100% / var(--pg-scale, 1));
+  height: calc(100% / var(--pg-scale, 1));
+  transform: scale(var(--pg-scale, 1));
+  transform-origin: 0 0;
 }
 
 /* 무대 — 진행 방향(좌우 반전)만 담당한다. 동작 애니메이션과 transform이 */

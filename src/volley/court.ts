@@ -1,4 +1,5 @@
 import { NET_SVG, SAND_SVG } from "../assets/props/court";
+import { followPetScale } from "../lib/settings";
 import "./court.css";
 
 /**
@@ -17,6 +18,12 @@ import "./court.css";
  * **모래는 화면 바닥이 아니라 판에 있다.** 펭귄이 딛고 서는 면이라 판을 따라
  * 뜬다 — 한 번 화면 바닥의 배경 해변으로 그렸다가 되돌렸다.
  */
+
+/** 네트·모래는 고정 px라 배율을 직접 걸어야 한다. 부팅 경쟁과 화해는
+ * `followPetScale`이 쥔다 — 펭귄 창·판 창이 같은 것을 쓴다. */
+void followPetScale((s) => {
+  document.documentElement.style.setProperty("--pg-scale", String(s));
+}).catch(() => {});
 
 const root = document.getElementById("court-root");
 if (root) {

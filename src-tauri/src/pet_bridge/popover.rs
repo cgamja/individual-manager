@@ -18,12 +18,14 @@ pub(super) fn popover_anchor(
     let popover = app.get_webview_window("main")?;
     let monitor = pet_window(app, id)?.current_monitor().ok().flatten()?;
     let scale = monitor.scale_factor();
+    // 펭귄 좌표는 코어 단위다 — 화면 좌표로 옮겨야 팝오버와 같은 자에 놓인다.
+    let pet = pet_scale(app);
     let area = monitor.work_area();
     let popover_scale = popover.scale_factor().unwrap_or(scale);
     let size = popover.inner_size().ok()?;
     Some(popover_position_near(
-        (pet_x, pet_y),
-        PET_SIZE,
+        (to_screen(pet_x, pet), to_screen(pet_y, pet)),
+        pet_render_px(pet),
         (
             f64::from(size.width) / popover_scale,
             f64::from(size.height) / popover_scale,

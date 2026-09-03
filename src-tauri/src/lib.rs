@@ -182,6 +182,7 @@ pub fn run() {
             pet_bridge::commands::pet_set_click_through,
             pet_bridge::commands::pet_set_enabled,
             pet_bridge::commands::pet_set_pinball,
+            pet_bridge::commands::pet_apply_size,
             pet_bridge::commands::pet_summary,
             pet_bridge::commands::pet_add,
             pet_bridge::commands::pet_remove,

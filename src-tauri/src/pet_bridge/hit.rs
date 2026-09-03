@@ -1,13 +1,16 @@
 //! 펭귄의 클릭 판정 영역 — 기준은 창이 아니라 **그림**이다.
 //!
-//! 치수는 SVG `viewBox` 단위로만 적고 `PET_SIZE` 비율로 픽셀을 낸다 (`PET_PAD_*`·
-//! `PET_WINDOW_*`는 안 쓴다). 같은 수가 `src/assets/penguin/hit.ts`에도 있고
-//! `src/pet/pet-css.test.ts`가 대조한다.
+//! 치수는 SVG `viewBox` 단위로만 적고 **화면에 그려지는 크기**(`pet_render_px`)
+//! 비율로 픽셀을 낸다 (`PET_PAD_*`·`PET_WINDOW_*`는 안 쓴다). 같은 수가
+//! `src/assets/penguin/hit.ts`에도 있고 `src/pet/pet-css.test.ts`가 대조한다.
+//!
+//! **좌표는 전부 화면 논리 px다.** 코어가 주는 펭귄 좌표는 "펭귄이 늘 `PET_SIZE`인
+//! 세계"의 값이라 여기 들어올 때 `to_screen`을 지난다 (플랜 026 KTD1).
 //!
 //! 배경과 설계 근거: `MOTIONS.md` "클릭의 경계는 창이 아니라 히트 상자다",
 //! `docs/solutions/best-practices/macos-click-through-is-per-window.md`.
 
-use crate::pet::PET_SIZE;
+use super::{pet_render_px, to_screen};
 
 /// `Penguin` SVG의 `viewBox` — `src/assets/penguin/index.tsx`와 같아야 한다.
 pub const PET_VIEWBOX_W: f64 = 100.0;
@@ -21,8 +24,16 @@ pub const PET_HIT_T: f64 = 12.0;
 pub const PET_HIT_R: f64 = 86.0;
 pub const PET_HIT_B: f64 = 130.0;
 
-/// 되돌리기를 미리 거는 여유 — `PET_SIZE` 비율. 커서가 그림에 닿기 **전에**
-/// 창이 클릭을 도로 먹기 시작한다.
+/// 되돌리기를 미리 거는 여유 — **화면에 그려지는 크기**의 비율. 커서가 그림에
+/// 닿기 **전에** 창이 클릭을 도로 먹기 시작한다.
+///
+/// **절대 픽셀이 아니라 비율로 둔다.** 크기를 60%로 줄이면 여유도 14px → 8.4px로
+/// 줄지만, 상자를 좁히는 쪽(펭귄이 커서로 걸어오는 속도)도 같은 배율로 줄어
+/// **여유 ÷ 한 틱 이동량은 안 변한다**(균일 축소, 플랜 026 KTD2). 커서가 다가오는
+/// 속도만 배율을 안 타는데, 그쪽은 원래 이 여유로 못 막는 크기이고
+/// (빠른 마우스는 100%에서도 한 틱에 14px을 넘는다) 대신 [`PET_DRIFT_RATIO`]가
+/// 배율만큼 **좁아져** 더 빨리 걸린다. 절대값으로 바꾸면 작은 펭귄에서 여유가
+/// 상대적으로 커져 통과 영역을 도로 삼킨다.
 ///
 /// 없으면 커서가 펭귄에 올라온 뒤 한 틱(50ms) + 세터 한 프레임 동안 클릭이
 /// 아래 앱으로 샌다 — 빠르게 움직여 누르면 그 안에 들어간다. 일찍 거는 쪽의
@@ -33,7 +44,7 @@ pub const PET_HIT_ARM_RATIO: f64 = 0.1;
 /// 둘이 정확히 맞닿으면 그 위에서 요청과 되돌리기가 번갈아 일어난다.
 pub const PET_HIT_HYSTERESIS_RATIO: f64 = 0.02;
 
-/// 통과를 시작한 자리에서 이만큼 멀어지면 되돌린다 — `PET_SIZE` 비율.
+/// 통과를 시작한 자리에서 이만큼 멀어지면 되돌린다 — 화면에 그려지는 크기의 비율.
 ///
 /// **상자 판정과 무관한 두 번째 문이다.** 상자 판정은 커서를 논리 좌표로
 /// 바꿔야 하고 그 변환은 배율에 기대는데, 이 문은 커서가 움직였다는 사실만 본다.
@@ -58,9 +69,10 @@ pub type Rect = (f64, f64, f64, f64);
 
 /// viewBox 한 단위가 몇 px인가. `preserveAspectRatio`의 기본값 `xMidYMid meet`
 /// 이라 **짧은 쪽 배율**이 이긴다.
-fn art_scale() -> f64 {
-    let sx = PET_SIZE / PET_VIEWBOX_W;
-    let sy = PET_SIZE / PET_VIEWBOX_H;
+fn art_scale(scale: f64) -> f64 {
+    let px = pet_render_px(scale);
+    let sx = px / PET_VIEWBOX_W;
+    let sy = px / PET_VIEWBOX_H;
     if sx < sy {
         sx
     } else {
@@ -68,37 +80,40 @@ fn art_scale() -> f64 {
     }
 }
 
-/// 무대(한 변 `PET_SIZE`) 안에서 그림이 시작하는 자리 — `meet`의 레터박스.
-fn art_origin() -> (f64, f64) {
-    let s = art_scale();
-    (
-        (PET_SIZE - PET_VIEWBOX_W * s) / 2.0,
-        (PET_SIZE - PET_VIEWBOX_H * s) / 2.0,
-    )
+/// 무대(한 변 `pet_render_px`) 안에서 그림이 시작하는 자리 — `meet`의 레터박스.
+fn art_origin(scale: f64) -> (f64, f64) {
+    let s = art_scale(scale);
+    let px = pet_render_px(scale);
+    ((px - PET_VIEWBOX_W * s) / 2.0, (px - PET_VIEWBOX_H * s) / 2.0)
 }
 
-/// 펭귄이 그려진 자리. `pet_x`/`pet_y`는 무대 좌상단(= 스냅샷의 `x`/`y`).
-pub fn hit_rect(pet_x: f64, pet_y: f64) -> Rect {
-    let s = art_scale();
-    let (ox, oy) = art_origin();
+/// 펭귄이 그려진 자리 (화면 논리 px). `pet_x`/`pet_y`는 무대 좌상단이고
+/// **코어 좌표**다(= 스냅샷의 `x`/`y`) — 여기서 화면으로 옮긴다.
+pub fn hit_rect(pet_x: f64, pet_y: f64, scale: f64) -> Rect {
+    let s = art_scale(scale);
+    let (ox, oy) = art_origin(scale);
+    let (x, y) = (to_screen(pet_x, scale), to_screen(pet_y, scale));
     (
-        pet_x + ox + PET_HIT_L * s,
-        pet_y + oy + PET_HIT_T * s,
-        pet_x + ox + PET_HIT_R * s,
-        pet_y + oy + PET_HIT_B * s,
+        x + ox + PET_HIT_L * s,
+        y + oy + PET_HIT_T * s,
+        x + ox + PET_HIT_R * s,
+        y + oy + PET_HIT_B * s,
     )
 }
 
 /// Rust가 통과를 되돌리는 상자 — [`hit_rect`]에 여유를 더한 것.
-pub fn revert_rect(pet_x: f64, pet_y: f64) -> Rect {
-    inflate(hit_rect(pet_x, pet_y), PET_SIZE * PET_HIT_ARM_RATIO)
+pub fn revert_rect(pet_x: f64, pet_y: f64, scale: f64) -> Rect {
+    inflate(
+        hit_rect(pet_x, pet_y, scale),
+        pet_render_px(scale) * PET_HIT_ARM_RATIO,
+    )
 }
 
 /// 웹뷰가 통과를 요청해도 되는 상자 — [`revert_rect`] 밖이어야 한다.
-pub fn request_rect(pet_x: f64, pet_y: f64) -> Rect {
+pub fn request_rect(pet_x: f64, pet_y: f64, scale: f64) -> Rect {
     inflate(
-        revert_rect(pet_x, pet_y),
-        PET_SIZE * PET_HIT_HYSTERESIS_RATIO,
+        revert_rect(pet_x, pet_y, scale),
+        pet_render_px(scale) * PET_HIT_HYSTERESIS_RATIO,
     )
 }
 
@@ -164,6 +179,7 @@ pub fn decide_click_through(
     pet: (f64, f64),
     cursor: Option<(f64, f64)>,
     anchor: Option<(f64, f64)>,
+    scale: f64,
 ) -> Verdict {
     if !requested {
         return Verdict::Hold;
@@ -176,12 +192,12 @@ pub fn decide_click_through(
         return Verdict::Hold;
     };
     // 커서가 그림 근처로 돌아왔다.
-    if contains(revert_rect(pet.0, pet.1), cx, cy) {
+    if contains(revert_rect(pet.0, pet.1, scale), cx, cy) {
         return Verdict::Latch;
     }
     // 요청받은 자리에서 한 마리 폭 넘게 움직였다.
     if let Some((ax, ay)) = anchor {
-        if (cx - ax).hypot(cy - ay) > PET_SIZE * PET_DRIFT_RATIO {
+        if (cx - ax).hypot(cy - ay) > pet_render_px(scale) * PET_DRIFT_RATIO {
             return Verdict::Latch;
         }
     }

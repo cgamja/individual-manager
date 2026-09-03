@@ -95,8 +95,10 @@ pub fn pet_drag_by(
     let Some(id) = caller_pet(&window) else {
         return;
     };
+    // 웹뷰가 잰 값은 **화면** 논리 px다 — 코어 단위로 나눠야 손을 따라온다.
+    let s = pet_scale(&app);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
-        pet.drag_by(dx, dy);
+        pet.drag_by(to_core(dx, s), to_core(dy, s));
     }
     flush(&app, id);
 }
@@ -115,8 +117,9 @@ pub fn pet_drag_end(
         return;
     };
     let world = world_or_flat(&app, id);
+    let s = pet_scale(&app);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
-        pet.drag_end(now_ms(), vx, vy, &world);
+        pet.drag_end(now_ms(), to_core(vx, s), to_core(vy, s), &world);
     }
     flush(&app, id);
 }
@@ -166,6 +169,45 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
     }
     let _ = app.emit(EVENT_PET_SETTINGS, serde_json::json!({ "pinball": on }));
     Ok(())
+}
+
+/// **저장된** 크기 배율을 지금 떠 있는 창에 건다 (R2). 창을 다시 만들지 않는다.
+///
+/// **인자를 받지 않는다.** 크기도 자리도 진실 원천은 저장소 하나여야 한다 — 크기는
+/// 커맨드 인자, 자리는 `flush`를 통해 저장소로 갈리면 둘이 어긋나는 갈래가 생긴다.
+/// 웹뷰는 저장한 **뒤에** 부른다 (`handleSizeChange`).
+///
+/// 여기서 거는 것은 **즉시 반영**일 뿐이고 진짜 화해는 틱이 한다 — 이 호출이 실패해도
+/// 다음 틱이 창 크기를 다시 맞춘다(`last_size`). 그림을 줄이는 것은 웹뷰(`--pg-scale`)의
+/// 몫이다 (PRINCIPLE 4: Rust는 "어디에", 웹뷰는 "어떻게 보이는지").
+///
+/// 공·코트 창도 틱(`apply_ball`·`apply_volley`)이 따라온다 — 멎어 있는 볼링 공은
+/// 틱이 느린 대기(`SLEEP_TICK_MS`)로 떨어져 있어 최대 그만큼 늦다.
+#[tauri::command]
+pub fn pet_apply_size(state: State<'_, PetState>, app: AppHandle) {
+    let scale = pet_scale(&app);
+    let size = pet_window_size(scale);
+    // **id를 먼저 꺼내 가드를 떨군다** — 본문이 같은 락을 다시 잡아 자기 데드락이다
+    // (docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md).
+    let ids = state.pets.lock().unwrap().ids();
+    for id in ids {
+        let Some(window) = pet_window(&app, id) else {
+            continue;
+        };
+        let at = state
+            .pets
+            .lock()
+            .unwrap()
+            .get(id)
+            .map(|p| p.snapshot())
+            .map(|s| window_origin(s.x, s.y, scale));
+        if let Some(at) = at {
+            // 크기와 자리를 **한 문으로** 건다 ([`place_window`]).
+            // 캐시가 없는 경로라 실패해도 다음 틱이 화해시킨다.
+            // 캐시가 없는 경로라 실패해도 다음 틱이 화해시킨다.
+            let _ = place_window(&window, at, Some(size));
+        }
+    }
 }
 
 /// 웹뷰가 처음 뜰 때 현재 상태를 한 번 받아 간다 (첫 틱을 기다리지 않게).
@@ -237,8 +279,9 @@ pub fn pet_add(
         .ok_or_else(|| format!("펭귄은 {MAX_PETS}마리까지예요"))?;
 
     apply_saved_settings(&app, id);
-    let at = window_origin(start_x, bounds.floor_y);
-    if let Err(err) = create_pet_window(&app, id, at) {
+    let scale = pet_scale(&app);
+    let at = window_origin(start_x, bounds.floor_y, scale);
+    if let Err(err) = create_pet_window(&app, id, at, scale) {
         state.pets.lock().unwrap().forget(id);
         return Err(err.to_string());
     }
@@ -441,7 +484,10 @@ pub fn ball_drag_by(dx: f64, window: WebviewWindow, state: State<'_, PetState>, 
     if !is_ball_window(&window) {
         return;
     }
-    state.pets.lock().unwrap().ball_drag_by(dx);
+    // **락 밖에서 먼저 읽는다** — 인자 자리에서 읽으면 임시 `MutexGuard`가 스토어
+    // 읽기 내내 살아 있다 (`pet_drag_by`와 같은 이유).
+    let s = pet_scale(&app);
+    state.pets.lock().unwrap().ball_drag_by(to_core(dx, s));
     flush_ball(&app);
 }
 
@@ -451,6 +497,7 @@ pub fn ball_drag_end(vx: f64, window: WebviewWindow, state: State<'_, PetState>,
     if !is_ball_window(&window) {
         return;
     }
-    state.pets.lock().unwrap().ball_drag_end(now_ms(), vx);
+    let s = pet_scale(&app);
+    state.pets.lock().unwrap().ball_drag_end(now_ms(), to_core(vx, s));
     flush_ball(&app);
 }

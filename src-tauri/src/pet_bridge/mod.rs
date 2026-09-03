@@ -41,6 +41,36 @@ pub const EVENT_VOLLEY_OVER: &str = "volley://over";
 /// (설정 창을 닫았다 다시 열기 전까지).
 pub const EVENT_BOWLING_OVER: &str = "bowling://over";
 
+/// 창을 놓는 **유일한 문** — 크기를 먼저 걸고 자리를 나중에 건다.
+///
+/// **순서가 정확성이다.** macOS에서 `set_position`은 `setFrameTopLeftPoint`(좌상단
+/// 기준)이고 `set_size`는 `setContentSize`(좌**하**단 기준)다. 둘 다 부른 순서대로
+/// 메인 큐에 실리므로, 자리를 먼저 걸면 뒤따르는 크기 변경이 위 모서리를
+/// `높이 차이`만큼 밀어 올린다/내린다. 창이 커지거나 작아지는 순간에만 어긋나고
+/// 그 뒤 캐시에 적히면 스스로 못 고친다.
+///
+/// `size`가 `None`이면 자리만 옮긴다 (크기가 안 변하는 경로).
+///
+/// **성공 여부를 돌려준다.** 부르는 쪽은 "이만큼 걸었다"를 캐시하는데, 실패한
+/// 값을 캐시하면 다음 틱이 "이미 맞다"고 보고 넘어가 화해 장치가 그 자리에서
+/// 무력해진다 — 창은 영영 안 맞는다.
+#[must_use]
+pub fn place_window(
+    window: &tauri::WebviewWindow,
+    at: (f64, f64),
+    size: Option<(f64, f64)>,
+) -> bool {
+    use tauri::{LogicalPosition, LogicalSize};
+    if let Some((w, h)) = size {
+        if window.set_size(LogicalSize::new(w, h)).is_err() {
+            return false;
+        }
+    }
+    window
+        .set_position(LogicalPosition::new(at.0, at.1))
+        .is_ok()
+}
+
 pub struct PetState {
     pub pets: Mutex<Pets>,
     /// 마지막으로 우클릭된 펭귄. 팝오버(`main` 창)는 자기가 **어느 펭귄 때문에**
@@ -125,6 +155,7 @@ mod hit;
 mod pinball;
 mod volleyball;
 mod popover;
+mod scale;
 mod settings;
 mod tick;
 mod window;
@@ -136,6 +167,7 @@ pub use hit::*;
 pub use pinball::*;
 pub use volleyball::*;
 pub use popover::*;
+pub use scale::*;
 pub use settings::*;
 pub use tick::*;
 pub use window::*;

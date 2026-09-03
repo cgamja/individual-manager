@@ -94,6 +94,14 @@ button:disabled {
   color: #98989d;
 }
 
+/* 슬라이더 옆 숫자. 폭을 고정한다 — 안 그러면 50% ↔ 100%에서 슬라이더가 들썩인다. */
+.settings-value {
+  min-width: 42px;
+  text-align: right;
+  color: #6e6e73;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 카드 안의 버튼 줄. `PetCountCard`·`MotionCard`가 공유한다 — */
 .pet-count-actions {
   display: flex;
@@ -138,6 +146,10 @@ button:disabled {
 
   .settings-row label {
     color: #d1d1d6;
+  }
+
+  .settings-value {
+    color: #a1a1a6;
   }
 
   button {

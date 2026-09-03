@@ -1,4 +1,4 @@
-import type { AppTheme } from "../lib/settings";
+import { SIZE_MAX, SIZE_MIN, SIZE_STEP, type AppTheme } from "../lib/settings";
 
 interface SettingsCardProps {
   /** 바탕화면 펭귄 표시 여부 (R8). */
@@ -10,6 +10,9 @@ interface SettingsCardProps {
   /** 음량 단계 0~4. 가운데(2)가 기본 크기, 단계마다 두 배(6dB)씩. */
   volume: number;
   onVolumeChange: (volume: number) => void;
+  /** 펭귄 크기 퍼센트 (50~150). 소품과 물리가 함께 따라온다. */
+  size: number;
+  onSizeChange: (size: number) => void;
   /** 겉모습 테마 — 이 창의 겉모습을 정한다. 트레이는 항상 자동(템플릿)이다. */
   theme: AppTheme;
   onThemeChange: (theme: AppTheme) => void;
@@ -33,6 +36,8 @@ export function SettingsCard({
   onSoundEnabledChange,
   volume,
   onVolumeChange,
+  size,
+  onSizeChange,
   theme,
   onThemeChange,
   pinballEnabled,
@@ -81,6 +86,26 @@ export function SettingsCard({
           onChange={(e) => onVolumeChange(Number(e.target.value))}
         />
       </div>
+
+      {/* 음량과 같은 형태의 슬라이더다. 다만 값이 퍼센트라 옆에 숫자를 보인다 —
+          "몇 %인지"가 이 설정의 요점이다. */}
+      <div className="settings-row">
+        <label htmlFor="pet-size">크기</label>
+        <input
+          id="pet-size"
+          type="range"
+          min={SIZE_MIN}
+          max={SIZE_MAX}
+          step={SIZE_STEP}
+          value={size}
+          onChange={(e) => onSizeChange(Number(e.target.value))}
+        />
+        <span className="settings-value">{size}%</span>
+      </div>
+      <p className="settings-hint">
+        화면이 좁으면 줄이세요. 방망이·공·코트 같은 소품과 물리도 같이 줄어서 발이
+        바닥에 붙어 있어요.
+      </p>
 
       <div className="settings-row">
         <label htmlFor="app-theme">테마</label>

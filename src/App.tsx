@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { MotionCard, type Motion } from "./components/MotionCard";
 import { PetCountCard } from "./components/PetCountCard";
@@ -6,6 +6,7 @@ import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
 import {
   addPet,
+  emitPetScale,
   emitPetSound,
   fishPet,
   getPetSummary,
@@ -14,6 +15,7 @@ import {
   removePet,
   setPetEnabled,
   setPetPinball,
+  applyPetSize,
   setPetTheme,
   slidePet,
   squawkPet,
@@ -67,6 +69,9 @@ function App() {
   const [soundEnabled, setSoundEnabledState] = useState(DEFAULT_PET_SETTINGS.sound);
   const [pinballEnabled, setPinballEnabledState] = useState(DEFAULT_PET_SETTINGS.pinball);
   const [volume, setVolumeState] = useState(DEFAULT_PET_SETTINGS.volume);
+  const [size, setSizeState] = useState(DEFAULT_PET_SETTINGS.size);
+  /** 겹쳐 도는 크기 변경 중 **가장 나중 것**의 번호. 옛 호출은 이걸 보고 물러난다. */
+  const 크기_요청 = useRef(0);
   const [theme, setThemeState] = useState(DEFAULT_PET_SETTINGS.theme);
   const [taunts, setTaunts] = useState<readonly string[]>([]);
   /** 마릿수·상한·우클릭 대상. 펭귄은 이 창 밖에서도 늘고 준다. */
@@ -88,6 +93,7 @@ function App() {
         setSoundEnabledState(savedPet.sound);
         setPinballEnabledState(savedPet.pinball);
         setVolumeState(savedPet.volume);
+        setSizeState(savedPet.size);
         setThemeState(savedPet.theme);
       }
       const savedTaunts = await loadTaunts().catch(() => []);
@@ -108,6 +114,7 @@ function App() {
             setSoundEnabledState(saved.sound);
             setPinballEnabledState(saved.pinball);
             setVolumeState(saved.volume);
+            setSizeState(saved.size);
             setThemeState(saved.theme);
           })
           .catch(() => {});
@@ -221,6 +228,49 @@ function App() {
       );
     },
     [soundEnabled, volume],
+  );
+
+  /** 크기 — 음량과 같은 순서다: 저장이 성공한 뒤에만 창에 건다. Rust의 틱과
+   * 새 창은 저장된 값을 원천으로 읽으므로 순서가 뒤집히면 한 틱이 옛 배율이다. */
+  const handleSizeChange = useCallback(
+    async (next: number) => {
+      const prev = size;
+      setSizeState(next);
+      // **가장 나중 요청만 살린다.** 슬라이더를 끌면 눈금마다 이 함수가 겹쳐 도는데,
+      // 방송(`emitPetScale`)은 값을 직접 실어 보내므로 옛 호출이 나중에 도착하면
+      // 웹뷰가 옛 배율로 되돌아간다. (창 크기는 `pet_apply_size`가 저장소를 읽어
+      // 늘 최신이라 이 문제가 없다.)
+      const 내_차례 = ++크기_요청.current;
+      const 밀렸다 = () => 내_차례 !== 크기_요청.current;
+      try {
+        await savePetSettings({ size: next });
+      } catch (err) {
+        console.error("크기 저장 실패:", err);
+        if (!밀렸다()) setSizeState(prev);
+        return;
+      }
+      if (밀렸다()) return;
+      // 창 크기(Rust)와 그림 크기(웹뷰)는 왕복이 둘로 나뉘므로 그 사이 한 프레임은
+      // 둘이 어긋난다. 줄일 때 창이 먼저 줄면 `#pet-root`의 `overflow: hidden`이
+      // 아직 큰 그림을 잘라 내므로, 줄일 때는 그림을 먼저 보낸다.
+      //
+      // **보장이 아니라 폭을 좁히는 것이다.** 위에서 저장이 이미 끝났고 20Hz 틱은
+      // 그 저장소를 독립적으로 읽으므로, 틱이 방송보다 먼저 창을 줄일 수 있다
+      // (≤50ms). 실제 회복은 펭귄 창의 `resize` 화해자가 한다 (`pet/main.tsx`).
+      const 그림_먼저 = next < prev;
+      const 창 = () => applyPetSize().catch((err) => console.error("크기 적용 실패:", err));
+      const 그림 = () => emitPetScale(next).catch((err) => console.error("크기 방송 실패:", err));
+      if (그림_먼저) {
+        await 그림();
+        if (밀렸다()) return;
+        await 창();
+      } else {
+        await 창();
+        if (밀렸다()) return;
+        await 그림();
+      }
+    },
+    [size],
   );
 
   /** 핀볼 on/off — **거는 것과 저장하는 것 둘 다 한다.** 거는 쪽은 지금 떠 있는 */
@@ -342,6 +392,8 @@ function App() {
         onSoundEnabledChange={(next) => void handleSoundEnabledChange(next)}
         volume={volume}
         onVolumeChange={(next) => void handleVolumeChange(next)}
+        size={size}
+        onSizeChange={(next) => void handleSizeChange(next)}
         theme={theme}
         onThemeChange={(next) => void handleThemeChange(next)}
         pinballEnabled={pinballEnabled}

@@ -12,6 +12,8 @@ const props = {
   onSoundEnabledChange: () => {},
   volume: 2,
   onVolumeChange: () => {},
+  size: 100,
+  onSizeChange: () => {},
   theme: "system" as const,
   onThemeChange: () => {},
   pinballEnabled: false,
@@ -23,6 +25,27 @@ const props = {
 };
 
 describe("SettingsCard", () => {
+  it("크기를_움직이면_퍼센트로_알린다", () => {
+    const onSizeChange = vi.fn();
+    render(<SettingsCard {...props} onSizeChange={onSizeChange} />);
+    fireEvent.change(screen.getByLabelText("크기"), { target: { value: "60" } });
+    expect(onSizeChange).toHaveBeenCalledWith(60);
+  });
+
+  it("현재_크기가_퍼센트로_보인다", () => {
+    render(<SettingsCard {...props} size={60} />);
+    expect(screen.getByText("60%")).toBeInTheDocument();
+  });
+
+  it("크기_슬라이더는_50에서_150까지_10단위다", () => {
+    // 범위가 어긋나면 저장 쪽 정화가 조용히 되돌려 슬라이더가 안 움직이는 것처럼 보인다.
+    render(<SettingsCard {...props} />);
+    const slider = screen.getByLabelText("크기");
+    expect(slider).toHaveAttribute("min", "50");
+    expect(slider).toHaveAttribute("max", "150");
+    expect(slider).toHaveAttribute("step", "10");
+  });
+
   it("펭귄_토글의_현재_상태를_보여준다", () => {
     render(<SettingsCard {...props} />);
     expect(screen.getByLabelText("바탕화면 펭귄")).toBeChecked();

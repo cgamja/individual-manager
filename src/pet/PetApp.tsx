@@ -9,6 +9,8 @@ import { SoundPlayer, soundsFor } from "./sound";
 import {
   DRAG_THRESHOLD_PX,
   behaviorClass,
+  gazeFor,
+  normalizedIn,
   isFemalePet,
   shouldRestart,
   throwVelocity,
@@ -42,10 +44,6 @@ interface PetDragTrack extends DragTrack {
  * 헤매는 동안 IPC가 쌓이는 것만 막는다 — 정상 경로에서는 창이 곧 통과로 바뀌어
  * 포인터 이벤트가 끊긴다. */
 const CLICK_THROUGH_RESEND_MS = 200;
-
-/** 눈동자가 흰자를 벗어나지 않을 만큼만 움직인다 (SVG 좌표 단위). */
-const GAZE_LIMIT = 1.6;
-const clampGaze = (v: number) => Math.max(-GAZE_LIMIT, Math.min(GAZE_LIMIT, v));
 
 /** 바탕화면 펭귄의 웹뷰. 창 위치는 Rust가 소유하므로 여기서는 */
 export function PetApp() {
@@ -151,11 +149,11 @@ export function PetApp() {
     } catch {
       // 못 걸어도 드래그는 진행한다 — 창을 벗어나면 끊길 뿐이다.
     }
-    const rect = e.currentTarget.getBoundingClientRect();
+    const hit = normalizedIn(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY);
     const track: PetDragTrack = {
       ...newDragTrack(e.pointerId, e.screenX, e.screenY),
-      hitX: rect.width > 0 ? (e.clientX - rect.left) / rect.width - 0.5 : 0,
-      hitY: rect.height > 0 ? (e.clientY - rect.top) / rect.height - 0.5 : 0,
+      hitX: hit.nx,
+      hitY: hit.ny,
       captured,
     };
     dragRef.current = track;
@@ -236,8 +234,7 @@ export function PetApp() {
       if (dragRef.current) return;
       const rect = stage?.getBoundingClientRect();
       if (!rect || rect.width === 0 || rect.height === 0) return;
-      const nx = (e.clientX - rect.left) / rect.width - 0.5;
-      const ny = (e.clientY - rect.top) / rect.height - 0.5;
+      const { nx, ny } = normalizedIn(rect, e.clientX, e.clientY);
 
       // 무대의 실제 자리에서 치수를 뽑는다 — CSS 변수를 파싱하지 않는다.
       // 무대가 커지거나 여백이 바뀌어도 저절로 따라간다.
@@ -252,7 +249,7 @@ export function PetApp() {
       // 그래서 보낸 기억이 아니라 **관측**으로 다시 판단한다.
       if (!want) {
         clickThroughAtRef.current = 0;
-        setGaze({ x: clampGaze(nx * 4), y: clampGaze(ny * 4) });
+        setGaze(gazeFor(nx, ny));
         return;
       }
       // **통과가 걸리면 이 리스너가 조용해진다** — 커서가 창을 나가도

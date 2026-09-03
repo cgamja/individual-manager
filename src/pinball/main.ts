@@ -1,6 +1,6 @@
 import { installBatCursor } from "../assets/props/bat";
 import { setPetPinball } from "../lib/pet";
-import { savePetSettings } from "../lib/settings";
+import { followPetScale, savePetSettings } from "../lib/settings";
 import "./pinball.css";
 
 /** 핀볼 판 — 화면 전체를 덮는 투명 창의 웹뷰. */
@@ -20,4 +20,6 @@ window.addEventListener("keydown", (e) => {
 
 // 커서 방망이를 심는다. 인자는 `pinball.css`의 `var()` 대체값과 같아야 한다.
 // **Esc 등록보다 뒤다** — 앞이면 여기서 던졌을 때 나가는 문 하나가 사라진다.
-installBatCursor("default");
+//
+// 판에는 그림이 없어 `--pg-scale`을 걸 것이 없다. 커서만 배율을 탄다.
+void followPetScale((s) => installBatCursor("default", document, s)).catch(() => {});

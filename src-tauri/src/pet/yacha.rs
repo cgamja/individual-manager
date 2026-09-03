@@ -82,6 +82,10 @@ pub struct Ring {
     play_y: f64,
     /// 세계 오른쪽 — 미녀가 여기 **밖에서** 걸어 들어온다.
     world_right: f64,
+    /// 판이 열릴 때 잰 경계. 판이 도는 동안 이게 세계다 — 마리를 내려보낼 때
+    /// 바닥이 어디인지 알아야 하고, 도중에 경계가 바뀌어도 판 안에서는 한
+    /// 좌표계만 본다 (볼링의 `lane`·발리볼의 `Court`와 같은 이유).
+    bounds: Bounds,
 }
 
 impl Ring {
@@ -99,6 +103,7 @@ impl Ring {
             half: YACHA_RING_HALF.min(width / 2.0),
             play_y: (top + bounds.floor_y) / 2.0,
             world_right: bounds.right,
+            bounds,
         })
     }
 
@@ -136,6 +141,11 @@ impl Ring {
     /// 펭귄 좌상단이 놓이는 y.
     pub(super) fn play_y(&self) -> f64 {
         self.play_y
+    }
+
+    /// 판이 열릴 때 잰 경계.
+    pub(super) fn bounds(&self) -> Bounds {
+        self.bounds
     }
 }
 
@@ -288,6 +298,7 @@ impl Yacha {
         Some(self.ring.stance_of(k, st.len()))
     }
 
+    #[cfg(test)]
     pub(super) fn brawl_until_ms(&self) -> u64 {
         self.brawl_until_ms
     }

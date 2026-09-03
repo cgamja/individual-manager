@@ -183,6 +183,23 @@ pub struct Pets {
     /// 지금 도는 비치발리볼 판. 볼링과 같은 이유로 여기가 소유한다.
     /// **둘은 서로를 배제한다** — 동시에 열리면 한쪽이 상대 판의 마리를 끌어간다.
     volleyball: Option<Volleyball>,
+    /// 지금 도는 단체 야차 판. 위 둘과 같은 이유로 여기가 소유하고,
+    /// **셋이 서로를 배제한다.**
+    yacha: Option<Yacha>,
+}
+
+/// 야차 판을 못 여는 이유. 버튼이 눌렸는데 아무 일도 안 일어나면 고장으로
+/// 읽히므로, 설정 창이 이유를 그대로 보여 준다.
+///
+/// **비치발리볼과 달리 `Odd`가 없다** — 팀이 없는 난투라 홀수도 정상이다.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum YachaRefusal {
+    /// 이미 다른 판이 돌고 있다.
+    BoardBusy,
+    /// 화면이 좁아 링이 안 들어간다.
+    NoRoom,
+    /// 때릴 상대가 없다 (한 마리).
+    TooFew,
 }
 
 /// 비치발리볼 판을 못 여는 이유. 버튼이 눌렸는데 아무 일도 안 일어나면 고장으로
@@ -235,6 +252,7 @@ impl Pets {
         if removed {
             self.leave_bowling(id);
             self.leave_volleyball(id);
+            self.leave_yacha(id);
         }
         removed
     }
@@ -245,6 +263,7 @@ impl Pets {
         self.pets.remove(&id);
         self.leave_bowling(id);
         self.leave_volleyball(id);
+        self.leave_yacha(id);
     }
 
     pub fn get_mut(&mut self, id: PetId) -> Option<&mut Pet> {
@@ -295,9 +314,10 @@ impl Pets {
     /// 도는 중이면 무시한다 (A3). 들려 있는 마리는 빠지고, 아무도 못 서면
     /// 판을 열지 않는다.
     pub fn start_bowling(&mut self, now_ms: u64, lane: Bounds) -> bool {
-        // **비치발리볼과 서로를 배제한다.** 둘 다 전 마리를 모는 판이라, 동시에
-        // 열리면 이쪽이 랠리 중인 마리를 핀 자세로 끌어가고 코트만 남는다.
-        if self.bowling.is_some() || self.volleyball.is_some() {
+        // **비치발리볼·야차와 서로를 배제한다.** 셋 다 전 마리를 모는 판이라,
+        // 동시에 열리면 이쪽이 남의 판에 선 마리를 핀 자세로 끌어가고 상대 판만
+        // 덩그러니 남는다.
+        if self.bowling.is_some() || self.volleyball.is_some() || self.yacha.is_some() {
             return false;
         }
         let ids = self.ids();
@@ -384,9 +404,12 @@ impl Pets {
             // 두 마리 판(최소 마릿수이자 흔한 경우)에서는 그 한 번이 방금 시작한
             // 20초짜리 판을 즉시 끝낸다. **맞은 당사자는 그대로 빠진다** — 그건
             // 사용자가 겨눈 결과이고 PRD §5.10이 명시한 동작이라 안 건드린다.
+            // **야차는 셋 중 가장 위험하다** — 스윙 사거리(200px)가 링의 이웃
+            // 간격(96px)의 두 배라, 빠지면 한 번 휘두를 때 링의 절반이 날아간다.
             if target.behavior == Behavior::Dragged
                 || target.is_bowling()
                 || target.is_volleying()
+                || target.is_yachaing()
             {
                 continue;
             }
@@ -577,7 +600,7 @@ impl Pets {
         bounds: Bounds,
         seed: u64,
     ) -> Result<(), VolleyRefusal> {
-        if self.volleyball.is_some() || self.bowling.is_some() {
+        if self.volleyball.is_some() || self.bowling.is_some() || self.yacha.is_some() {
             return Err(VolleyRefusal::BoardBusy);
         }
         let Some(court) = Court::new(bounds) else {
@@ -660,6 +683,236 @@ impl Pets {
     /// 비치발리볼 판을 한 틱 진행시킨다. **마리별 `step`보다 먼저** 돈다 —
     /// 판이 마리를 몰지 그 반대가 아니라서, 이번 틱에 정해진 국면이 곧바로
     /// 그 틱의 마리 동작에 반영되어야 한다 (볼링과 같은 규칙).
+    // ── 단체 야차 ────────────────────────────────────────
+
+    pub fn yacha(&self) -> Option<&Yacha> {
+        self.yacha.as_ref()
+    }
+
+    /// 판이 도는 중에 마리가 사라졌다. **판을 여기서 닫지 않는다** — 닫을지는
+    /// 시계가 있어야 정할 수 있고 `Pets`에는 없다. 판단은 `step_yacha` 한 곳에
+    /// 모은다 (발리볼과 같은 규칙).
+    pub fn leave_yacha(&mut self, id: PetId) {
+        if let Some(board) = self.yacha.as_mut() {
+            board.leave(id);
+        }
+    }
+
+    /// 단체 야차 한 판을 연다. 화면의 펭귄 **전부**가 참여한다.
+    pub fn start_yacha(
+        &mut self,
+        now_ms: u64,
+        bounds: Bounds,
+        seed: u64,
+    ) -> Result<(), YachaRefusal> {
+        if self.yacha.is_some() || self.bowling.is_some() || self.volleyball.is_some() {
+            return Err(YachaRefusal::BoardBusy);
+        }
+        let Some(ring) = Ring::new(bounds) else {
+            return Err(YachaRefusal::NoRoom);
+        };
+        let ids = self.ids();
+        if ids.len() < YACHA_MIN_PETS {
+            return Err(YachaRefusal::TooFew);
+        }
+
+        let board = Yacha::new(ids, ring, now_ms, seed);
+        let 참가: Vec<PetId> = board
+            .participants()
+            .into_iter()
+            .filter(|id| {
+                let Some(spot) = board.stance_for(*id) else {
+                    return false;
+                };
+                // 가운데를 보고 선다 — 등을 지고 서면 누구를 치는지 안 읽힌다.
+                let face = if spot.0 < ring.rect().0 + ring.rect().2 / 2.0 {
+                    Facing::Right
+                } else {
+                    Facing::Left
+                };
+                self.pets
+                    .get_mut(id)
+                    .is_some_and(|pet| pet.start_yacha(now_ms, spot, face))
+            })
+            .collect();
+
+        // 들려 있는 마리가 빠져 둘이 안 되면 판을 안 연다. 붙인 것은 되돌린다.
+        if 참가.len() < YACHA_MIN_PETS {
+            for id in &참가 {
+                if let Some(pet) = self.pets.get_mut(id) {
+                    pet.leave_ring(now_ms, bounds);
+                }
+            }
+            return Err(YachaRefusal::TooFew);
+        }
+
+        let mut board = board;
+        for id in board.participants() {
+            if !참가.contains(&id) {
+                board.leave(id);
+            }
+        }
+        self.yacha = Some(board);
+        Ok(())
+    }
+
+    /// 판을 밖에서 끝낸다 (브릿지가 창을 못 만들었을 때).
+    pub fn end_yacha(&mut self, now_ms: u64, bounds: Bounds) {
+        let Some(board) = self.yacha.take() else {
+            return;
+        };
+        for id in board.participants() {
+            if let Some(pet) = self.pets.get_mut(&id) {
+                pet.leave_ring(now_ms, bounds);
+            }
+        }
+    }
+
+    /// 판을 한 틱 굴린다. **판이 마리를 몰지 그 반대가 아니다.**
+    fn step_yacha(&mut self, now_ms: u64) {
+        let Self { pets, yacha, .. } = self;
+        let Some(board) = yacha.as_mut() else {
+            return;
+        };
+
+        // 1) 판을 떠난 마리를 추린다 (드래그·빠따·삭제).
+        // **`in_yacha`로 본다 — `is_yachaing`이 아니다.** 그쪽은 `Champ`을 빼는데,
+        // 여기서 그걸 쓰면 벨트를 찬 챔피언이 판에서 쫓겨나 `Done`에서 아무도
+        // 안 풀려나고 90초짜리 안전 상한까지 벨트를 찬 채 공중에 떠 있는다.
+        let 참여 = board.participants();
+        for id in 참여 {
+            if !pets.get(&id).is_some_and(Pet::in_yacha) {
+                board.leave(id);
+            }
+        }
+
+        let bounds = board.ring().bounds();
+
+        // 2) 아무도 안 남았으면 접는다. **세레모니 중에는 안 접는다** — 그때는
+        //    챔피언이 `Champ`이라 참여자에서 빠지므로, 접었다가는 벨트 수여가
+        //    나오기 전에 링이 사라진다 (발리볼의 `Point`와 같은 자리).
+        let 세레모니 = !matches!(board.phase(), RingPhase::Gathering | RingPhase::Brawl);
+        if !세레모니 && board.standing().is_empty() {
+            for id in board.participants() {
+                if let Some(pet) = pets.get_mut(&id) {
+                    pet.leave_ring(now_ms, bounds);
+                }
+            }
+            *yacha = None;
+            return;
+        }
+
+        // 3) 판이 시간을 다 썼으면 접는다 (종료 증명 ③).
+        if board.expired(now_ms) {
+            for id in board.participants() {
+                if let Some(pet) = pets.get_mut(&id) {
+                    pet.leave_ring(now_ms, bounds);
+                }
+            }
+            *yacha = None;
+            return;
+        }
+
+        match board.phase() {
+            RingPhase::Gathering => {
+                let 다_섰다 = board
+                    .participants()
+                    .iter()
+                    .all(|id| pets.get(id).is_some_and(Pet::yacha_stood));
+                if 다_섰다 {
+                    board.begin_brawl(now_ms);
+                }
+            }
+            RingPhase::Brawl => {
+                // 한 마리만 남았으면 그대로 챔피언이다.
+                if board.standing().len() <= 1 {
+                    if let Some(champ) = board.standing().first().copied() {
+                        board.crown(now_ms, champ);
+                        if let Some(pet) = pets.get_mut(&champ) {
+                            pet.yacha_win(now_ms);
+                        }
+                    }
+                    return;
+                }
+
+                if board.round_due(now_ms) {
+                    let 자리: Vec<(PetId, f64)> = board
+                        .standing()
+                        .iter()
+                        .filter_map(|id| pets.get(id).map(|p| (*id, p.center_x())))
+                        .collect();
+                    let outcome = board.plan_round(now_ms, &자리);
+                    for (때린놈, 맞은놈) in &outcome.punches {
+                        let 대상_x = pets.get(맞은놈).map(Pet::center_x);
+                        if let Some((pet, tx)) = pets.get_mut(때린놈).zip(대상_x) {
+                            let toward = if tx >= pet.center_x() {
+                                Facing::Right
+                            } else {
+                                Facing::Left
+                            };
+                            pet.yacha_punch(now_ms, toward);
+                        }
+                        if let Some(pet) = pets.get_mut(맞은놈) {
+                            pet.yacha_hurt(now_ms);
+                        }
+                    }
+                    // **대표 타격 하나만 소리를 낸다** (KTD7).
+                    if let Some(thud) = outcome.thud {
+                        if let Some(pet) = pets.get_mut(&thud) {
+                            pet.yacha_thud(false);
+                        }
+                    }
+                }
+
+                if board.down_due(now_ms) {
+                    let hits: Vec<(PetId, u32)> = board
+                        .standing()
+                        .iter()
+                        .filter_map(|id| pets.get(id).map(|p| (*id, p.yacha_hits())))
+                        .collect();
+                    if let Some(쓰러진) = board.take_down(&hits) {
+                        if let Some(pet) = pets.get_mut(&쓰러진) {
+                            pet.yacha_down(now_ms);
+                            // 쓰러뜨린 한 방은 더 낮고 길게 들린다.
+                            pet.yacha_thud(true);
+                        }
+                        // **남은 놈들이 가운데로 붙는다.** 안 붙이면 여덟 마리
+                        // 판의 끝에서 양 끝 둘만 남아 사정거리 밖이 된다.
+                        let 남은 = board.standing();
+                        for id in &남은 {
+                            if let Some(spot) = board.stance_for(*id) {
+                                if let Some(pet) = pets.get_mut(id) {
+                                    pet.yacha_restance(spot);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                let dt = 0.05;
+                let 이전 = board.phase();
+                board.step(now_ms, dt);
+                // 벨트를 채우고 나면 챔피언이 세레모니 자세로 넘어간다.
+                if 이전 != RingPhase::Ceremony && board.phase() == RingPhase::Ceremony {
+                    if let Some(champ) = board.champion() {
+                        if let Some(pet) = pets.get_mut(&champ) {
+                            pet.yacha_champ(now_ms);
+                        }
+                    }
+                }
+                if board.phase() == RingPhase::Done {
+                    for id in board.participants() {
+                        if let Some(pet) = pets.get_mut(&id) {
+                            pet.leave_ring(now_ms, bounds);
+                        }
+                    }
+                    *yacha = None;
+                }
+            }
+        }
+    }
+
     fn step_volleyball(&mut self, now_ms: u64) {
         let Self {
             pets, volleyball, ..
@@ -794,6 +1047,7 @@ impl Pets {
     ) -> Vec<(PetId, Snapshot)> {
         self.step_bowling(now_ms);
         self.step_volleyball(now_ms);
+        self.step_yacha(now_ms);
         let mut stepped = Vec::with_capacity(self.pets.len());
         // 부딪힘 판정이 볼 **이번 틱의 자취**와 세계 폭. `Pet`에 필드로 넣지 않고 여기서
         // 들고 있는다 — 필드를 더하면 스냅샷 동치성이 보는 상태가 늘어난다.
@@ -822,9 +1076,13 @@ impl Pets {
         // `bumped`가 `Thrown`으로 넘겨 **랠리가 0.4초 만에 찢어진다**(측정값).
         // 핀볼은 모드라 KTD9의 상호 배제로는 못 풀고 이 가드로 푼다 — 켜 둔 채
         // 판을 열 수 있어야 하고, 판이 끝나면 저절로 돌아온다.
+        // **야차도 같다.** 오히려 가장 위험하다 — 이웃 간격(96px)이 충돌
+        // 반경보다 좁아 링에 서기만 해도 서로를 튕긴다. "서로 튕겨나가지
+        // 않는다"가 이 동작의 정의(R7)라 여기가 그 마지막 문이다.
         if before.len() >= 2
             && self.bowling.is_none()
             && self.volleyball.is_none()
+            && self.yacha.is_none()
             && self.pets.values().any(Pet::pinball)
         {
             let bumped = self.collide_pinball(now_ms, &before);
@@ -1196,3 +1454,7 @@ impl Pet {
 #[cfg(test)]
 #[path = "core_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "yacha_pets_tests.rs"]
+mod yacha_pets_tests;

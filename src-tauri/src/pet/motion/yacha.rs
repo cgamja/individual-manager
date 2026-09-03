@@ -126,6 +126,12 @@ impl Pet {
         self.yacha_hits
     }
 
+    /// 야차 국면에 있기는 한가 — **`Champ`까지 포함한다.** 판이 "이 마리가
+    /// 아직 내 것인가"를 물을 때 쓴다.
+    pub(in crate::pet) fn in_yacha(&self) -> bool {
+        matches!(self.behavior, Behavior::Yacha { .. })
+    }
+
     /// 판에 참여 중인가. **`Champ`은 뺀다** — 세레모니 중에 판이 "참여자가
     /// 없다"고 접으면 축하 그림이 나오기 전에 링이 사라진다 (발리볼이
     /// `Cheer`/`Sulk`를 뺀 것과 같은 자리다).
@@ -154,6 +160,7 @@ impl Pet {
     }
 
     /// 쓰러져 있는가.
+    #[cfg(test)]
     pub(in crate::pet) fn yacha_is_down(&self) -> bool {
         matches!(
             self.behavior,

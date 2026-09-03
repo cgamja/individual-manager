@@ -128,6 +128,7 @@ fn 그림_창(
 pub fn create_court_window(
     app: &AppHandle,
     rect: (f64, f64, f64, f64),
+    scale: f64,
 ) -> tauri::Result<WebviewWindow> {
     if let Some(existing) = court_window(app) {
         return Ok(existing);
@@ -139,6 +140,8 @@ pub fn create_court_window(
         (rect.0, rect.1),
         (rect.2, rect.3),
     )?;
+    // 네트·모래는 `court.css`가 고정 px로 잡는다 — 줌이 그걸 배율에 맞춘다.
+    let _ = window.set_zoom(scale);
     sink_court_below_pets(app);
     Ok(window)
 }
@@ -209,6 +212,8 @@ pub struct VolleyView {
     look: Option<VolleyLook>,
     /// 마지막으로 공 창에 건 위치. 같으면 `set_position`을 안 부른다.
     ball_at: Option<(f64, f64)>,
+    /// 마지막으로 공 창에 건 한 변. 배율이 바뀌면 창도 다시 재야 한다.
+    ball_side: Option<f64>,
     /// 마지막으로 코트 창에 건 사각형 — **화면 좌표다** ([`court_rect_on_screen`]).
     /// 코트는 판이 도는 동안 안 변하지만, 모니터나 배율이 바뀌면 다시 잰다.
     court_rect: Option<(f64, f64, f64, f64)>,
@@ -240,6 +245,7 @@ pub(super) fn apply_volley(
         if 있었다 {
             close_volley_windows(app);
             view.ball_at = None;
+            view.ball_side = None;
         }
         if bowling_over(view.board_alive, false) {
             let _ = app.emit(EVENT_VOLLEY_OVER, ());
@@ -258,10 +264,11 @@ pub(super) fn apply_volley(
                 let (x, y, w, h) = court;
                 let _ = window.set_position(LogicalPosition::new(x, y));
                 let _ = window.set_size(LogicalSize::new(w, h));
+                let _ = window.set_zoom(scale);
                 view.court_rect = Some(court);
             }
         }
-        None => match create_court_window(app, court) {
+        None => match create_court_window(app, court, scale) {
             Ok(_) => {
                 view.fails = 0;
                 view.court_rect = Some(court);
@@ -281,12 +288,18 @@ pub(super) fn apply_volley(
             Ok(window) => {
                 view.fails = 0;
                 view.ball_at = Some(at);
+                view.ball_side = Some(vball_window_size(scale));
                 window
             }
             Err(err) => return 실패(app, view, "비치볼", err),
         },
     };
 
+    let side = vball_window_size(scale);
+    if view.ball_side != Some(side) {
+        let _ = window.set_size(LogicalSize::new(side, side));
+        view.ball_side = Some(side);
+    }
     if view.ball_at != Some(at) {
         let _ = window.set_position(LogicalPosition::new(at.0, at.1));
         view.ball_at = Some(at);
@@ -322,6 +335,7 @@ fn 실패(app: &AppHandle, view: &mut VolleyView, 무엇: &str, err: tauri::Erro
         view.court_rect = None;
         view.look = None;
         view.ball_at = None;
+        view.ball_side = None;
         let _ = app.emit(EVENT_VOLLEY_OVER, ());
     }
 }

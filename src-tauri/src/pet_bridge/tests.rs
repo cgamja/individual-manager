@@ -295,6 +295,29 @@ fn 모든_펫_커맨드가_invoke_handler에_등록되어_있다() {
     }
 }
 
+/// 배율이 바뀐 틱은 시간이 남아 있어도 경계를 다시 재야 한다. 안 그러면 최대
+/// 2초 동안 옛 경계로 clamp되어 작아진 펭귄이 벽에서 떨어져 선다.
+#[test]
+fn 배율이_바뀌면_세계_캐시를_다시_잰다() {
+    // 방금 잰 캐시는 배율이 같으면 그대로 쓴다.
+    assert!(!world_is_stale(Some((10_000, 1.0)), 10_100, 1.0));
+    // 배율만 달라도 다시 잰다.
+    assert!(world_is_stale(Some((10_000, 1.0)), 10_100, 0.6));
+    // 시간이 지나면 배율이 같아도 다시 잰다.
+    assert!(world_is_stale(Some((10_000, 1.0)), 10_000 + BOUNDS_REFRESH_MS, 1.0));
+    // 캐시가 없으면 당연히 잰다.
+    assert!(world_is_stale(None, 0, 1.0));
+}
+
+/// 크기 커맨드가 쓰는 값이 창을 만들 때 쓰는 값과 같은 함수에서 나와야
+/// 슬라이더를 민 창과 새로 뜬 창의 크기가 갈리지 않는다.
+#[test]
+fn 크기_커맨드와_창_생성이_같은_배율_함수를_쓴다() {
+    for percent in (SIZE_MIN..=SIZE_MAX).step_by(SIZE_STEP as usize) {
+        assert_eq!(pet_window_size(scale_of(percent)), pet_window_size(f64::from(percent) / 100.0));
+    }
+}
+
 #[test]
 fn 방금_어긋난_것은_정리하지_않는다() {
     let mut seen = HashMap::new();

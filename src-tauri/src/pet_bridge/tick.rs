@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, EventTarget, LogicalPosition, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, WebviewWindow};
 
 use crate::pet::{BallSnapshot, PetId, Snapshot, VolleySnapshot, World};
 
@@ -21,7 +21,7 @@ pub(super) const SLEEP_TICK_MS: u64 = 500;
 const _: () = assert!(SLEEP_TICK_MS > TICK_MS);
 
 /// 모니터 작업 영역을 다시 읽는 주기.
-const BOUNDS_REFRESH_MS: u64 = 2_000;
+pub(super) const BOUNDS_REFRESH_MS: u64 = 2_000;
 
 /// 상태와 창이 어긋난 것을 보고 **정리하기까지 기다리는 시간**.
 const RECONCILE_GRACE_MS: u64 = 1_000;
@@ -39,10 +39,21 @@ pub(super) struct BallView {
     /// 마지막으로 창에 건 위치. 같으면 `set_position`을 부르지 않는다 —
     /// 서 있는 공을 20Hz로 옮기면 IPC만 낭비한다.
     at: Option<(f64, f64)>,
+    /// 마지막으로 창에 건 한 변. 배율이 바뀌면 창도 다시 재야 한다.
+    side: Option<f64>,
     /// 직전 틱에 **판이** 살아 있었는가. 공과 따로 센다 ([`bowling_over`]).
     board_alive: bool,
     /// 잇달아 창 만들기에 실패한 횟수.
     fails: u32,
+}
+
+/// 캐시한 세계를 다시 재야 하는가. 시간뿐 아니라 **배율**도 본다 — 배율만 바뀐
+/// 틱에서 안 재면 최대 [`BOUNDS_REFRESH_MS`] 동안 옛 경계로 clamp한다.
+pub(super) fn world_is_stale(cached: Option<(u64, f64)>, now: u64, scale: f64) -> bool {
+    match cached {
+        None => true,
+        Some((at, was)) => now.saturating_sub(at) >= BOUNDS_REFRESH_MS || was != scale,
+    }
 }
 
 /// 이번 틱에 창을 실제로 옮길지. 자는 펭귄은 안 옮긴다.
@@ -150,7 +161,7 @@ pub(super) fn due_for_cleanup(mismatch_since: &HashMap<PetId, u64>, now_ms: u64)
 /// 그러니 여기서는 `run_on_main_thread`로 감싸지 않는다.
 pub fn spawn_pet_tick_thread(app: AppHandle) {
     std::thread::spawn(move || {
-        let mut worlds: HashMap<PetId, (World, u64)> = HashMap::new();
+        let mut worlds: HashMap<PetId, (World, u64, f64)> = HashMap::new();
         let mut last_look: HashMap<PetId, Look> = HashMap::new();
         let mut ball_view = BallView::default();
         // 비치발리볼의 창 둘(코트·공). 본문은 `pet_bridge/volleyball.rs`에 있다.
@@ -244,9 +255,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     continue;
                 };
 
-                let stale = worlds
-                    .get(id)
-                    .is_none_or(|(_, at)| now.saturating_sub(*at) >= BOUNDS_REFRESH_MS);
+                let stale = world_is_stale(worlds.get(id).map(|(_, at, s)| (*at, *s)), now, scale);
                 let mut rescued = false;
                 if stale {
                     let read = current_bounds(&window, scale).map(World::single);
@@ -254,7 +263,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     if let Some(world) =
                         world_to_cache(read, || primary_bounds(&window, scale).map(World::single))
                     {
-                        worlds.insert(*id, (world, now));
+                        worlds.insert(*id, (world, now, scale));
                     } else {
                         rescued = false;
                     }
@@ -299,7 +308,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
                     if !ready.contains_key(&id) {
                         return None;
                     }
-                    worlds.get(&id).map(|(world, _)| world)
+                    worlds.get(&id).map(|(world, _, _)| world)
                 });
                 // 공은 **같은 락 안에서** 읽는다. 밖에서 다시 잡으면 그 사이에
                 // 커맨드가 판을 끝내 공과 펭귄이 다른 틱을 보게 된다.
@@ -412,6 +421,7 @@ pub(super) fn apply_ball(
         if view.look.take().is_some() {
             close_ball_window(app);
             view.at = None;
+            view.side = None;
         }
         if bowling_over(view.board_alive, board_alive) {
             let _ = app.emit(EVENT_BOWLING_OVER, ());
@@ -429,6 +439,7 @@ pub(super) fn apply_ball(
             Ok(window) => {
                 view.fails = 0;
                 view.at = Some(at);
+                view.side = Some(ball_window_size(scale));
                 window
             }
             Err(err) => {
@@ -454,6 +465,11 @@ pub(super) fn apply_ball(
         },
     };
 
+    let side = ball_window_size(scale);
+    if view.side != Some(side) {
+        let _ = window.set_size(LogicalSize::new(side, side));
+        view.side = Some(side);
+    }
     if view.at != Some(at) {
         let _ = window.set_position(LogicalPosition::new(at.0, at.1));
         view.at = Some(at);

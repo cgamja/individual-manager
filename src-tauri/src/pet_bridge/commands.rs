@@ -1,6 +1,6 @@
 //! 웹뷰가 부르는 #[tauri::command] 전부.
 
-use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, State, WebviewWindow};
 
 use crate::pet::{PetId, Snapshot, VolleyRefusal, MAX_PETS};
 
@@ -95,8 +95,10 @@ pub fn pet_drag_by(
     let Some(id) = caller_pet(&window) else {
         return;
     };
+    // 웹뷰가 잰 값은 **화면** 논리 px다 — 코어 단위로 나눠야 손을 따라온다.
+    let s = pet_scale(&app);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
-        pet.drag_by(dx, dy);
+        pet.drag_by(to_core(dx, s), to_core(dy, s));
     }
     flush(&app, id);
 }
@@ -115,8 +117,9 @@ pub fn pet_drag_end(
         return;
     };
     let world = world_or_flat(&app, id);
+    let s = pet_scale(&app);
     if let Some(pet) = state.pets.lock().unwrap().get_mut(id) {
-        pet.drag_end(now_ms(), vx, vy, &world);
+        pet.drag_end(now_ms(), to_core(vx, s), to_core(vy, s), &world);
     }
     flush(&app, id);
 }
@@ -166,6 +169,26 @@ pub fn pet_set_pinball(on: bool, state: State<'_, PetState>, app: AppHandle) -> 
     }
     let _ = app.emit(EVENT_PET_SETTINGS, serde_json::json!({ "pinball": on }));
     Ok(())
+}
+
+/// 펭귄 크기 배율을 바꾼다 (R2). **창을 다시 만들지 않는다** — 크기와 줌만 다시
+/// 걸고 자리를 잡는다. 저장은 웹뷰가 담당한다 (`pet_set_pinball`과 같은 규약).
+///
+/// 공·코트 창은 틱(`apply_ball`·`apply_volley`)이 50ms 안에 따라온다.
+#[tauri::command]
+pub fn pet_set_size(size: u32, state: State<'_, PetState>, app: AppHandle) {
+    let scale = scale_of(size);
+    let (w, h) = pet_window_size(scale);
+    // **id를 먼저 꺼내 가드를 떨군다** — `flush`가 같은 락을 다시 잡아 자기 데드락이다
+    // (docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md).
+    let ids = state.pets.lock().unwrap().ids();
+    for id in ids {
+        if let Some(window) = pet_window(&app, id) {
+            let _ = window.set_size(LogicalSize::new(w, h));
+            let _ = window.set_zoom(scale);
+        }
+        flush(&app, id);
+    }
 }
 
 /// 웹뷰가 처음 뜰 때 현재 상태를 한 번 받아 간다 (첫 틱을 기다리지 않게).
@@ -442,7 +465,7 @@ pub fn ball_drag_by(dx: f64, window: WebviewWindow, state: State<'_, PetState>, 
     if !is_ball_window(&window) {
         return;
     }
-    state.pets.lock().unwrap().ball_drag_by(dx);
+    state.pets.lock().unwrap().ball_drag_by(to_core(dx, pet_scale(&app)));
     flush_ball(&app);
 }
 
@@ -452,6 +475,10 @@ pub fn ball_drag_end(vx: f64, window: WebviewWindow, state: State<'_, PetState>,
     if !is_ball_window(&window) {
         return;
     }
-    state.pets.lock().unwrap().ball_drag_end(now_ms(), vx);
+    state
+        .pets
+        .lock()
+        .unwrap()
+        .ball_drag_end(now_ms(), to_core(vx, pet_scale(&app)));
     flush_ball(&app);
 }

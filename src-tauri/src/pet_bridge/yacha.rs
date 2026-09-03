@@ -12,9 +12,7 @@
 //! 비동기라는 함정은 비치발리볼 모듈의 머리말에 있다 — 여기서도 **안 보이게
 //! 만들고 → 플래그를 걸고 → 보인다**, 그리고 **직후에 읽어서 확인하지 않는다.**
 
-use tauri::{
-    AppHandle, Emitter, EventTarget, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::pet::{QueenSnapshot, YachaSnapshot};
 
@@ -158,8 +156,7 @@ pub(super) fn apply_yacha(
     };
 
     let 다시_잰다 = view.size != Some(size);
-    if (다시_잰다 || view.at != Some(at)) && place_window(&window, at, 다시_잰다.then_some(size))
-    {
+    if (다시_잰다 || view.at != Some(at)) && place_window(&window, at, 다시_잰다.then_some(size)) {
         view.size = Some(size);
         view.at = Some(at);
     }

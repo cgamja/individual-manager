@@ -33,10 +33,7 @@ pub fn ball_window_size(scale: f64) -> f64 {
 /// 있는 이유는 히트 판정이 중심끼리의 거리라서다.
 pub fn ball_window_origin(x: f64, y: f64, scale: f64) -> (f64, f64) {
     let side = ball_window_size(scale);
-    (
-        to_screen(x, scale) - side / 2.0,
-        to_screen(y, scale) - side / 2.0,
-    )
+    (to_screen(x, scale) - side / 2.0, to_screen(y, scale) - side / 2.0)
 }
 
 pub fn ball_window(app: &AppHandle) -> Option<WebviewWindow> {

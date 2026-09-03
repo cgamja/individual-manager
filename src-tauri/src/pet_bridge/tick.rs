@@ -411,6 +411,7 @@ pub fn spawn_pet_tick_thread(app: AppHandle) {
             apply_volley(&app, volley, &mut volley_view, scale);
             apply_yacha(&app, yacha, &mut yacha_view, scale);
 
+
             std::thread::sleep(Duration::from_millis(tick_interval(
                 any_moves,
                 any_click_through,
@@ -515,11 +516,7 @@ pub(super) fn apply_ball(
     }
     let look = ball_look_of(&ball);
     if view.look != Some(look) {
-        let _ = window.emit_to(
-            EventTarget::webview_window(BALL_LABEL),
-            EVENT_BALL_STATE,
-            ball,
-        );
+        let _ = window.emit_to(EventTarget::webview_window(BALL_LABEL), EVENT_BALL_STATE, ball);
         view.look = Some(look);
     }
 }
@@ -537,11 +534,7 @@ pub(super) fn flush_ball(app: &AppHandle) {
     let (Some(ball), Some(window)) = (ball, ball_window(app)) else {
         return;
     };
-    let _ = place_window(
-        &window,
-        ball_window_origin(ball.x, ball.y, pet_scale(app)),
-        None,
-    );
+    let _ = place_window(&window, ball_window_origin(ball.x, ball.y, pet_scale(app)), None);
 }
 
 /// 커맨드가 상태를 바꾼 뒤 즉시 화면에 반영한다 — 다음 틱(최대 500ms)을

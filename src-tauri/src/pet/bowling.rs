@@ -259,7 +259,11 @@ impl Bowling {
     ///
     /// 판이 화면 중앙의 평면에 서므로 판정도 2차원이다 — 공이 지나는 줄에서
     /// 멀리 떨어진 핀은 공에 직접 맞지 않고, **연쇄로만** 쓰러진다.
-    pub(super) fn ball_hit(&mut self, pet_center_x: f64, pet_center_y: f64) -> Option<(f64, f64)> {
+    pub(super) fn ball_hit(
+        &mut self,
+        pet_center_x: f64,
+        pet_center_y: f64,
+    ) -> Option<(f64, f64)> {
         let ball = self.ball.as_mut()?;
         // 세로는 점으로, 가로는 **이번 틱에 지나온 구간**으로 잰다. 지금 위치만
         // 보면 틱이 밀렸을 때 핀을 통째로 뛰어넘는다.

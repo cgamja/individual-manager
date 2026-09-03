@@ -169,16 +169,9 @@ fn 코트_사각형은_네트_꼭대기부터_모래_아래까지다() {
         "창은 모래톱 아래까지 덮는다"
     );
     // **네트는 창의 가로 한가운데다** — 웹뷰가 `left: 50%`로 맞출 수 있는 근거다.
-    assert!(
-        ((x + w / 2.0) - c.net_cx()).abs() < 1e-9,
-        "네트가 창 한가운데가 아니다"
-    );
+    assert!(((x + w / 2.0) - c.net_cx()).abs() < 1e-9, "네트가 창 한가운데가 아니다");
     let (모래_lo, 모래_hi) = c.sand_span();
-    assert_eq!(
-        (x, x + w),
-        (모래_lo, 모래_hi),
-        "창은 모래사장을 통째로 덮는다"
-    );
+    assert_eq!((x, x + w), (모래_lo, 모래_hi), "창은 모래사장을 통째로 덮는다");
 }
 
 #[test]
@@ -366,11 +359,7 @@ fn 같은_시드는_같은_랠리를_낳는다() {
         b.step_ball(0.05);
         let now = t * 50;
         assert_eq!(a.ball(), b.ball(), "{now}ms 에서 공이 갈렸다");
-        assert_eq!(
-            a.receiver(),
-            b.receiver(),
-            "{now}ms 에서 받을 마리가 갈렸다"
-        );
+        assert_eq!(a.receiver(), b.receiver(), "{now}ms 에서 받을 마리가 갈렸다");
         assert_eq!(a.phase(), b.phase(), "{now}ms 에서 국면이 갈렸다");
     }
 }
@@ -480,10 +469,7 @@ fn 랠리는_열_번_넘게_오간다() {
     let mut 왕복들: Vec<usize> = (1u64..=20).map(|s| 랠리를_굴린다(4, s).왕복).collect();
     왕복들.sort_unstable();
     let 중앙값 = 왕복들[왕복들.len() / 2];
-    assert!(
-        중앙값 >= 12,
-        "왕복 중앙값이 {중앙값}회뿐이다 — 랠리로 안 보인다"
-    );
+    assert!(중앙값 >= 12, "왕복 중앙값이 {중앙값}회뿐이다 — 랠리로 안 보인다");
 }
 
 #[test]
@@ -506,10 +492,7 @@ fn 체공이_세_갈래로_갈린다() {
         "천장 자르기가 등급 셋을 {}가지로 뭉갰다: {등급:?}",
         서로_다른.len()
     );
-    assert!(
-        등급[2] >= 등급[0] * 2,
-        "가장 긴 등급이 짧은 것의 두 배도 안 된다: {등급:?}"
-    );
+    assert!(등급[2] >= 등급[0] * 2, "가장 긴 등급이 짧은 것의 두 배도 안 된다: {등급:?}");
 
     // 실제 랠리에서도 셋이 다 나온다.
     let mut 본_것 = std::collections::BTreeSet::new();
@@ -530,10 +513,7 @@ fn 멀리_보낸_공은_체공이_길다() {
     let court = 코트();
     let 가까이 = flight_ms_for(&court, 0.0, VOLLEY_FLIGHT_MS[0]);
     let 멀리 = flight_ms_for(&court, 340.0, VOLLEY_FLIGHT_MS[0]);
-    assert!(
-        멀리 > 가까이,
-        "먼 곳({멀리}ms)이 가까운 곳({가까이}ms)보다 안 길다"
-    );
+    assert!(멀리 > 가까이, "먼 곳({멀리}ms)이 가까운 곳({가까이}ms)보다 안 길다");
 }
 
 #[test]
@@ -584,10 +564,7 @@ fn 서브는_자기_쪽으로_띄웠다_때린다() {
     board.serve(0, &위치);
     let (rid, tcx) = board.receiver().expect("서브하면 받을 마리가 정해진다");
     let 서버_cx = 위치.iter().find(|(id, _, _)| *id == rid).unwrap().2;
-    assert!(
-        (tcx - 서버_cx).abs() < 1e-9,
-        "서브의 목적지가 자기 자리가 아니다"
-    );
+    assert!((tcx - 서버_cx).abs() < 1e-9, "서브의 목적지가 자기 자리가 아니다");
     let ball = board.ball().unwrap();
     assert!((ball.x - 서버_cx).abs() < 1e-9, "공이 서버 위에서 안 뜬다");
     assert_eq!(board.phase(), CourtPhase::Rally);
@@ -881,8 +858,7 @@ fn 마릿수가_늘어도_뛰는_거리가_안_죽는다() {
                 if let Some((rid, tcx)) = board.receiver() {
                     if let Some(p) = 위치.iter_mut().find(|(id, _, _)| *id == rid) {
                         let 남은 = tcx - p.2;
-                        let 한걸음 =
-                            남은.clamp(-VOLLEY_CHASE_SPEED * 0.05, VOLLEY_CHASE_SPEED * 0.05);
+                        let 한걸음 = 남은.clamp(-VOLLEY_CHASE_SPEED * 0.05, VOLLEY_CHASE_SPEED * 0.05);
                         p.2 += 한걸음;
                         총_이동 += 한걸음.abs();
                     }

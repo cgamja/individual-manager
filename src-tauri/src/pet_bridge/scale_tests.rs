@@ -24,11 +24,7 @@ fn 범위를_벗어난_크기는_기본값으로_떨어진다() {
     // 슬라이더는 100%를 가리킨다.
     for 벗어난 in [5, 49, 151, 5000] {
         let v = 저장(serde_json::json!({ "size": 벗어난 }));
-        assert_eq!(
-            scale_from(Some(&v)),
-            1.0,
-            "{벗어난}%에서 기본값으로 안 떨어졌다"
-        );
+        assert_eq!(scale_from(Some(&v)), 1.0, "{벗어난}%에서 기본값으로 안 떨어졌다");
     }
     // 경계값은 그대로 산다.
     let 최소 = 저장(serde_json::json!({ "size": SIZE_MIN }));
@@ -45,11 +41,7 @@ fn 크기가_숫자가_아니면_기본값이다() {
         serde_json::json!({ "size": -30 }),
         serde_json::json!({ "pinball": true }),
     ] {
-        assert_eq!(
-            scale_from(Some(&깨진)),
-            1.0,
-            "{깨진} 에서 기본값으로 안 떨어졌다"
-        );
+        assert_eq!(scale_from(Some(&깨진)), 1.0, "{깨진} 에서 기본값으로 안 떨어졌다");
     }
 }
 
@@ -90,10 +82,7 @@ fn 펭귄_사각형은_언제나_창_안에_있다() {
         let s = scale_of(percent);
         let (x, y, w, h) = pet_box_in_window(s);
         let (ww, wh) = pet_window_size(s);
-        assert!(
-            x >= 0.0 && y >= 0.0,
-            "{percent}%에서 사각형이 창 밖으로 나갔다"
-        );
+        assert!(x >= 0.0 && y >= 0.0, "{percent}%에서 사각형이 창 밖으로 나갔다");
         assert!(x + w <= ww + 1e-9, "{percent}%에서 가로가 창을 넘었다");
         assert!(y + h <= wh + 1e-9, "{percent}%에서 세로가 창을 넘었다");
     }
@@ -121,10 +110,7 @@ fn 배율을_첫_페인트_전에_심는_스크립트가_수를_담는다() {
     // 저장소 왕복을 기다리면 창은 작은데 그림은 배율 1로 한 프레임 그려진다.
     let script = scale_init_script(0.6);
     assert!(script.contains("0.6"), "배율이 안 들어갔다: {script}");
-    assert!(
-        script.contains("__PG_SCALE"),
-        "웹뷰가 읽는 이름이 없다: {script}"
-    );
+    assert!(script.contains("__PG_SCALE"), "웹뷰가 읽는 이름이 없다: {script}");
     // 웹뷰가 `Number.isFinite`로 거르므로 수여야 한다 — 따옴표가 붙으면 안 된다.
     assert!(!script.contains('"'), "값이 문자열이 됐다: {script}");
 }

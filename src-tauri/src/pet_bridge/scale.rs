@@ -18,10 +18,7 @@ pub const SIZE_DEFAULT: u32 = 100;
 
 const _: () = assert!(SIZE_MIN < SIZE_DEFAULT && SIZE_DEFAULT < SIZE_MAX);
 const _: () = assert!((SIZE_MAX - SIZE_MIN) % SIZE_STEP == 0);
-const _: () = assert!(
-    SIZE_DEFAULT % SIZE_STEP == 0,
-    "기본값이 슬라이더 눈금에 없다"
-);
+const _: () = assert!(SIZE_DEFAULT % SIZE_STEP == 0, "기본값이 슬라이더 눈금에 없다");
 
 /// 저장된 값에서 크기 퍼센트를 꺼낸다. 없거나 깨졌거나 **범위를 벗어나면**
 /// [`SIZE_DEFAULT`]다 — 저장 파일이 손으로 고쳐져도 화면을 덮는 펭귄이 뜨지 않는다.

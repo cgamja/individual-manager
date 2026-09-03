@@ -86,24 +86,15 @@ fn 히스테리시스_띠_안은_어느_쪽도_아니다() {
     let (hl, _, _, _) = hit_rect(AT.0, AT.1, 1.0);
     let band = hl - PET_SIZE * PET_HIT_HYSTERESIS_RATIO / 2.0;
     let y = AT.1 + PET_SIZE / 2.0;
-    assert!(
-        !contains(hit_rect(AT.0, AT.1, 1.0), band, y),
-        "되돌리지 않는다"
-    );
-    assert!(
-        contains(request_rect(AT.0, AT.1, 1.0), band, y),
-        "요청하지도 않는다"
-    );
+    assert!(!contains(hit_rect(AT.0, AT.1, 1.0), band, y), "되돌리지 않는다");
+    assert!(contains(request_rect(AT.0, AT.1, 1.0), band, y), "요청하지도 않는다");
 }
 
 #[test]
 fn 히트_박스는_펭귄을_따라_움직인다() {
     let (l0, t0, r0, b0) = hit_rect(0.0, 0.0, 1.0);
     let (l1, t1, r1, b1) = hit_rect(37.0, -19.0, 1.0);
-    assert_eq!(
-        (l1 - l0, t1 - t0, r1 - r0, b1 - b0),
-        (37.0, -19.0, 37.0, -19.0)
-    );
+    assert_eq!((l1 - l0, t1 - t0, r1 - r0, b1 - b0), (37.0, -19.0, 37.0, -19.0));
 }
 
 #[test]
@@ -170,7 +161,13 @@ fn 몸() -> (f64, f64) {
 #[test]
 fn 여백에_요청이_있고_커서가_그대로면_통과를_유지한다() {
     // 참으로 가는 유일한 길이다. 이게 깨지면 기능이 통째로 죽는다.
-    assert!(통과(true, Pose::InBox, AT, Some(여백()), Some(여백())));
+    assert!(통과(
+        true,
+        Pose::InBox,
+        AT,
+        Some(여백()),
+        Some(여백())
+    ));
 }
 
 #[test]
@@ -201,15 +198,18 @@ fn 상자를_벗어나는_자세면_클릭을_먹는다() {
 fn 커서가_그림_근처로_오면_닿기_전에_되돌린다() {
     // 그림에 닿은 뒤에 되돌리면 한 틱 + 세터 한 프레임 동안 클릭이 샌다.
     let (hl, _, _, _) = hit_rect(AT.0, AT.1, 1.0);
-    let 코앞 = (
-        hl - PET_SIZE * PET_HIT_ARM_RATIO / 2.0,
-        AT.1 + PET_SIZE / 2.0,
-    );
+    let 코앞 = (hl - PET_SIZE * PET_HIT_ARM_RATIO / 2.0, AT.1 + PET_SIZE / 2.0);
     assert!(
         !contains(hit_rect(AT.0, AT.1, 1.0), 코앞.0, 코앞.1),
         "아직 그림 밖이다"
     );
-    assert!(!통과(true, Pose::InBox, AT, Some(코앞), Some(여백())));
+    assert!(!통과(
+        true,
+        Pose::InBox,
+        AT,
+        Some(코앞),
+        Some(여백())
+    ));
 }
 
 #[test]
@@ -223,7 +223,13 @@ fn 펭귄이_커서_밑으로_걸어오면_되돌린다() {
     // 않으면 지나가는 동안 클릭이 아래 앱으로 샌다.
     let 커서 = 몸();
     let 지나간_뒤 = (AT.0 + 400.0, AT.1);
-    assert!(통과(true, Pose::InBox, 지나간_뒤, Some(커서), Some(커서)));
+    assert!(통과(
+        true,
+        Pose::InBox,
+        지나간_뒤,
+        Some(커서),
+        Some(커서)
+    ));
     assert!(!통과(true, Pose::InBox, AT, Some(커서), Some(커서)));
 }
 
@@ -231,15 +237,28 @@ fn 펭귄이_커서_밑으로_걸어오면_되돌린다() {
 fn 요청_지점에서_한_마리_폭_넘게_움직이면_되돌린다() {
     let (ax, ay) = 여백();
     let 멀리 = (ax - PET_SIZE * PET_DRIFT_RATIO - 1.0, ay);
-    assert!(!통과(true, Pose::InBox, AT, Some(멀리), Some((ax, ay))));
+    assert!(!통과(
+        true,
+        Pose::InBox,
+        AT,
+        Some(멀리),
+        Some((ax, ay))
+    ));
 }
 
 #[test]
 fn 기준점_근처의_잔떨림에는_안_풀린다() {
     let (ax, ay) = 여백();
     let 조금 = (ax + 3.0, ay - 2.0);
-    assert!(통과(true, Pose::InBox, AT, Some(조금), Some((ax, ay))));
+    assert!(통과(
+        true,
+        Pose::InBox,
+        AT,
+        Some(조금),
+        Some((ax, ay))
+    ));
 }
+
 
 // ── 거부의 갈래 ──────────────────────────────────────────────────
 
@@ -307,10 +326,7 @@ fn 히트_상자가_코어_좌표를_화면으로_옮긴다() {
         assert!(r.0 > 창_왼쪽, "{s}: 상자가 창 왼쪽 밖이다");
         // 상자 왼쪽은 무대 왼쪽(= 화면 좌표)에서 그림 여백만큼 안쪽이다.
         assert!(r.0 > to_screen(AT.0, s), "{s}: 상자가 무대보다 왼쪽이다");
-        assert!(
-            r.0 < to_screen(AT.0, s) + pet_render_px(s),
-            "{s}: 무대를 넘었다"
-        );
+        assert!(r.0 < to_screen(AT.0, s) + pet_render_px(s), "{s}: 무대를 넘었다");
     }
 }
 
@@ -322,14 +338,8 @@ fn 상자_셋의_포개짐이_배율을_안_탄다() {
         let h = hit_rect(AT.0, AT.1, s);
         let rv = revert_rect(AT.0, AT.1, s);
         let rq = request_rect(AT.0, AT.1, s);
-        assert!(
-            rv.0 < h.0 && rv.1 < h.1 && rv.2 > h.2 && rv.3 > h.3,
-            "{s}: 되돌리기가 안 감쌌다"
-        );
-        assert!(
-            rq.0 < rv.0 && rq.1 < rv.1 && rq.2 > rv.2 && rq.3 > rv.3,
-            "{s}: 요청이 안 감쌌다"
-        );
+        assert!(rv.0 < h.0 && rv.1 < h.1 && rv.2 > h.2 && rv.3 > h.3, "{s}: 되돌리기가 안 감쌌다");
+        assert!(rq.0 < rv.0 && rq.1 < rv.1 && rq.2 > rv.2 && rq.3 > rv.3, "{s}: 요청이 안 감쌌다");
         // 여유는 그려진 크기에 대한 **같은 비율**이어야 한다.
         let 여유 = h.0 - rv.0;
         assert!(
@@ -349,10 +359,7 @@ fn 여유가_한_틱_이동량에_대해_배율과_무관하다() {
     let 비 = |s: f64| (pet_render_px(s) * PET_HIT_ARM_RATIO) / to_screen(코어_한_틱, s);
     let 기준 = 비(1.0);
     for s in 배율들 {
-        assert!(
-            (비(s) - 기준).abs() < 1e-9,
-            "{s}: 여유 대 이동량 비가 달라졌다"
-        );
+        assert!((비(s) - 기준).abs() < 1e-9, "{s}: 여유 대 이동량 비가 달라졌다");
     }
     assert!(기준 > 3.0, "여유가 한 틱 이동량의 세 배도 안 된다: {기준}");
 }
@@ -361,32 +368,13 @@ fn 여유가_한_틱_이동량에_대해_배율과_무관하다() {
 /// 커서 속도는 배율을 안 타므로 이쪽이 조여지는 것이 맞는 방향이다.
 #[test]
 fn 드리프트_문이_작은_배율에서_더_빨리_걸린다() {
-    let 여백_기준 = |s: f64| {
-        (
-            to_screen(AT.0 - PET_PAD_X + 4.0, s),
-            to_screen(AT.1 + 70.0, s),
-        )
-    };
+    let 여백_기준 = |s: f64| (to_screen(AT.0 - PET_PAD_X + 4.0, s), to_screen(AT.1 + 70.0, s));
     let 멀어짐 = pet_render_px(1.0) * PET_DRIFT_RATIO * 0.8;
     // 100%에서는 아직 안 걸리는 거리가 50%에서는 걸린다.
     let (ax, ay) = 여백_기준(1.0);
-    let v100 = decide_click_through(
-        true,
-        Pose::InBox,
-        AT,
-        Some((ax - 멀어짐, ay)),
-        Some((ax, ay)),
-        1.0,
-    );
+    let v100 = decide_click_through(true, Pose::InBox, AT, Some((ax - 멀어짐, ay)), Some((ax, ay)), 1.0);
     let (bx, by) = 여백_기준(0.5);
-    let v50 = decide_click_through(
-        true,
-        Pose::InBox,
-        AT,
-        Some((bx - 멀어짐, by)),
-        Some((bx, by)),
-        0.5,
-    );
+    let v50 = decide_click_through(true, Pose::InBox, AT, Some((bx - 멀어짐, by)), Some((bx, by)), 0.5);
     assert!(!v100.latches(), "100%에서 벌써 걸렸다 — 표본이 잘못됐다");
     assert!(v50.latches(), "50%에서 드리프트가 안 걸렸다");
 }

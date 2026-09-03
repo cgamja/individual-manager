@@ -519,8 +519,7 @@ impl Volleyball {
             let (착지, ms) = self.kill_shot(ball.x, 빈자리, to);
             (착지, ms)
         } else {
-            let grade =
-                VOLLEY_FLIGHT_MS[(self.next_u64() % VOLLEY_FLIGHT_MS.len() as u64) as usize];
+            let grade = VOLLEY_FLIGHT_MS[(self.next_u64() % VOLLEY_FLIGHT_MS.len() as u64) as usize];
             // 균등하게 뽑되 **빈자리 쪽으로 끌어당긴다.** 순수 균등이면 마릿수가
             // 늘수록 뽑힌 자리가 이미 누군가의 사정거리 안이라 아무도 안 뛴다
             // (`VOLLEY_AWAY_BIAS` 참고). 끌어당김이 곧 "뛰는 그림"의 양이다.
@@ -531,6 +530,7 @@ impl Volleyball {
         let 뛸_거리 = receiver
             .and_then(|id| on_side.iter().find(|(i, _)| *i == id))
             .map_or(0.0, |(_, cx)| (target_cx - cx).abs());
+
 
         // 마지막 왕복만 **도착 보장을 끈다** — 그래서 못 받는다.
         let ms = flight_ms_for(&self.court, if 마지막 { 0.0 } else { 뛸_거리 }, grade);

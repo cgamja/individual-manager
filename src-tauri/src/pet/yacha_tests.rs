@@ -102,7 +102,10 @@ fn 박자가_없다() {
         *셈.entry(*t).or_insert(0) += 1;
     }
     let 최다 = *셈.values().max().unwrap();
-    assert!(최다 <= 3, "한 틱에 {최다}발이 몰렸다 — 박자가 생겼다");
+    assert!(
+        최다 <= 3,
+        "한 틱에 {최다}발이 몰렸다 — 박자가 생겼다"
+    );
 }
 
 #[test]
@@ -193,7 +196,11 @@ fn 가드는_실제로_막는다() {
         board.step_brawl(now);
         board.set_act(b, Act::Guard, 100_000); // 계속 가드로 붙들어 둔다
     }
-    assert_eq!(board.hits_of(b), 맞기_전, "가드 중인데 맞았다");
+    assert_eq!(
+        board.hits_of(b),
+        맞기_전,
+        "가드 중인데 맞았다"
+    );
     let _ = a;
 }
 
@@ -237,14 +244,8 @@ fn 난투_길이는_마릿수와_무관하다() {
     // 그 사이 챔피언은 혼자 `Idle`이다 — 그래야 한 판 길이가 늘 같다.
     for n in [2usize, 4, 8] {
         let board = 판(n, 20_260_903);
-        assert!(
-            !board.phase_over(YACHA_BRAWL_MS - 100),
-            "{n}마리가 일찍 끝난다"
-        );
-        assert!(
-            board.phase_over(YACHA_BRAWL_MS + 100),
-            "{n}마리가 안 끝난다"
-        );
+        assert!(!board.phase_over(YACHA_BRAWL_MS - 100), "{n}마리가 일찍 끝난다");
+        assert!(board.phase_over(YACHA_BRAWL_MS + 100), "{n}마리가 안 끝난다");
     }
 }
 
@@ -294,10 +295,7 @@ fn 판에서_빠지면_남은_다운도_준다() {
     let ids = board.participants();
     board.leave(ids[0]);
     board.leave(ids[1]);
-    assert!(
-        board.down_schedule().len() <= 2,
-        "빠진 만큼 다운이 안 줄었다"
-    );
+    assert!(board.down_schedule().len() <= 2, "빠진 만큼 다운이 안 줄었다");
 }
 
 #[test]

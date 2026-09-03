@@ -11,22 +11,22 @@ use serde::Serialize;
 mod test_support;
 mod tuning;
 
-use tuning::*;
 /// 브릿지가 창 크기를 계산하는 데 쓴다 — 코어 밖으로 나가는 튜닝 값은 이 둘뿐이다.
 pub use tuning::{BOWLING_BALL_SIZE, PET_SIZE, VOLLEY_BALL_SIZE};
+use tuning::*;
 
 mod behavior;
 mod bowling;
 mod volleyball;
 mod yacha;
 
-use bowling::{dist2_to_segment, pin_positions};
 pub use bowling::{BallSnapshot, BoardPhase, Bowling};
+use bowling::{dist2_to_segment, pin_positions};
 
 pub use volleyball::{Court, CourtPhase, Side, VolleyBallSnapshot, VolleySnapshot, Volleyball};
 
-use volleyball::{assign_sides, both_sides_present};
 pub use yacha::{Arena, Punch, QueenPose, QueenSnapshot, RingPhase, Yacha, YachaSnapshot};
+use volleyball::{assign_sides, both_sides_present};
 
 pub use behavior::{
     Behavior, BowlingPhase, Facing, FishingPhase, FreakoutPhase, IdleKind, SassyKind, Speech,
@@ -474,8 +474,8 @@ impl Pets {
 
         // 굴러가는 중에는 핀이 하나도 안 남아도 판을 접지 않는다 — 스트라이크가
         // 나면 공이 아직 날아가는 중인데 창이 닫혀 버린다.
-        let 접을까 =
-            board.is_empty() && matches!(board.phase(), BoardPhase::Gathering | BoardPhase::Ready);
+        let 접을까 = board.is_empty()
+            && matches!(board.phase(), BoardPhase::Gathering | BoardPhase::Ready);
         if 접을까 {
             *bowling = None;
             return;

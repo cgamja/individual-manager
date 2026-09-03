@@ -276,7 +276,8 @@ impl Yacha {
             let 폭 = (2.0 * half).min(340.0);
             let jitter = (self.fraction() - 0.5) * 190.0;
             let x = cx - 폭 / 2.0 + (i as f64 + 0.5) * (폭 / n as f64) + jitter;
-            let y = YACHA_ARENA_Y.0 + self.fraction() * (YACHA_ARENA_Y.1 - YACHA_ARENA_Y.0);
+            let y = YACHA_ARENA_Y.0
+                + self.fraction() * (YACHA_ARENA_Y.1 - YACHA_ARENA_Y.0);
             let face = if x < cx { Facing::Right } else { Facing::Left };
             let spot = (self.arena.clamp_x(x), self.arena.clamp_y(y));
             self.fighters.insert(
@@ -357,7 +358,11 @@ impl Yacha {
         } else {
             f.act.phase()
         };
-        Some(((f.x - PET_SIZE / 2.0, self.arena.top_y(f.y)), phase, f.face))
+        Some((
+            (f.x - PET_SIZE / 2.0, self.arena.top_y(f.y)),
+            phase,
+            f.face,
+        ))
     }
 
     /// 이번 틱에 난 주먹들.
@@ -376,7 +381,8 @@ impl Yacha {
 
     /// **뒤에서 앞** 순서 — y가 작을수록(위) 뒤다.
     fn depth_order(&self) -> Vec<PetId> {
-        let mut v: Vec<(PetId, f64)> = self.fighters.iter().map(|(id, f)| (*id, f.y)).collect();
+        let mut v: Vec<(PetId, f64)> =
+            self.fighters.iter().map(|(id, f)| (*id, f.y)).collect();
         v.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
         v.into_iter().map(|(id, _)| id).collect()
     }
@@ -504,7 +510,8 @@ impl Yacha {
             } else {
                 Act::Circle
             };
-            let h = YACHA_HOLD_FAR_MS.0 + (self.fraction() * YACHA_HOLD_FAR_MS.1 as f64) as u64;
+            let h = YACHA_HOLD_FAR_MS.0
+                + (self.fraction() * YACHA_HOLD_FAR_MS.1 as f64) as u64;
             (a, h)
         } else {
             // 붙어 있는 동안은 계속 친다. **방금 쳤으면 더 친다 — 퍽퍽퍽 연타다.**
@@ -525,7 +532,8 @@ impl Yacha {
             let h = if a == Act::Swing {
                 YACHA_SWING_MS
             } else {
-                YACHA_HOLD_NEAR_MS.0 + (self.fraction() * YACHA_HOLD_NEAR_MS.1 as f64) as u64
+                YACHA_HOLD_NEAR_MS.0
+                    + (self.fraction() * YACHA_HOLD_NEAR_MS.1 as f64) as u64
             };
             (a, h)
         };
@@ -619,11 +627,7 @@ impl Yacha {
         let f = self.fighters.get_mut(&id).unwrap();
         // **맴돌 때는 시선을 안 돌린다** — 돌면 도망가는 그림이 된다.
         if act != Act::Circle {
-            f.face = if bx >= ax {
-                Facing::Right
-            } else {
-                Facing::Left
-            };
+            f.face = if bx >= ax { Facing::Right } else { Facing::Left };
         }
         f.x = arena.clamp_x(f.x);
         f.y = arena.clamp_y(f.y);

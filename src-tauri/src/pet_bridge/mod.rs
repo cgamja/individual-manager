@@ -124,16 +124,7 @@ pub struct PetSummary {
 /// 난투 중에는 연타가 흔한데(스윙 뒤 또 스윙이 64%) 그때 국면은 `Punch` 그대로고,
 /// 막힌 주먹은 맞은 쪽을 `Guard` 그대로 둔다. 번호를 안 보면 **그 스냅샷이
 /// 아예 안 나가** 퍽이 유실되고 그림도 안 다시 뜬다.
-pub type Look = (
-    Behavior,
-    Facing,
-    Vertical,
-    bool,
-    Option<u64>,
-    u64,
-    bool,
-    u64,
-);
+pub type Look = (Behavior, Facing, Vertical, bool, Option<u64>, u64, bool, u64);
 
 pub fn look_of(snapshot: &Snapshot) -> Look {
     (
@@ -173,30 +164,30 @@ pub fn bowling_over(was_alive: bool, is_alive: bool) -> bool {
 mod ball_window;
 mod bounds;
 pub mod commands;
-mod depth;
 mod hit;
 mod pinball;
+mod depth;
+mod volleyball;
+mod yacha;
 mod popover;
 mod scale;
 mod settings;
 mod tick;
-mod volleyball;
 mod window;
-mod yacha;
 
 pub use ball_window::*;
 pub use bounds::*;
 pub use commands::*;
-pub use depth::*;
 pub use hit::*;
 pub use pinball::*;
+pub use depth::*;
+pub use volleyball::*;
+pub use yacha::*;
 pub use popover::*;
 pub use scale::*;
 pub use settings::*;
 pub use tick::*;
-pub use volleyball::*;
 pub use window::*;
-pub use yacha::*;
 
 #[cfg(test)]
 #[path = "tests.rs"]

@@ -52,10 +52,7 @@ pub(super) const THROW_MAX_WORLDS_PER_SEC: f64 = 1.4;
 /// 상한 속도로 세계를 가로지르는 데 걸리는 시간(초)은 비율의 역수다 — 세계
 /// 폭과 무관하다. 그게 이 상수를 비율로 둔 이유이기도 하다.
 const THROW_CROSS_SEC: f64 = 1.0 / THROW_MAX_WORLDS_PER_SEC;
-const _: () = assert!(
-    THROW_CROSS_SEC > 0.6,
-    "너무 빠르다 — 2600px/s 시절로 돌아간다"
-);
+const _: () = assert!(THROW_CROSS_SEC > 0.6, "너무 빠르다 — 2600px/s 시절로 돌아간다");
 const _: () = assert!(THROW_CROSS_SEC < 0.9, "너무 느리다 — 던진 것 같지 않다");
 /// 세계 폭을 못 구했을 때 쓸 기준 폭.
 pub(super) const FALLBACK_WORLD_WIDTH: f64 = 1_440.0;
@@ -180,7 +177,7 @@ pub(super) const SQUAWK_MS: u64 = 1_400;
 const _: () = assert!(SQUAWK_MS > SASSY_MS);
 /// 안물 한 판의 길이. 음원(5.673초)보다 길어야 말이 끝나기 전에 자세가
 /// 평소로 돌아가지 않는다. **5,700인 이유는 정수 반복이 되기 때문이다** —
-/// 0.95×6 · 0.19×30 (docs/plans/2026-09-03-025 KTD5).
+/// 0.95×6 · 0.19×30 (docs/plans/2026-09-04-028 KTD5).
 pub(super) const DONT_ASK_MS: u64 = 5_700;
 const _: () = assert!(DONT_ASK_MS > SQUAWK_MS);
 /// 말풍선이 떠 있는 시간.
@@ -301,7 +298,8 @@ pub(super) const BOWLING_KNOCK_RADIUS: f64 = 126.0;
 /// 옆줄의 대각선 이웃 — `sqrt(ROW_GAP² + (COL_GAP/2)²)`를 제곱으로 비교한다.
 const _: () = assert!(
     BOWLING_KNOCK_RADIUS * BOWLING_KNOCK_RADIUS
-        >= BOWLING_ROW_GAP * BOWLING_ROW_GAP + (BOWLING_COL_GAP / 2.0) * (BOWLING_COL_GAP / 2.0)
+        >= BOWLING_ROW_GAP * BOWLING_ROW_GAP
+            + (BOWLING_COL_GAP / 2.0) * (BOWLING_COL_GAP / 2.0)
 );
 /// 같은 줄의 위아래 이웃.
 const _: () = assert!(BOWLING_KNOCK_RADIUS >= BOWLING_COL_GAP);
@@ -544,8 +542,10 @@ const _: () = assert!(VOLLEY_SERVE_MS > VOLLEY_BUMP_MS);
 /// **서브만 천장 자르기를 안 거친다.** 랠리 왕복은 `flight_ms_for`가 정점을
 /// 화면 안에 가두지만 서브는 이 값을 그대로 쓰므로, 관계를 여기서 묶는다 —
 /// 안 묶으면 이 값을 1초로 올리는 순간 서브가 화면 위로 사라진다.
-const VOLLEY_SERVE_APEX: f64 =
-    VOLLEY_GRAVITY * (VOLLEY_SERVE_MS as f64 / 1_000.0) * (VOLLEY_SERVE_MS as f64 / 1_000.0) / 8.0;
+const VOLLEY_SERVE_APEX: f64 = VOLLEY_GRAVITY
+    * (VOLLEY_SERVE_MS as f64 / 1_000.0)
+    * (VOLLEY_SERVE_MS as f64 / 1_000.0)
+    / 8.0;
 const _: () = assert!(VOLLEY_SERVE_APEX < VOLLEY_MIN_WORLD_HEIGHT - VOLLEY_REACH);
 
 /// 좋아하거나 약 오르는 시간. **`SASSY_MS`와 같아야 한다** — CSS가 싸가지 반응의

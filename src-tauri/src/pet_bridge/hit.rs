@@ -84,10 +84,7 @@ fn art_scale(scale: f64) -> f64 {
 fn art_origin(scale: f64) -> (f64, f64) {
     let s = art_scale(scale);
     let px = pet_render_px(scale);
-    (
-        (px - PET_VIEWBOX_W * s) / 2.0,
-        (px - PET_VIEWBOX_H * s) / 2.0,
-    )
+    ((px - PET_VIEWBOX_W * s) / 2.0, (px - PET_VIEWBOX_H * s) / 2.0)
 }
 
 /// 펭귄이 그려진 자리 (화면 논리 px). `pet_x`/`pet_y`는 무대 좌상단이고

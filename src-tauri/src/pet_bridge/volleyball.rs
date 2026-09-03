@@ -22,7 +22,8 @@
 //! (`docs/solutions/ui-bugs/macos-window-order-is-not-stable-level-is.md`).
 
 use tauri::{
-    AppHandle, Emitter, EventTarget, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, Emitter, EventTarget, Manager, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder,
 };
 
 use crate::pet::{VolleyBallSnapshot, VolleySnapshot, VOLLEY_BALL_SIZE};
@@ -67,10 +68,7 @@ pub const COURT_WINDOW_LEVEL: isize = 2;
 /// 공 **중심**의 코어 좌표 → 화면 좌표의 창 좌상단.
 pub fn vball_window_origin(x: f64, y: f64, scale: f64) -> (f64, f64) {
     let side = vball_window_size(scale);
-    (
-        to_screen(x, scale) - side / 2.0,
-        to_screen(y, scale) - side / 2.0,
-    )
+    (to_screen(x, scale) - side / 2.0, to_screen(y, scale) - side / 2.0)
 }
 
 pub fn court_window(app: &AppHandle) -> Option<WebviewWindow> {
@@ -160,14 +158,7 @@ pub fn create_vball_window(
         return Ok(existing);
     }
     let side = vball_window_size(scale);
-    그림_창(
-        app,
-        VBALL_LABEL,
-        "volley-ball.html",
-        at,
-        (side, side),
-        scale,
-    )
+    그림_창(app, VBALL_LABEL, "volley-ball.html", at, (side, side), scale)
 }
 
 /// 코트를 펭귄보다 **한 레벨 아래**로 내린다. 핀볼 판과 같은 이유·같은 방법이다.

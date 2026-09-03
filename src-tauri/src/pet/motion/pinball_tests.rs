@@ -231,7 +231,10 @@ const 틱: f64 = 0.05;
 
 /// 틱 시작 중심 하나로 자취를 만든다.
 fn 자취(from: (f64, f64)) -> Sweep {
-    Sweep { from, seconds: 틱 }
+    Sweep {
+        from,
+        seconds: 틱,
+    }
 }
 
 /// 한 쌍을 실제로 부딪혀 본다. 자취(`a전`/`b전`)는 **틱 시작의 중심**이다.
@@ -419,7 +422,10 @@ fn 핀볼이_꺼진_쌍은_부딪히지_않는다() {
     let (mut a, mut b) = 마주_본_쌍(300.0, -300.0);
     a.set_pinball(false);
     b.set_pinball(false);
-    assert!(!날아와서_부딪힌다(&mut a, &mut b), "핀볼을 껐는데 부딪혔다");
+    assert!(
+        !날아와서_부딪힌다(&mut a, &mut b),
+        "핀볼을 껐는데 부딪혔다"
+    );
 }
 
 #[test]

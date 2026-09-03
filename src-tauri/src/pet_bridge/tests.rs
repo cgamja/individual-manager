@@ -596,12 +596,19 @@ fn 움직이는_동작은_구조가_아니어도_창을_옮긴다() {
 
 #[test]
 fn 한_마리라도_움직이면_틱이_빨라진다() {
-    assert_eq!(tick_interval(true), TICK_MS);
+    assert_eq!(tick_interval(true, false), TICK_MS);
 }
 
 #[test]
 fn 전부_멈춰_있으면_틱이_느려진다() {
-    assert_eq!(tick_interval(false), SLEEP_TICK_MS);
+    assert_eq!(tick_interval(false, false), SLEEP_TICK_MS);
+}
+
+#[test]
+fn 클릭을_통과_중이면_자는_펭귄도_빠르게_돈다() {
+    // 통과를 되돌리는 유일한 눈이 이 틱이다. 500ms로 늘어지면 커서를 펭귄
+    // 위로 옮기고 그 안에 누른 클릭이 아래 앱으로 샌다.
+    assert_eq!(tick_interval(false, true), TICK_MS);
 }
 
 // ── 여럿 만들기: 전부 아니면 하나도 ────────────────────────────

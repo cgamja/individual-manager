@@ -120,3 +120,72 @@ fn 반열린_구간이라_맞닿은_변은_밖이다() {
     assert!(!contains(rect, 10.0, 5.0));
     assert!(!contains(rect, 5.0, 10.0));
 }
+
+// ── 통과 판정 ────────────────────────────────────────────────────
+
+/// 히트 상자 밖, 창 여백 한가운데. 통과를 유지해야 하는 자리다.
+fn 여백() -> (f64, f64) {
+    (AT.0 - PET_PAD_X + 10.0, AT.1 + PET_SIZE / 2.0)
+}
+
+/// 펭귄 몸 위.
+fn 몸() -> (f64, f64) {
+    (AT.0 + PET_SIZE / 2.0, AT.1 + PET_SIZE / 2.0)
+}
+
+#[test]
+fn 여백에_요청이_있고_커서가_그대로면_통과를_유지한다() {
+    // 참으로 가는 유일한 길이다. 이게 깨지면 기능이 통째로 죽는다.
+    assert!(decide_click_through(true, false, AT, Some(여백()), Some(여백())));
+}
+
+#[test]
+fn 요청이_없으면_클릭을_먹는다() {
+    assert!(!decide_click_through(false, false, AT, Some(여백()), None));
+}
+
+#[test]
+fn 커서를_못_읽으면_클릭을_먹는다() {
+    // 배율을 못 읽었을 때도 부르는 쪽이 `None`을 준다 — 같은 갈래다.
+    assert!(!decide_click_through(true, false, AT, None, Some(여백())));
+}
+
+#[test]
+fn 들려_있으면_요청이_있어도_클릭을_먹는다() {
+    assert!(!decide_click_through(true, true, AT, Some(여백()), Some(여백())));
+}
+
+#[test]
+fn 커서가_펭귄_위로_돌아오면_되돌린다() {
+    assert!(!decide_click_through(true, false, AT, Some(몸()), Some(여백())));
+}
+
+#[test]
+fn 펭귄이_커서_밑으로_걸어오면_되돌린다() {
+    // 커서는 가만히 있고 펭귄이 움직이는 경우다. 상자를 매 틱 다시 내지
+    // 않으면 이게 안 잡히고, 지나가는 동안 클릭이 아래 앱으로 샌다.
+    let 커서 = 몸();
+    let 지나간_뒤 = (AT.0 + 400.0, AT.1);
+    assert!(decide_click_through(true, false, 지나간_뒤, Some(커서), Some(커서)));
+    assert!(!decide_click_through(true, false, AT, Some(커서), Some(커서)));
+}
+
+#[test]
+fn 요청_지점에서_한_마리_폭_넘게_움직이면_되돌린다() {
+    let (ax, ay) = 여백();
+    let 멀리 = (ax - PET_SIZE * PET_DRIFT_RATIO - 1.0, ay);
+    assert!(!decide_click_through(true, false, AT, Some(멀리), Some((ax, ay))));
+}
+
+#[test]
+fn 기준점_근처의_잔떨림에는_안_풀린다() {
+    let (ax, ay) = 여백();
+    let 조금 = (ax + 3.0, ay - 2.0);
+    assert!(decide_click_through(true, false, AT, Some(조금), Some((ax, ay))));
+}
+
+#[test]
+fn 기준점이_아직_없으면_드리프트를_안_본다() {
+    // 통과를 시작하는 첫 틱이다 — 기준점은 그때 잡힌다.
+    assert!(decide_click_through(true, false, AT, Some(여백()), None));
+}

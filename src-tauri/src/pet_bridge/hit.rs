@@ -116,6 +116,55 @@ pub fn contains((l, t, r, b): Rect, x: f64, y: f64) -> bool {
     x >= l && x < r && y >= t && y < b
 }
 
+/// 통과를 시작한 자리에서 이만큼 멀어지면 무조건 되돌린다 — `PET_SIZE` 배수.
+///
+/// **상자 판정과 무관한 두 번째 문이다.** 상자 판정은 커서를 논리 좌표로
+/// 바꿔야 하고 그 변환은 배율에 기댄다. 배율이 틀리면 상자 판정이 영영
+/// 안 맞아 창이 통과 상태로 굳는데, 그게 "펭귄을 아예 못 누른다"로 가는
+/// 유일한 길이다. 이 문은 **커서가 실제로 움직였다**는 사실만 보므로 배율이
+/// 어긋나도 결국 열린다 (어긋난 배율은 거리도 같은 비율로 늘리거나 줄일 뿐이다).
+///
+/// 한 마리 폭만큼이다 — 더 짧으면 손떨림에 풀리고, 더 길면 복구가 늦다.
+pub const PET_DRIFT_RATIO: f64 = 1.0;
+const _: () = assert!(PET_DRIFT_RATIO > 0.0);
+
+/// 이번 틱에 이 창이 클릭을 통과시켜야 하는가.
+///
+/// **참으로 가는 길은 하나뿐이고 거짓으로 가는 길이 다섯이다.** 거짓이
+/// "클릭을 먹는다"= 오늘까지의 동작이므로, 무엇이 어긋나든 최악은 회귀 없음이다
+/// (R6). 좌표는 전부 화면 **논리** 좌표다.
+pub fn decide_click_through(
+    requested: bool,
+    dragged: bool,
+    pet: (f64, f64),
+    cursor: Option<(f64, f64)>,
+    anchor: Option<(f64, f64)>,
+) -> bool {
+    // 1) 웹뷰가 요청하지 않았다. 통과는 근거가 있을 때만 켜진다.
+    if !requested {
+        return false;
+    }
+    // 2) 들고 있다 — 커서가 창 어디로 가든 드래그가 끊기면 안 된다 (R4).
+    if dragged {
+        return false;
+    }
+    // 3) 커서를 못 읽었다(또는 배율을 못 읽어 부르는 쪽이 `None`을 줬다).
+    let Some((cx, cy)) = cursor else {
+        return false;
+    };
+    // 4) 커서가 펭귄 위로 돌아왔다.
+    if contains(hit_rect(pet.0, pet.1), cx, cy) {
+        return false;
+    }
+    // 5) 요청받은 자리에서 한 마리 폭 넘게 움직였다 — 배율과 무관한 두 번째 문.
+    if let Some((ax, ay)) = anchor {
+        if (cx - ax).hypot(cy - ay) > PET_SIZE * PET_DRIFT_RATIO {
+            return false;
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 #[path = "hit_tests.rs"]
 mod tests;

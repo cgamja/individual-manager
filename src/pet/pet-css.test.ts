@@ -80,6 +80,7 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "tumble" },
   { kind: "slide" },
   { kind: "squawk" },
+  { kind: "dont_ask" },
   { kind: "freakout", freakout: "dash" },
   { kind: "freakout", freakout: "pant" },
   { kind: "bowling", bowling: "gather" },
@@ -548,5 +549,29 @@ describe("PetApp이 쓰는 클래스에 스타일이 있다", () => {
 
   it.each([...used].map((c) => [c] as const))("%s 에 규칙이 있다", (cls) => {
     expect(hasRule(css, cls), `.${cls} 규칙이 없다`).toBe(true);
+  });
+});
+
+describe("안물 부위 애니메이션 길이", () => {
+  it("부위마다_주기_×_횟수가_DONT_ASK_MS와_같다", () => {
+    // `동작 길이 동기화` 표는 `.pg-all`의 **원시 duration**만 본다 — 안물은
+    // 0.95s × 6이라 그 표로는 950 vs 5700이 된다. 곱해서 대조한다.
+    const total = rustMs("DONT_ASK_MS");
+    expect(total, "Rust에서 DONT_ASK_MS를 못 찾았다").not.toBeNull();
+    const re = /\.pg--dont-ask\s+(\.[\w-]+)\s*\{[^}]*animation:\s*[\w-]+\s+([0-9.]+)s[^;]*?(?:\s(\d+))?;/g;
+    const 부위 = [...css.matchAll(re)];
+    expect(부위.length, ".pg--dont-ask 부위 애니메이션을 못 찾았다").toBeGreaterThan(2);
+    for (const [, sel, secs, count] of 부위) {
+      const ms = Math.round(Number(secs) * 1000) * Number(count ?? 1);
+      expect(ms, `${sel} 의 주기 × 횟수가 DONT_ASK_MS와 다르다`).toBe(total);
+    }
+  });
+
+  it("조잘거릴_때_아랫부리가_보인다", () => {
+    // `.pg-beak-lower`는 평소 `display: none`이다 — 안 켜면 부리가 안 벌어져
+    // "조잘거림"이 통째로 안 보이는데 애니메이션은 멀쩡히 돌아 눈치채기 어렵다.
+    const m = css.match(/\.pg--dont-ask\s+\.pg-beak-lower\s*\{([^}]*)\}/);
+    expect(m, ".pg--dont-ask .pg-beak-lower 규칙이 없다").not.toBeNull();
+    expect(m?.[1]).toMatch(/display:\s*inline/);
   });
 });

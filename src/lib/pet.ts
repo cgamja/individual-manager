@@ -208,6 +208,7 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--tumble" ||
   cls === "pg--slide" ||
   cls === "pg--squawk" ||
+  cls === "pg--dont-ask" ||
   cls === "pg--freakout-pant" ||
   cls === "pg--bowling-scatter" ||
   cls === "pg--volley-bump" ||

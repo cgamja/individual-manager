@@ -115,6 +115,10 @@ describe("shouldRestart", () => {
     expect(isOneShot("pg--swing")).toBe(true);
   });
 
+  it("안물은_한_번짜리다", () => {
+    expect(isOneShot("pg--dont-ask")).toBe(true);
+  });
+
   it("숨_고르기는_한_번짜리고_광란은_아니다", () => {
     expect(isOneShot("pg--freakout-pant")).toBe(true);
     expect(isOneShot("pg--freakout-dash")).toBe(false);

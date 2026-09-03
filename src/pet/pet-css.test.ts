@@ -1,13 +1,28 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { cleanup, render } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+import { Penguin } from "../assets/penguin";
 import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../lib/pet";
 
 /** 동작이 CSS에 실제로 그려져 있는지 확인한다. */
 
-/** 펭귄 그림의 소스. **아래에서 여러 번 읽으므로 한 곳에 둔다** — 그림이 옮겨질 때
- * 여기 하나만 고치면 된다. */
-const PENGUIN_SRC = "src/assets/penguin/penguin.tsx";
+afterEach(cleanup);
+
+/** 펭귄 그림의 소스. **부위별로 나뉘어 있다** — 어느 부위를 읽는지가 검사마다 다르다. */
+const PENGUIN = {
+  /** 조립 — 그리는 순서를 정한다. */
+  index: "src/assets/penguin/index.tsx",
+  /** 몸·날개·발·머리. */
+  body: "src/assets/penguin/body.tsx",
+  /** 훌라 차림. */
+  hula: "src/assets/penguin/hula.tsx",
+  /** 방망이·낚시 장비. */
+  gear: "src/assets/penguin/gear.tsx",
+} as const;
+/** 펭귄 그림 전부. `pg-*` 클래스를 훑을 때 쓴다. */
+const PENGUIN_ALL = Object.values(PENGUIN);
 /** 모든 색이 사는 곳. */
 const PALETTE_SRC = "src/assets/palette.ts";
 
@@ -21,7 +36,7 @@ const petRs =
   readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8");
 const petApp =
   readFileSync(resolve("src/pet/PetApp.tsx"), "utf8") +
-  readFileSync(resolve(PENGUIN_SRC), "utf8");
+  PENGUIN_ALL.map((p) => readFileSync(resolve(p), "utf8")).join("\n");
 
 /** `--이름: 123px;` 에서 숫자만 꺼낸다. */
 function cssVar(name: string): number | null {
@@ -279,11 +294,35 @@ describe("비치발리볼", () => {
 
   it("훌라_차림은_pg_all_안에_있다", () => {
     // 밖에 두면 착지 포즈에서 몸만 눌리고 옷이 허공에 남는다.
-    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
-    const all = svg.indexOf('className="pg-all"');
-    const luau = svg.indexOf('className="pg-luau"');
-    expect(all).toBeGreaterThan(-1);
-    expect(luau).toBeGreaterThan(all);
+    //
+    // **텍스트가 아니라 렌더한 DOM을 본다.** 예전에는 소스에서 `pg-all`과
+    // `pg-luau`의 등장 순서를 비교했는데, 부위를 파일로 쪼개면서 둘이 다른
+    // 파일로 갈려 순서 비교가 성립하지 않게 됐다. 애초에 이 검사가 말하려던
+    // 것은 순서가 아니라 **품고 있는가**이고, 그건 DOM이 직접 대답한다.
+    const { container } = render(createElement(Penguin));
+    const all = container.querySelector(".pg-all");
+    const luau = container.querySelector(".pg-luau");
+    expect(all, ".pg-all을 못 찾았다").not.toBeNull();
+    expect(luau, ".pg-luau를 못 찾았다").not.toBeNull();
+    expect(all!.contains(luau!), "훌라 차림이 .pg-all 밖에 있다").toBe(true);
+  });
+
+  it("가까운쪽_날개가_훌라_위에_그려진다", () => {
+    // **부위를 파일로 쪼개면서 새로 생긴 위험이다.** 원래 겹침 순서는
+    // 몸통 → 훌라 → **가까운쪽 날개** → 방망이라, 장비가 한 덩어리로 안 빠진다.
+    // 날개를 훌라보다 먼저 그리면 날개를 저을 때 어깨끈이 날개를 덮는다.
+    //
+    // 렌더 스냅샷도 이걸 잡지만, 깨졌을 때 **무엇이** 틀렸는지 말해 주는 것은
+    // 이 검사다.
+    const { container } = render(createElement(Penguin));
+    const 도형 = [...container.querySelectorAll(".pg-all > *")];
+    const luau = 도형.findIndex((el) => el.classList.contains("pg-luau"));
+    const wing = 도형.findIndex((el) => el.classList.contains("pg-wing-near"));
+    expect(luau, ".pg-luau를 .pg-all 바로 아래에서 못 찾았다").toBeGreaterThan(-1);
+    expect(wing, ".pg-wing-near를 .pg-all 바로 아래에서 못 찾았다").toBeGreaterThan(-1);
+    expect(wing, "가까운쪽 날개가 훌라보다 먼저 그려진다 — 어깨끈이 덮인다").toBeGreaterThan(
+      luau,
+    );
   });
 
   it("상의는_암컷만_보인다", () => {
@@ -296,7 +335,7 @@ describe("비치발리볼", () => {
     // **덮개형으로 갔다가 "갑바"로 읽혀 비키니로 돌아왔다** (2026-09-02 사용자).
     // 문제는 노출량이 아니라 **옷으로 읽히느냐**였다 — 색이 몸에 가깝고 경계가
     // 없으면 아무리 덮어도 살로 보인다. 그래서 셋을 못 박는다.
-    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
+    const svg = readFileSync(resolve(PENGUIN.hula), "utf8");
     const 상의 = svg.slice(
       svg.indexOf('<g className="pg-luau-top">'),
       svg.indexOf("</g>", svg.indexOf('<g className="pg-luau-top">')),
@@ -334,7 +373,7 @@ describe("비치발리볼", () => {
     // **"둘 다 얇게"가 지시다.** 깊게 그리면 다시 덮개가 되고, 덮개는 갑바로
     // 읽혔다. 배(`SNOW` 타원, cy=82 ry=26 → y 56~108)의 위쪽 3분의 1 안에서
     // 끝나야 한다.
-    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
+    const svg = readFileSync(resolve(PENGUIN.hula), "utf8");
     const 상의 = svg.slice(
       svg.indexOf('<g className="pg-luau-top">'),
       svg.indexOf("</g>", svg.indexOf('<g className="pg-luau-top">')),
@@ -379,10 +418,10 @@ describe("비치발리볼", () => {
 
   it("중간에_썼던_이름이_안_남아있다", () => {
     // `pg-straw`는 덮개형으로 가던 시절의 이름이다.
-    const svg = readFileSync(resolve(PENGUIN_SRC), "utf8");
+    const svg = readFileSync(resolve(PENGUIN.hula), "utf8");
     const volley = readFileSync(resolve("src/pet/css/volleyball.css"), "utf8");
     for (const [이름, 본문] of [
-      [PENGUIN_SRC, svg],
+      [PENGUIN.hula, svg],
       ["volleyball.css", volley],
     ] as const) {
       expect(본문, `${이름}에 pg-straw가 남아 있다`).not.toContain("pg-straw");

@@ -1,103 +1,15 @@
-/** 레이어드 SVG 펭귄 — `assets/penguin-icon.png`의 아델리 펭귄을 옮겨 그렸다 (KTD7). */
+/** 펭귄의 훌라 차림 — 치마(암수 공통) · 상의(암컷만) · 레이(암수 공통).
+ *
+ * **이 앱에서 가장 많이 뒤집힌 그림이다.** 아래 주석이 그 이력을 담고 있고,
+ * `pet-css.test.ts`의 `비치발리볼` 블록이 그 결론을 검사로 못 박아 뒀다 —
+ * 둘 다 지우면 같은 실패를 처음부터 다시 한다.
+ */
 
-/** 색은 `../palette`에 있다 — 이름 import를 유지한다(`fill={INK}` 형태).
- * `import * as palette`로 바꾸면 `pet-css.test.ts`가 `fill={STRAW}`를 문자열로
- * 세는 검사가 통째로 죽는다. */
-import {
-  BAT_GRIP,
-  BAT_WOOD,
-  BEAK,
-  FISH,
-  FLOAT,
-  FOOT,
-  HOLE,
-  INK,
-  LEI,
-  LEI_ALT,
-  SNOW,
-  STRAW,
-  STRAW_DARK,
-} from "../palette";
+import { LEI, LEI_ALT, STRAW, STRAW_DARK } from "../palette";
 
-interface PenguinOwnProps {
-  /** 암컷인가 — 훌라 상의를 입힐지 정한다. 창 라벨에서 결정적으로 파생한다. */
-  female?: boolean;
-}
-
-type PenguinProps = React.ComponentPropsWithoutRef<"svg"> & PenguinOwnProps;
-
-export function Penguin({ className = "penguin", female = false, ...rest }: PenguinProps) {
-  const cls = female ? `${className} pg-female` : className;
-  return (
-    <svg
-      className={cls}
-      viewBox="0 0 100 130"
-      role="img"
-      aria-label="펭귄"
-      xmlns="http://www.w3.org/2000/svg"
-      {...rest}
-    >
-      <g className="pg-halo" aria-hidden="true">
-        <Shapes />
-      </g>
-      <Shapes />
-    </svg>
-  );
-}
-
-/** 펭귄을 이루는 도형들. 본체와 후광이 같은 것을 그린다. */
-function Shapes() {
+export function Hula() {
   return (
     <>
-      <ellipse
-        className="pg-shadow"
-        cx="50"
-        cy="123"
-        rx="23"
-        ry="4.5"
-        fill={INK}
-        opacity="0.18"
-      />
-
-      <ellipse className="pg-hole" cx="88" cy="121" rx="12" ry="3.8" fill={HOLE} />
-
-      <g className="pg-all">
-      <path className="pg-tail" d="M33 98 L16 111 L35 106 Z" fill={INK} />
-
-      <path
-        className="pg-wing-far"
-        d="M36 52 C27 59 24 76 29 88 C31 92 35 91 36 87 C38 75 39 61 39 54 Z"
-        fill={INK}
-        opacity="0.72"
-      />
-
-      <g className="pg-foot pg-foot--far">
-        <rect x="44" y="104" width="4" height="9" rx="2" fill={FOOT} opacity="0.85" />
-        <path d="M46 112 L38 120 L52 120 Z" fill={FOOT} opacity="0.85" />
-      </g>
-      <g className="pg-foot pg-foot--near">
-        <rect x="54" y="104" width="4" height="9" rx="2" fill={FOOT} />
-        <path d="M56 112 L48 120 L63 120 Z" fill={FOOT} />
-      </g>
-
-      <g className="pg-body">
-        <path
-          d="M50 40 C64 40 71 58 71 80 C71 101 62 113 50 113 C38 113 29 101 29 80 C29 58 36 40 50 40 Z"
-          fill={INK}
-        />
-        <ellipse cx="47" cy="82" rx="14.5" ry="26" fill={SNOW} />
-      </g>
-
-      <g className="pg-head">
-        <circle cx="50" cy="30" r="16" fill={INK} />
-        <path d="M64 29 L77 32.5 L64 36.5 Z" fill={BEAK} />
-        <path className="pg-beak-lower" d="M64 33 L76 33.5 L64 38.5 Z" fill={BEAK} />
-        <ellipse cx="57" cy="27" rx="5.2" ry="6.2" fill={SNOW} />
-        <g className="pg-gaze">
-          <circle className="pg-eye" cx="57.5" cy="27.5" r="2.5" fill={INK} />
-        </g>
-      </g>
-
       {/* **훌라(luau) 차림 — 성별로 다르다.** `female`은 창 라벨에서 결정적으로
           파생한다 (`isFemalePet`) — 난수가 아니라 id 기반이라 앱을 껐다 켜도
           같은 펭귄은 같은 차림이고, 그래서 저장할 것도 없다.
@@ -229,44 +141,6 @@ function Shapes() {
           <circle cx="57" cy="57" r="2.6" fill={LEI_ALT} />
         </g>
 
-      </g>
-
-      <path
-        className="pg-wing-near"
-        d="M66 50 C76 57 80 75 74 89 C72 93 68 91 67 87 C64 74 63 60 64 52 Z"
-        fill={INK}
-      />
-
-      <g className="pg-bat">
-        <path
-          d="M69.2 85.8 L71.9 85.2 L76.2 122 C76.7 126.6 74.7 129.2 72.6 129.2 C70.5 129.2 68.7 126.6 69.2 122 Z"
-          fill={BAT_WOOD}
-        />
-        <rect x="68.4" y="82.4" width="3.9" height="6.4" rx="1.7" fill={BAT_GRIP} />
-      </g>
-
-      <path
-        className="pg-rod"
-        d="M70 87 L98 95"
-        stroke={BAT_WOOD}
-        strokeWidth="2.6"
-        strokeLinecap="round"
-        fill="none"
-      />
-      <path
-        className="pg-line"
-        d="M98 95 L90 116"
-        stroke={INK}
-        strokeWidth="0.9"
-        fill="none"
-        opacity="0.55"
-      />
-      <circle className="pg-float" cx="90" cy="117" r="2.8" fill={FLOAT} />
-      <g className="pg-fish">
-        <ellipse cx="85" cy="107" rx="7" ry="3.6" fill={FISH} />
-        <path d="M92 107 L97 103.5 L97 110.5 Z" fill={FISH} />
-        <circle cx="81" cy="106" r="0.9" fill={INK} />
-      </g>
       </g>
     </>
   );

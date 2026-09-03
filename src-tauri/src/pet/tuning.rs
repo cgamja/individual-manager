@@ -175,6 +175,11 @@ pub(super) const SASSY_MS: u64 = 900;
 /// 빽빽거리는 시간.
 pub(super) const SQUAWK_MS: u64 = 1_400;
 const _: () = assert!(SQUAWK_MS > SASSY_MS);
+/// 안물 한 판의 길이. 음원(5.673초)보다 길어야 말이 끝나기 전에 자세가
+/// 평소로 돌아가지 않는다. **5,700인 이유는 정수 반복이 되기 때문이다** —
+/// 0.95×6 · 0.19×30 (docs/plans/2026-09-04-028 KTD5).
+pub(super) const DONT_ASK_MS: u64 = 5_700;
+const _: () = assert!(DONT_ASK_MS > SQUAWK_MS);
 /// 말풍선이 떠 있는 시간.
 pub(super) const SPEECH_MS: u64 = 3_200;
 /// 말과 말 사이 간격 범위.

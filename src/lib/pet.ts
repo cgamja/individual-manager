@@ -65,6 +65,7 @@ export type Behavior =
   | { kind: "sassy"; sassy: SassyKind }
   | { kind: "swing" }
   | { kind: "squawk" }
+  | { kind: "dont_ask" }
   | { kind: "freakout"; freakout: FreakoutPhase }
   | { kind: "dragged" }
   | { kind: "falling" }
@@ -139,6 +140,10 @@ export const DEFAULT_TAUNTS: readonly string[] = [
 
 /** 대사 한 줄의 최대 길이. 말풍선이 창을 넘지 않을 만큼만 받는다. */
 export const TAUNT_MAX_LEN = 40;
+
+/** 안물의 문구. **대사 목록과 별도 채널이다** — 목록을 다 지워도 이건 나온다.
+ * 코어는 동작만 알고 문구는 웹뷰가 갖는다 (PRINCIPLE 4). */
+export const DONT_ASK_LINE = "묻지 않았습니다~~";
 
 /** 추첨값으로 대사를 고른다. 목록이 비어도 터지지 않는다. */
 export const tauntFor = (roll: number, lines: readonly string[]): string =>
@@ -263,6 +268,7 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--tumble" ||
   cls === "pg--slide" ||
   cls === "pg--squawk" ||
+  cls === "pg--dont-ask" ||
   cls === "pg--freakout-pant" ||
   cls === "pg--bowling-scatter" ||
   cls === "pg--volley-bump" ||
@@ -372,6 +378,9 @@ export const squawkPet = (): Promise<void> => invoke("pet_squawk");
 
 /** 우클릭해서 연 그 펭귄을 발작시킨다. */
 export const freakoutPet = (): Promise<void> => invoke("pet_freakout");
+
+/** 우클릭해서 연 그 펭귄에게 안물을 시킨다. */
+export const dontAskPet = (): Promise<void> => invoke("pet_dont_ask");
 
 /** 볼링 한 판을 연다. **우클릭한 한 마리가 아니라 화면의 펭귄 전부**가
  * 참여한다 (R1) — 그래서 다른 동작들과 달리 대상을 안 고른다. */

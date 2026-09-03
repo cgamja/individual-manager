@@ -14,7 +14,7 @@ interface Call {
 }
 
 /** 펫 커맨드 IPC를 가로채 호출 순서를 기록한다. */
-function mockPet(): Call[] {
+function mockPet(snap: Record<string, unknown> = {}, taunts?: string[]): Call[] {
   const calls: Call[] = [];
   mockWindows("pet-1");
   (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
@@ -24,6 +24,7 @@ function mockPet(): Call[] {
     const a = (args ?? {}) as Record<string, unknown>;
     if (cmd === "plugin:event|listen") return 1;
     if (cmd === "plugin:event|unlisten") return undefined;
+    if (taunts && cmd === "plugin:store|get") return taunts;
     calls.push({ cmd, args: a });
     if (cmd === "pet_get_state") {
       return {
@@ -35,6 +36,7 @@ function mockPet(): Call[] {
         speech: null,
         whack_seq: 0,
         behavior: { kind: "walk" },
+        ...snap,
       };
     }
     return undefined;
@@ -226,6 +228,40 @@ describe("펭귄 드래그", () => {
     const drags = calls.filter((c) => c.cmd === "pet_drag_by");
     expect(drags[drags.length - 1]?.args).toMatchObject({ dx: 10 });
     expect(calls.filter((c) => c.cmd === "pet_drag_start")).toHaveLength(1);
+  });
+});
+
+describe("안물 말풍선", () => {
+  const 안물 = { behavior: { kind: "dont_ask" } };
+
+  it("안물_중에는_고정_문구가_뜬다", async () => {
+    mockPet(안물);
+    render(<PetApp />);
+    expect(await screen.findByText("묻지 않았습니다~~")).toBeInTheDocument();
+  });
+
+  it("대사_목록이_비어도_안물_문구는_뜬다", async () => {
+    // 대사 채널을 재사용했으면 목록이 비는 순간 문구가 사라진다 (R4).
+    // 저장소가 빈 배열을 돌려주게 해서 실제로 목록을 비운다.
+    mockPet({ ...안물, speech: { seq: 1, roll: 0 } }, []);
+    render(<PetApp />);
+    await flush();
+    expect(screen.getByText("묻지 않았습니다~~")).toBeInTheDocument();
+  });
+
+  it("안물_중에는_대사_말풍선이_함께_뜨지_않는다", async () => {
+    mockPet({ ...안물, speech: { seq: 1, roll: 0 } });
+    render(<PetApp />);
+    const 말풍선 = await screen.findAllByRole("status");
+    expect(말풍선).toHaveLength(1);
+    expect(말풍선[0]).toHaveTextContent("묻지 않았습니다~~");
+  });
+
+  it("안물이_아니면_고정_문구가_안_뜬다", async () => {
+    mockPet();
+    render(<PetApp />);
+    await flush();
+    expect(screen.queryByText("묻지 않았습니다~~")).not.toBeInTheDocument();
   });
 });
 

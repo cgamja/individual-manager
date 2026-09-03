@@ -235,7 +235,10 @@ fn 공은_구르기_시작할_때만_웹뷰에_알린다() {
 /// 모르고 "볼링 한 판" 버튼이 비활성인 채로 남는다.
 #[test]
 fn 공이_나오기_전에_끝난_판도_끝났다고_알린다() {
-    assert!(bowling_over(true, false), "모으는 중에 끝난 판도 알려야 한다");
+    assert!(
+        bowling_over(true, false),
+        "모으는 중에 끝난 판도 알려야 한다"
+    );
     assert!(!bowling_over(false, false), "없던 판은 끝날 것도 없다");
     assert!(!bowling_over(true, true), "도는 중에는 알리지 않는다");
     assert!(!bowling_over(false, true), "막 열린 판은 끝난 게 아니다");
@@ -269,7 +272,29 @@ fn 모든_펫_커맨드가_invoke_handler에_등록되어_있다() {
             bridge.push('\n');
         }
     }
-    let lib = include_str!("../lib.rs");
+    // **주석을 걷어낸다.** 등록 줄을 주석 처리해도 이름이 남아 통과했다 —
+    // 지우는 것만 잡고 주석은 못 잡던 사각지대다
+    // (docs/solutions/best-practices/source-text-tests-pass-on-comments.md).
+    // 블록 주석을 먼저 지운다 — 줄 주석만 자르면 `/* ... */`가 그대로 통과한다.
+    let 블록_없음 = {
+        let src = include_str!("../lib.rs");
+        let mut out = String::with_capacity(src.len());
+        let mut rest = src;
+        while let Some(start) = rest.find("/*") {
+            out.push_str(&rest[..start]);
+            rest = match rest[start + 2..].find("*/") {
+                Some(end) => &rest[start + 2 + end + 2..],
+                None => "",
+            };
+        }
+        out.push_str(rest);
+        out
+    };
+    let lib: String = 블록_없음
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let mut commands = Vec::new();
     let mut lines = bridge.lines().peekable();
@@ -307,7 +332,11 @@ fn 배율이_바뀌면_세계_캐시를_다시_잰다() {
     // 배율만 달라도 다시 잰다.
     assert!(world_is_stale(Some((10_000, 1.0)), 10_100, 0.6));
     // 시간이 지나면 배율이 같아도 다시 잰다.
-    assert!(world_is_stale(Some((10_000, 1.0)), 10_000 + BOUNDS_REFRESH_MS, 1.0));
+    assert!(world_is_stale(
+        Some((10_000, 1.0)),
+        10_000 + BOUNDS_REFRESH_MS,
+        1.0
+    ));
     // 캐시가 없으면 당연히 잰다.
     assert!(world_is_stale(None, 0, 1.0));
 }
@@ -689,13 +718,19 @@ fn 어느_경계에_서도_창_전체가_화면_안이다() {
             (b.right, b.floor_y),
         ] {
             let (wx, wy) = window_origin(px, py, s);
-            assert!(wx >= area.0 - 0.001, "{percent}%: 창이 왼쪽으로 벗어남: {wx}");
+            assert!(
+                wx >= area.0 - 0.001,
+                "{percent}%: 창이 왼쪽으로 벗어남: {wx}"
+            );
             assert!(
                 wx + ww <= area.0 + area.2 + 0.001,
                 "{percent}%: 오른쪽으로 벗어남"
             );
             assert!(wy >= area.1 - 0.001, "{percent}%: 창이 위로 벗어남: {wy}");
-            assert!(wy + wh <= area.1 + area.3 + 0.001, "{percent}%: 아래로 벗어남");
+            assert!(
+                wy + wh <= area.1 + area.3 + 0.001,
+                "{percent}%: 아래로 벗어남"
+            );
         }
     }
 }

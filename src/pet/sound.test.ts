@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+afterEach(() => vi.unstubAllGlobals());
 import type { Behavior, PetSnapshot } from "../lib/pet";
 import {
   DEFAULT_VOLUME_STEP,
@@ -354,6 +356,128 @@ describe("voiceOffsetFor — 마리별 목소리", () => {
     expect(voiceOffsetFor("main")).toBe(0);
     expect(voiceOffsetFor("")).toBe(0);
     expect(voiceOffsetFor("pet-")).toBe(0);
+  });
+});
+
+describe("안물 — 유일한 음원 파일", () => {
+  it("안물_동작에_들어가면_소리를_낸다", () => {
+    const prev = snap();
+    const next = snap({ behavior: { kind: "dont_ask" } });
+    expect(soundsFor(prev, next)).toEqual(["dont_ask"]);
+  });
+
+  it("안물이_이어지는_동안에는_다시_안_낸다", () => {
+    const s = snap({ behavior: { kind: "dont_ask" } });
+    expect(soundsFor(s, s)).toEqual([]);
+  });
+
+  it("안물_쿨다운은_동작_길이보다_훨씬_짧다", () => {
+    // 동작 길이만큼 잠그면 빠따로 끊긴 뒤 다시 시킨 판이 무음으로 돈다 —
+    // 판의 중복 시작을 막는 것은 코어이고 여기는 겹침만 막는다.
+    expect(SOUND_COOLDOWN_MS.dont_ask).toBeGreaterThan(0);
+    expect(SOUND_COOLDOWN_MS.dont_ask).toBeLessThan(1_000);
+  });
+
+  it("끊긴_뒤_다시_시켜도_소리가_난다", () => {
+    // 빠따로 1초 만에 끊기고 2초에 다시 누른 경우 (코어는 받아들인다).
+    expect(passesCooldown("dont_ask", 0, 2_000)).toBe(true);
+  });
+
+  /** 음원을 즉시 내주는 fetch·decode 스텁을 심는다. */
+  function 음원을_심는다(ctx: ReturnType<typeof stubContext>) {
+    const buffer = { duration: 5.673 } as unknown as AudioBuffer;
+    (ctx as unknown as { decodeAudioData: unknown }).decodeAudioData = () =>
+      Promise.resolve(buffer);
+    const fetches: string[] = [];
+    vi.stubGlobal("fetch", (url: string) => {
+      fetches.push(url);
+      return Promise.resolve({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+    });
+    return fetches;
+  }
+
+  it("소리를_켜면_그때_음원을_받는다", async () => {
+    // 켜는 순간이 재생보다 반드시 앞서므로 첫 판이 디코드를 기다리지 않는다.
+    const ctx = stubContext();
+    const fetches = 음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    await Promise.resolve();
+    expect(fetches).toEqual(["/음원.m4a"]);
+  });
+
+  it("켤_때_받기가_실패하면_다음_클릭이_다시_받는다", async () => {
+    // `nudge()`의 warm은 프리페치가 아니라 **재시도**다. 이 테스트가 없으면
+    // `nudge()`에서 그 호출을 지워도 아무도 모른다.
+    const ctx = stubContext();
+    const buffer = { duration: 5.673 } as unknown as AudioBuffer;
+    (ctx as unknown as { decodeAudioData: unknown }).decodeAudioData = () =>
+      Promise.resolve(buffer);
+    const fetches: string[] = [];
+    let 실패시킬까 = true;
+    vi.stubGlobal("fetch", (url: string) => {
+      fetches.push(url);
+      if (실패시킬까) return Promise.reject(new Error("네트워크"));
+      return Promise.resolve({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+    });
+
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetches).toHaveLength(1);
+
+    실패시킬까 = false;
+    player.nudge();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetches).toHaveLength(2);
+
+    player.play("dont_ask", 0);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(1);
+  });
+
+  it("꺼져_있으면_음원을_안_받는다", () => {
+    // 기본 꺼짐이다 — 소리를 안 쓰는 사용자가 창마다 154KB를 받을 이유가 없다.
+    const ctx = stubContext();
+    const fetches = 음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.nudge();
+    expect(fetches).toEqual([]);
+  });
+
+  it("받아_둔_음원을_한_발_재생한다", async () => {
+    const ctx = stubContext();
+    음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    player.nudge();
+    await new Promise((r) => setTimeout(r, 0));
+    player.play("dont_ask", 0);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(1);
+  });
+
+  it("아직_못_받았으면_쿨다운을_안_태운다", async () => {
+    // 태우면 첫 판이 무음인 채로 5.7초 동안 다시 눌러도 조용하다.
+    const ctx = stubContext();
+    음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    player.play("dont_ask", 0);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 0));
+    player.play("dont_ask", 1);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(1);
+  });
+
+  it("효과음이_꺼져_있으면_안물_소리도_안_난다", async () => {
+    const ctx = stubContext();
+    음원을_심는다(ctx);
+    const player = new SoundPlayer("pet-1", () => ctx, "/음원.m4a");
+    player.setEnabled(true);
+    player.nudge();
+    await new Promise((r) => setTimeout(r, 0));
+    player.setEnabled(false);
+    player.play("dont_ask", 0);
+    expect(ctx.created.filter((k) => k === "source")).toHaveLength(0);
   });
 });
 

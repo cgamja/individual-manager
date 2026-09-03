@@ -6,6 +6,7 @@ import { SettingsCard } from "./components/SettingsCard";
 import { TauntCard } from "./components/TauntCard";
 import {
   addPet,
+  dontAskPet,
   emitPetScale,
   emitPetSound,
   fishPet,
@@ -59,6 +60,11 @@ const MOTIONS: readonly Motion[] = [
     name: "발작",
     note: "2~4초 동안 사방으로 튀고, 바닥까지 내려와 0.7초 숨을 고르고 끝나요 — 높이 떠 있었으면 전체가 7초쯤 갈 수 있어요. 저절로는 며칠에 한 번 나와요.",
     run: freakoutPet,
+  },
+  {
+    name: "안물",
+    note: "5.7초 동안 묻지 않았다며 조잘거려요. 효과음을 켜야 목소리가 들려요.",
+    run: dontAskPet,
   },
 ];
 

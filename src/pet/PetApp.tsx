@@ -25,6 +25,7 @@ import {
   startPetDrag,
   tauntFor,
   DEFAULT_TAUNTS,
+  DONT_ASK_LINE,
   whackPet,
   type PetSnapshot,
   type RestartKey,
@@ -299,12 +300,18 @@ export function PetApp() {
     .join(" ");
 
   const speech = snapshot?.speech ?? null;
+  // 안물 중에는 고정 문구가 대사 말풍선을 **대신한다** — 함께 그리면 둘이 겹친다.
+  const dontAsk = snapshot?.behavior.kind === "dont_ask";
+  const bubble = dontAsk ? DONT_ASK_LINE : speech ? tauntFor(speech.roll, taunts) : null;
+  // 안물의 key는 고정이다 — `speech.seq`를 쓰면 춤 도중 대사 추첨이 돌 때마다
+  // 말풍선이 remount되며 튀어나오기 연출을 다시 재생한다.
+  const bubbleKey = dontAsk ? "dont-ask" : speech?.seq;
 
   return (
     <>
-      {speech && (
-        <div className="pg-bubble" key={speech.seq} role="status">
-          {tauntFor(speech.roll, taunts)}
+      {bubble !== null && (
+        <div className="pg-bubble" key={bubbleKey} role="status">
+          {bubble}
         </div>
       )}
       <div className={stageClass} ref={stageRef}>

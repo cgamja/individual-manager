@@ -55,6 +55,26 @@ body,
   height: 100%;
   overflow: visible;
   cursor: grab;
+  /* 루트는 한 변 `--pg-size`인 **사각형**이라, 그대로 두면 무대 안 빈 자리를
+     눌러도 빠따가 나간다. 여기서 끄고 아래에서 도형만 되살린다 — 이벤트는
+     도형에서 버블링으로 루트의 핸들러에 그대로 도달하므로 핸들러는 안 옮긴다. */
+  pointer-events: none;
+}
+
+/* ── 클릭은 칠해진 자리에서만 받는다 ───────────────────────────── */
+
+.penguin :is(path, circle, ellipse, rect) {
+  pointer-events: visiblePainted;
+}
+
+/* 평소 안 보이는 장비와 바닥 그림자는 뺀다.
+   **`opacity: 0`은 히트 테스트를 안 막는다** — `visiblePainted`가 보는 것은
+   `visibility`다. 그냥 두면 방망이가 안 보이는 채로 몸통 옆에서 클릭을 먹는다.
+   낚싯대는 드리우는 동안 `viewBox` 밖까지 나가 네이티브 히트 상자
+   (`pet_bridge/hit.rs`) 밖에서 클릭을 받는다 — 두 층이 어긋나는 자리다. */
+.penguin :is(.pg-bat, .pg-rod, .pg-line, .pg-float, .pg-fish, .pg-hole, .pg-shadow),
+.penguin :is(.pg-bat, .pg-rod, .pg-line, .pg-float, .pg-fish, .pg-hole, .pg-shadow) * {
+  pointer-events: none;
 }
 
 .pg--dragged {

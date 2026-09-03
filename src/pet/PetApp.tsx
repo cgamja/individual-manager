@@ -61,6 +61,8 @@ export function PetApp() {
   const lastRestartRef = useRef<RestartKey | null>(null);
   /** 눈동자가 커서를 향해 밀리는 양 (SVG 좌표, R7). */
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
+  /** 무대의 실제 자리 — 창 전역 리스너가 포인터를 여기 기준으로 정규화한다. */
+  const stageRef = useRef<HTMLDivElement | null>(null);
   /** 사용자가 팝오버에서 고칠 수 있으므로 저장소가 원천이다. */
   const [taunts, setTaunts] = useState<readonly string[]>(DEFAULT_TAUNTS);
   /** 이 창의 소리 전부 — 켜짐/꺼짐·쿨다운·컨텍스트 수명을 소유한다. */
@@ -155,15 +157,8 @@ export function PetApp() {
 
   const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     const track = dragRef.current;
-    if (!track) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        const nx = (e.clientX - rect.left) / rect.width - 0.5;
-        const ny = (e.clientY - rect.top) / rect.height - 0.5;
-        setGaze({ x: clampGaze(nx * 4), y: clampGaze(ny * 4) });
-      }
-      return;
-    }
+    // 시선은 창 전역 리스너가 본다 — 여기는 드래그만 맡는다.
+    if (!track) return;
     if (track.pointerId !== e.pointerId) return;
     const moved = advance(track, e.screenX, e.screenY);
     if (!moved) return;
@@ -211,8 +206,31 @@ export function PetApp() {
     return () => document.body.classList.remove("pg-pinball-mode");
   }, [snapshot?.pinball]);
 
-  const handlePointerLeave = useCallback(() => {
-    setGaze({ x: 0, y: 0 });
+  /** 시선 추적 (R7) — **창 전역에서 듣는다.**
+   *
+   * 실루엣만 포인터를 받게 되면서(`base.css`의 `pointer-events`) SVG에 걸어
+   * 두면 눈동자가 펭귄 몸 위에서만 움직인다. 드래그는 포인터 캡처를 쓰므로
+   * SVG에 그대로 둔다. */
+  useEffect(() => {
+    const stage = stageRef.current;
+    const onMove = (e: PointerEvent) => {
+      if (dragRef.current) return;
+      const rect = stage?.getBoundingClientRect();
+      if (!rect || rect.width === 0 || rect.height === 0) return;
+      const nx = (e.clientX - rect.left) / rect.width - 0.5;
+      const ny = (e.clientY - rect.top) / rect.height - 0.5;
+      setGaze({ x: clampGaze(nx * 4), y: clampGaze(ny * 4) });
+    };
+    // `pointerout`은 도형 사이를 지날 때마다 터져 시선이 계속 0으로 튄다.
+    // `pointerleave`는 이 요소의 subtree를 **정말 벗어날 때만** 온다.
+    const onLeave = () => setGaze({ x: 0, y: 0 });
+    const root = document.documentElement;
+    window.addEventListener("pointermove", onMove);
+    root.addEventListener("pointerleave", onLeave);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      root.removeEventListener("pointerleave", onLeave);
+    };
   }, []);
 
   // 창 라벨에서 결정적으로 뽑는다 — 렌더마다 다시 계산해도 같은 값이다.
@@ -238,7 +256,7 @@ export function PetApp() {
           {tauntFor(speech.roll, taunts)}
         </div>
       )}
-      <div className={stageClass}>
+      <div className={stageClass} ref={stageRef}>
         <Penguin
         key={restartKey}
         className={petClass}
@@ -246,7 +264,6 @@ export function PetApp() {
         style={
           { "--gaze-x": `${gaze.x}px`, "--gaze-y": `${gaze.y}px` } as React.CSSProperties
         }
-        onPointerLeave={handlePointerLeave}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

@@ -228,3 +228,65 @@ describe("펭귄 드래그", () => {
     expect(calls.filter((c) => c.cmd === "pet_drag_start")).toHaveLength(1);
   });
 });
+
+describe("시선 추적", () => {
+  /** 무대의 자리를 고정한다 — jsdom은 레이아웃을 안 재서 전부 0으로 나온다. */
+  function stage(): HTMLElement {
+    const el = document.querySelector(".pg-stage") as HTMLElement;
+    el.getBoundingClientRect = () =>
+      ({ left: 52, top: 80, width: 140, height: 140 }) as DOMRect;
+    return el;
+  }
+
+  function gazeX(): string {
+    return (document.querySelector(".penguin") as HTMLElement).style.getPropertyValue(
+      "--gaze-x",
+    );
+  }
+
+  it("무대_밖에서_움직여도_눈동자가_따라온다", async () => {
+    // 실루엣만 포인터를 받게 되면서(base.css) SVG에 리스너를 두면 눈동자가
+    // 펭귄 몸 위에서만 움직인다. 창 전역이어야 한다.
+    mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+
+    expect(gazeX()).not.toBe("0px");
+  });
+
+  it("드래그_중에는_눈동자가_안_움직인다", async () => {
+    mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+    const el = penguin();
+
+    pointer("pointerdown", el, { screenX: 100, screenY: 100 });
+    await flush();
+    const before = gazeX();
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+
+    expect(gazeX()).toBe(before);
+  });
+
+  it("창을_벗어나면_눈동자가_가운데로_돌아온다", async () => {
+    mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+    expect(gazeX()).not.toBe("0px");
+
+    document.documentElement.dispatchEvent(new Event("pointerleave"));
+    await flush();
+
+    expect(gazeX()).toBe("0px");
+  });
+});

@@ -538,6 +538,68 @@ describe("비치발리볼", () => {
   });
 });
 
+describe("클릭은 칠해진 자리에서만 받는다", () => {
+  /** 선택자 목록에서 `pointer-events` 값을 꺼낸다. */
+  function 포인터규칙(): { sel: string; value: string }[] {
+    const found: { sel: string; value: string }[] = [];
+    for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (m[1].includes("@")) continue;
+      const v = m[2].match(/pointer-events:\s*([\w-]+)/);
+      if (v) found.push({ sel: m[1].trim(), value: v[1] });
+    }
+    return found;
+  }
+
+  it("펭귄_루트가_클릭을_안_받는다", () => {
+    // 루트는 한 변 --pg-size인 사각형이라 그대로 두면 무대 안 빈 자리가
+    // 전부 펭귄이 된다. 사용자가 겪은 "안 눌렀는데 눌린다"가 이것이다.
+    const rule = 포인터규칙().find((r) => /^\.penguin$/m.test(r.sel));
+    expect(rule, ".penguin 에 pointer-events 규칙이 없다").toBeDefined();
+    expect(rule?.value).toBe("none");
+  });
+
+  it("도형이_클릭을_되살린다", () => {
+    // 루트에서만 끄면 펭귄을 아예 못 누른다.
+    const rule = 포인터규칙().find(
+      (r) => r.sel.startsWith(".penguin ") && /\bpath\b/.test(r.sel),
+    );
+    expect(rule, "도형에 pointer-events를 되살리는 규칙이 없다").toBeDefined();
+    expect(rule?.value).not.toBe("none");
+  });
+
+  /** 네이티브 히트 상자(`pet_bridge/hit.rs`) 밖으로 나가거나 안 보이는 채로
+   * 클릭을 먹는 것들. 한쪽 층만 빼면 "웹뷰는 반응하는데 창은 통과시키는"
+   * 갈래가 생긴다. */
+  const 클릭_없는_부위 = [
+    "pg-bat",
+    "pg-rod",
+    "pg-line",
+    "pg-float",
+    "pg-fish",
+    "pg-hole",
+    "pg-shadow",
+  ];
+
+  it.each(클릭_없는_부위.map((c) => [c] as const))("%s 는 클릭을 안 받는다", (cls) => {
+    const 규칙 = 포인터규칙().filter(
+      (r) => new RegExp(`\\.${cls}(?![\\w-])`).test(r.sel) && r.value === "none",
+    );
+    expect(
+      규칙.length,
+      `.${cls} 를 클릭에서 빼는 pointer-events: none 규칙이 없다`,
+    ).toBeGreaterThan(0);
+  });
+
+  it("방망이는_opacity가_아니라_pointer_events로_뺀다", () => {
+    // `.pg-bat`은 `opacity: 0`으로 감춰지는데 **opacity는 히트 테스트를 안 막는다**
+    // (`visiblePainted`가 보는 것은 visibility다). 이 검사가 그 착각을 막는다.
+    const 규칙 = 포인터규칙().filter(
+      (r) => /\.pg-bat(?![\w-])/.test(r.sel) && r.value === "none",
+    );
+    expect(규칙.length).toBeGreaterThan(0);
+  });
+});
+
 describe("평소 숨기는 도형", () => {
   const 숨기는_도형 = [
     "pg-hole",

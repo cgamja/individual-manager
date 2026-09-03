@@ -186,7 +186,6 @@ describe("pet.css 커버리지", () => {
 describe("크기 배율", () => {
   it("무대를_통째로_줄이는_변환이_있다", () => {
     // 이게 없으면 창만 작아지고 그림은 원래 크기로 남아 창 밖으로 넘친다.
-    const 규칙 = css.match(/#pet-root\s*\{([^}]*)\}[^{]*$/m);
     expect(css, "#pet-root 규칙이 없다").toMatch(/#pet-root\s*\{/);
     expect(css, "--pg-scale로 스케일하지 않는다").toMatch(
       /#pet-root\s*\{[^}]*transform:\s*scale\(var\(--pg-scale/,
@@ -194,7 +193,6 @@ describe("크기 배율", () => {
     expect(css, "transform-origin이 좌상단이 아니면 창 밖으로 밀린다").toMatch(
       /#pet-root\s*\{[^}]*transform-origin:\s*0 0/,
     );
-    expect(규칙 === null || true).toBe(true);
   });
 
   it("배율의_기본값이_1이다", () => {

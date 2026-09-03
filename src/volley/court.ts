@@ -22,14 +22,14 @@ import "./court.css";
 
 /** 네트·모래는 고정 px라 배율을 직접 걸어야 한다. 판마다 새로 뜨는 창이지만
  * 판이 도는 도중에 크기가 바뀔 수도 있어 방송도 듣는다. */
-function 배율(size: number) {
-  document.documentElement.style.setProperty("--pg-scale", String(size / 100));
+function 배율(s: number) {
+  document.documentElement.style.setProperty("--pg-scale", String(s));
 }
-배율(initialScale() * 100);
+배율(initialScale());
 void loadPetSettings()
-  .then((s) => 배율(s.size))
+  .then((s) => 배율(s.size / 100))
   .catch(() => {});
-void onPetScale(({ size }) => 배율(size)).catch(() => {});
+void onPetScale(({ size }) => 배율(size / 100)).catch(() => {});
 
 const root = document.getElementById("court-root");
 if (root) {

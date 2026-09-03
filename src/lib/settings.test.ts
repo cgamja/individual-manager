@@ -1,11 +1,17 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_TAUNTS } from "./pet";
 import {
+  DEFAULT_PET_SETTINGS,
   loadPetSettings,
   savePetSettings,
   loadTaunts,
   saveTaunts,
+  SIZE_MAX,
+  SIZE_MIN,
+  SIZE_STEP,
 } from "./settings";
 
 afterEach(() => {
@@ -165,6 +171,30 @@ describe("펭귄 설정", () => {
       theme: "system",
       size: 100,
     });
+  });
+});
+
+describe("크기 상수가 Rust와 같다", () => {
+  // 한쪽만 고치면 슬라이더가 낼 수 있는 값과 Rust가 받아 주는 값이 갈린다 —
+  // 두 러너·타입 검사가 전부 통과하면서. `pet-css.test.ts`의 여백 상수 대조와 같은 장치다.
+  const scaleRs = readFileSync(resolve("src-tauri/src/pet_bridge/scale.rs"), "utf8");
+  const rustConst = (name: string): number | null => {
+    const m = scaleRs.match(new RegExp(`pub const ${name}: u32 = (\\d+)`));
+    return m ? Number(m[1]) : null;
+  };
+
+  it.each([
+    ["SIZE_MIN", SIZE_MIN],
+    ["SIZE_MAX", SIZE_MAX],
+    ["SIZE_STEP", SIZE_STEP],
+  ])("%s 가 Rust와 같다", (name, ts) => {
+    const rs = rustConst(name);
+    expect(rs, `Rust에서 ${name}을 못 찾았다`).not.toBeNull();
+    expect(ts).toBe(rs);
+  });
+
+  it("기본_크기가_Rust의_SIZE_DEFAULT와_같다", () => {
+    expect(DEFAULT_PET_SETTINGS.size).toBe(rustConst("SIZE_DEFAULT"));
   });
 });
 

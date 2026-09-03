@@ -151,8 +151,8 @@ export const EVENT_PET_SETTINGS = "pet://settings";
 /** 효과음 설정의 방송. `pet://settings`에 얹지 않는 이유: 그쪽은 **Rust가 */
 export const EVENT_PET_SOUND = "pet://sound";
 
-/** 크기 배율의 방송. **커서 방망이 때문에 있다** — 창 크기와 웹뷰 줌은 Rust가
- * 걸지만 CSS `cursor: url()`은 줌 밖이라 그림을 다시 만들어야 한다. */
+/** 크기 배율의 방송. 창 크기는 Rust가 정하지만 **그림을 줄이는 것은 웹뷰**라
+ * (`--pg-scale`), 살아 있는 창들이 새 배율을 알아야 한다. */
 export const EVENT_PET_SCALE = "pet://scale";
 
 /** 클릭과 드래그를 가르는 이동량(px). 이보다 덜 움직였으면 클릭으로 본다. */

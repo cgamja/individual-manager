@@ -20,17 +20,20 @@ const _: () = assert!(SIZE_MIN < SIZE_DEFAULT && SIZE_DEFAULT < SIZE_MAX);
 const _: () = assert!((SIZE_MAX - SIZE_MIN) % SIZE_STEP == 0);
 const _: () = assert!(SIZE_DEFAULT % SIZE_STEP == 0, "기본값이 슬라이더 눈금에 없다");
 
-/// 저장된 값에서 크기 퍼센트를 꺼낸다. 없거나 깨졌으면 [`SIZE_DEFAULT`]이고,
-/// 범위를 벗어나면 조인다 — 저장 파일이 손으로 고쳐져도 화면을 덮는 펭귄이 뜨지 않는다.
+/// 저장된 값에서 크기 퍼센트를 꺼낸다. 없거나 깨졌거나 **범위를 벗어나면**
+/// [`SIZE_DEFAULT`]다 — 저장 파일이 손으로 고쳐져도 화면을 덮는 펭귄이 뜨지 않는다.
+///
+/// **조이지 않고 기본값으로 떨어뜨린다.** 프론트의 `sanitizeSize`가 같은 규칙이라야
+/// `size: 200`에서 펭귄은 150%인데 슬라이더는 100%를 가리키는 일이 없다.
+/// `theme_from`·`sanitizeVolume`이 이미 "깨진 값은 기본값" 규칙이다.
 ///
 /// `pinball_from`·`theme_from`처럼 `AppHandle`이 아니라 값을 받는다 (테스트를 위해서다).
 pub fn size_percent_from(stored: Option<&serde_json::Value>) -> u32 {
     stored
         .and_then(|value| value.get("size"))
         .and_then(|v| v.as_u64())
-        .map_or(SIZE_DEFAULT, |n| {
-            n.clamp(u64::from(SIZE_MIN), u64::from(SIZE_MAX)) as u32
-        })
+        .filter(|n| (u64::from(SIZE_MIN)..=u64::from(SIZE_MAX)).contains(n))
+        .map_or(SIZE_DEFAULT, |n| n as u32)
 }
 
 /// 퍼센트를 배율로. 저장·UI는 퍼센트(`size`), 코드 안은 배율(`scale`)이다 —
@@ -66,7 +69,11 @@ pub fn pet_window_size(scale: f64) -> (f64, f64) {
 }
 
 /// 창 안에서 펭귄이 차지하는 사각형 `(x, y, w, h)` — 창 좌상단 기준 논리 px.
-/// 클릭 판정이 이걸 쓴다.
+///
+/// **아직 프로덕션 호출자가 없다.** 창의 투명 여백이 클릭을 먹는 것을 고치는 작업
+/// (`fix/f4-pet-hit-area-01`)이 히트 영역을 이 값으로 잡기로 해서 이름과 시그니처를
+/// 먼저 맞춰 뒀다 — 배율이 곱해지는 자리를 한 곳으로 묶기 위해서다. 그 작업이
+/// 들어오지 않으면 지워야 한다.
 pub fn pet_box_in_window(scale: f64) -> (f64, f64, f64, f64) {
     let side = pet_render_px(scale);
     (PET_PAD_X * scale, PET_PAD_TOP * scale, side, side)

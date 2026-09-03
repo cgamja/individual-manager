@@ -19,12 +19,18 @@ fn 크기_퍼센트를_배율로_바꾼다() {
 }
 
 #[test]
-fn 범위를_벗어난_크기는_조인다() {
-    // 손으로 고친 저장 파일이 화면을 덮는 펭귄을 만들면 안 된다.
-    let 작다 = 저장(serde_json::json!({ "size": 5 }));
-    let 크다 = 저장(serde_json::json!({ "size": 5000 }));
-    assert_eq!(scale_from(Some(&작다)), f64::from(SIZE_MIN) / 100.0);
-    assert_eq!(scale_from(Some(&크다)), f64::from(SIZE_MAX) / 100.0);
+fn 범위를_벗어난_크기는_기본값으로_떨어진다() {
+    // **조이지 않는다** — 프론트의 `sanitizeSize`와 규칙이 갈리면 펭귄은 150%인데
+    // 슬라이더는 100%를 가리킨다.
+    for 벗어난 in [5, 49, 151, 5000] {
+        let v = 저장(serde_json::json!({ "size": 벗어난 }));
+        assert_eq!(scale_from(Some(&v)), 1.0, "{벗어난}%에서 기본값으로 안 떨어졌다");
+    }
+    // 경계값은 그대로 산다.
+    let 최소 = 저장(serde_json::json!({ "size": SIZE_MIN }));
+    let 최대 = 저장(serde_json::json!({ "size": SIZE_MAX }));
+    assert_eq!(scale_from(Some(&최소)), f64::from(SIZE_MIN) / 100.0);
+    assert_eq!(scale_from(Some(&최대)), f64::from(SIZE_MAX) / 100.0);
 }
 
 #[test]

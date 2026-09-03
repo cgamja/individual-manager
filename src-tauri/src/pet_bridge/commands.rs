@@ -466,7 +466,10 @@ pub fn ball_drag_by(dx: f64, window: WebviewWindow, state: State<'_, PetState>, 
     if !is_ball_window(&window) {
         return;
     }
-    state.pets.lock().unwrap().ball_drag_by(to_core(dx, pet_scale(&app)));
+    // **락 밖에서 먼저 읽는다** — 인자 자리에서 읽으면 임시 `MutexGuard`가 스토어
+    // 읽기 내내 살아 있다 (`pet_drag_by`와 같은 이유).
+    let s = pet_scale(&app);
+    state.pets.lock().unwrap().ball_drag_by(to_core(dx, s));
     flush_ball(&app);
 }
 
@@ -476,10 +479,7 @@ pub fn ball_drag_end(vx: f64, window: WebviewWindow, state: State<'_, PetState>,
     if !is_ball_window(&window) {
         return;
     }
-    state
-        .pets
-        .lock()
-        .unwrap()
-        .ball_drag_end(now_ms(), to_core(vx, pet_scale(&app)));
+    let s = pet_scale(&app);
+    state.pets.lock().unwrap().ball_drag_end(now_ms(), to_core(vx, s));
     flush_ball(&app);
 }

@@ -367,16 +367,21 @@ describe("창 px → 그림 좌표", () => {
 
   it("배율이_바뀌어도_시선이_같은_곳을_가리킨다", () => {
     // 눈동자 좌표는 **SVG user unit**이라 그림을 얼마로 줄이든 같아야 한다.
-    // 창 px를 그대로 넣으면 이 검사가 배율마다 다른 값을 내며 빨개진다.
-    const 기준 = (() => {
-      const r = rectOf(1);
-      const { nx, ny } = normalizedIn(r, r.left + r.width * 0.9, r.top + r.height * 0.1);
-      return gazeFor(nx, ny);
-    })();
-    for (const s of [0.5, 1.5]) {
+    //
+    // **끝점을 쓰면 안 된다** — 끝에서는 어차피 상한에 걸려, 창 px를 그대로 넣는
+    // 버그가 들어와도 세 배율이 나란히 상한값을 내며 초록으로 통과한다.
+    // 그래서 상한 안쪽(요소의 55% 지점 = 정규화 0.05 → 시선 0.2)을 짚고 **값까지**
+    // 대조한다. 창 px가 새면 0.2가 아니라 상한이 나와 빨개진다.
+    const 안쪽 = 0.55;
+    for (const s of [0.5, 1, 1.5]) {
       const r = rectOf(s);
-      const { nx, ny } = normalizedIn(r, r.left + r.width * 0.9, r.top + r.height * 0.1);
-      expect(gazeFor(nx, ny), `배율 ${s}`).toEqual(기준);
+      const { nx, ny } = normalizedIn(r, r.left + r.width * 안쪽, r.top + r.height * 안쪽);
+      const gaze = gazeFor(nx, ny);
+      expect(gaze.x, `배율 ${s}`).toBeCloseTo(0.2, 10);
+      expect(gaze.y, `배율 ${s}`).toBeCloseTo(0.2, 10);
+      expect(Math.abs(gaze.x), `배율 ${s}: 상한에 걸리면 검사가 헛돈다`).toBeLessThan(
+        GAZE_LIMIT,
+      );
     }
   });
 

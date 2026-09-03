@@ -2,6 +2,8 @@
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
+use super::{pet_scale, scale_init_script};
+
 /// 핀볼 덮개 창의 라벨. **`capabilities/default.json`의 `windows`에 있어야 한다** —
 /// 없으면 이 창이 부르는 커맨드가 컴파일·테스트를 다 통과하고 **런타임에서만
 /// 조용히 reject된다** (`docs/solutions/best-practices/tauri-command-registration-silent-failure.md`).
@@ -95,6 +97,9 @@ pub fn create_pinball_window(app: &AppHandle) -> tauri::Result<()> {
     if rects.is_empty() {
         return Err(tauri::Error::WindowNotFound);
     }
+    // 판에는 그림이 없어 확대할 것이 없지만 **커서는 배율을 탄다** — 첫 페인트부터
+    // 알아야 방망이가 한 프레임 원래 크기로 번쩍이지 않는다.
+    let script = scale_init_script(pet_scale(app));
 
     build_all_or_none(
         rects.len(),
@@ -106,6 +111,7 @@ pub fn create_pinball_window(app: &AppHandle) -> tauri::Result<()> {
             }
             WebviewWindowBuilder::new(app, &label, WebviewUrl::App("pinball.html".into()))
                 .title("Pinball Field")
+                .initialization_script(&script)
                 .inner_size(w, h)
                 .position(x, y)
                 .transparent(true)

@@ -65,8 +65,8 @@ export function batCursorValue(deg: number, fallback: string, scale = 1): string
  *
  * `fallback`은 CSS의 `var()` 대체값과 같아야 한다 — 다르면 심기 전후로 깜빡인다.
  *
- * **`scale`을 넘길지는 창마다 다르다** — 웹뷰 줌이 걸린 창은 커서까지 함께
- * 늘어나므로 1로 두어야 두 번 곱해지지 않는다. 각 엔트리의 주석을 본다. */
+ * **커서는 CSS 변환을 안 따라온다.** 그림을 줄이는 `--pg-scale`이 이 그림에는
+ * 안 걸리므로 배율을 여기서 직접 곱한다. */
 export function installBatCursor(
   fallback: string,
   doc: Document = document,

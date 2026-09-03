@@ -11,6 +11,9 @@ import {
   throwVelocity,
   verticalClass,
   type Behavior,
+  GAZE_LIMIT,
+  gazeFor,
+  normalizedIn,
 } from "./pet";
 
 describe("behaviorClass", () => {
@@ -92,7 +95,7 @@ describe("behaviorClass", () => {
 
 describe("shouldRestart", () => {
   /** 빠따 횟수가 그대로인 평범한 전이. */
-  const k = (cls: string, whackSeq = 0) => ({ cls, whackSeq });
+  const k = (cls: string, whackSeq = 0, punchSeq = 0) => ({ cls, whackSeq, punchSeq });
 
   it("동작이_바뀌면_되감는다", () => {
     expect(shouldRestart(k("pg--fishing-bite"), k("pg--fishing-catch"))).toBe(true);
@@ -122,6 +125,20 @@ describe("shouldRestart", () => {
   it("숨_고르기는_한_번짜리고_광란은_아니다", () => {
     expect(isOneShot("pg--freakout-pant")).toBe(true);
     expect(isOneShot("pg--freakout-dash")).toBe(false);
+  });
+
+  it("야차_연타는_punchSeq로_되감는다", () => {
+    // 스윙 뒤 또 스윙이 64%라 **국면이 안 바뀐다.** 번호 말고는 달라지는 게 없다.
+    expect(shouldRestart(k("pg--yacha-punch", 0, 3), k("pg--yacha-punch", 0, 4))).toBe(true);
+  });
+
+  it("막힌_주먹도_되감는다", () => {
+    // 막히면 맞은 쪽이 `Guard` 그대로다 — 반복 자세라도 화남 표시는 다시 떠야 한다.
+    expect(shouldRestart(k("pg--yacha-guard", 0, 7), k("pg--yacha-guard", 0, 8))).toBe(true);
+  });
+
+  it("punchSeq가_그대로면_안_되감는다", () => {
+    expect(shouldRestart(k("pg--yacha-guard", 0, 8), k("pg--yacha-guard", 0, 8))).toBe(false);
   });
 
   it("반복_애니메이션은_되감지_않는다", () => {
@@ -343,5 +360,59 @@ describe("성별은 창 라벨에서 결정적으로 나온다", () => {
     for (const label of ["main", "volley-court", "", "pet-x"]) {
       expect(isFemalePet(label)).toBe(false);
     }
+  });
+});
+
+describe("창 px → 그림 좌표", () => {
+  /** 같은 화면 크기에서 같은 자리를 짚으면 배율과 무관하게 같은 값이어야 한다.
+   * 요소 크기로 나누므로 배율은 이미 그 안에 들어 있다. */
+  const rectOf = (scale: number) => ({
+    left: 100,
+    top: 200,
+    width: 140 * scale,
+    height: 140 * scale,
+  });
+
+  it("정규화는_요소_크기에_비례한_자리를_같은_값으로_준다", () => {
+    for (const s of [0.5, 1, 1.5]) {
+      const r = rectOf(s);
+      // 요소의 3/4 지점 = 어느 배율에서나 +0.25
+      const { nx, ny } = normalizedIn(r, r.left + r.width * 0.75, r.top + r.height * 0.75);
+      expect(nx, `배율 ${s}`).toBeCloseTo(0.25, 10);
+      expect(ny, `배율 ${s}`).toBeCloseTo(0.25, 10);
+    }
+  });
+
+  it("배율이_바뀌어도_시선이_같은_곳을_가리킨다", () => {
+    // 눈동자 좌표는 **SVG user unit**이라 그림을 얼마로 줄이든 같아야 한다.
+    //
+    // **끝점을 쓰면 안 된다** — 끝에서는 어차피 상한에 걸려, 창 px를 그대로 넣는
+    // 버그가 들어와도 세 배율이 나란히 상한값을 내며 초록으로 통과한다.
+    // 그래서 상한 안쪽(요소의 55% 지점 = 정규화 0.05 → 시선 0.2)을 짚고 **값까지**
+    // 대조한다. 창 px가 새면 0.2가 아니라 상한이 나와 빨개진다.
+    const 안쪽 = 0.55;
+    for (const s of [0.5, 1, 1.5]) {
+      const r = rectOf(s);
+      const { nx, ny } = normalizedIn(r, r.left + r.width * 안쪽, r.top + r.height * 안쪽);
+      const gaze = gazeFor(nx, ny);
+      expect(gaze.x, `배율 ${s}`).toBeCloseTo(0.2, 10);
+      expect(gaze.y, `배율 ${s}`).toBeCloseTo(0.2, 10);
+      expect(Math.abs(gaze.x), `배율 ${s}: 상한에 걸리면 검사가 헛돈다`).toBeLessThan(
+        GAZE_LIMIT,
+      );
+    }
+  });
+
+  it("시선은_흰자를_벗어나지_않는다", () => {
+    // 정규화 값이 ±0.5까지 가므로 ×4면 ±2다 — 그대로 두면 눈 밖으로 나간다.
+    expect(gazeFor(0.5, -0.5)).toEqual({ x: GAZE_LIMIT, y: -GAZE_LIMIT });
+    expect(gazeFor(-5, 5)).toEqual({ x: -GAZE_LIMIT, y: GAZE_LIMIT });
+  });
+
+  it("크기가_0인_요소는_0으로_떨어진다", () => {
+    expect(normalizedIn({ left: 0, top: 0, width: 0, height: 0 }, 10, 10)).toEqual({
+      nx: 0,
+      ny: 0,
+    });
   });
 });

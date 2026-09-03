@@ -406,7 +406,11 @@ fn 왼쪽을_보면_왼쪽_앞의_마리가_날아간다() {
     pets.get_mut(b).unwrap().facing = Facing::Left;
 
     let 맞은 = pets.whack(b, 1_000, &world(), 0.0, 0.0);
-    assert_eq!(동작(&pets, a), Behavior::Thrown, "왼쪽 앞의 마리가 날아간다");
+    assert_eq!(
+        동작(&pets, a),
+        Behavior::Thrown,
+        "왼쪽 앞의 마리가 날아간다"
+    );
     assert_ne!(동작(&pets, c), Behavior::Thrown, "오른쪽은 이제 등 뒤다");
     assert_eq!(맞은, vec![b, a], "때린 마리 먼저, 나머지는 id 오름차순");
 
@@ -507,7 +511,11 @@ fn 핀볼_모드에서는_이웃이_안_날아간다() {
         pets.get_mut(id).unwrap().set_pinball(true);
     }
     let 맞은 = pets.whack(a, 1_000, &world(), 0.0, -0.5);
-    assert_eq!(동작(&pets, a), Behavior::Thrown, "채에 맞아 자기가 날아간다");
+    assert_eq!(
+        동작(&pets, a),
+        Behavior::Thrown,
+        "채에 맞아 자기가 날아간다"
+    );
     assert_ne!(동작(&pets, b), Behavior::Thrown, "핀볼에서는 방망이가 없다");
     assert_eq!(맞은, vec![a]);
 }
@@ -547,10 +555,9 @@ fn 맞은_이웃도_착지_등급을_그대로_탄다() {
 
     let 자취 = drive(pets.get_mut(b).unwrap(), 1_020, 9_000, 20, &넓은);
     assert!(
-        자취.iter().any(|s| matches!(
-            s.behavior,
-            Behavior::Splat | Behavior::Sprawl
-        )),
+        자취
+            .iter()
+            .any(|s| matches!(s.behavior, Behavior::Splat | Behavior::Sprawl)),
         "세게 날아간 이웃은 철푸덕 널브러진다"
     );
 }

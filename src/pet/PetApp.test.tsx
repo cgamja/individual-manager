@@ -264,3 +264,188 @@ describe("안물 말풍선", () => {
     expect(screen.queryByText("묻지 않았습니다~~")).not.toBeInTheDocument();
   });
 });
+
+describe("시선 추적", () => {
+  /** 무대의 자리를 고정한다 — jsdom은 레이아웃을 안 재서 전부 0으로 나온다. */
+  function stage(): HTMLElement {
+    const el = document.querySelector(".pg-stage") as HTMLElement;
+    el.getBoundingClientRect = () =>
+      ({ left: 52, top: 80, width: 140, height: 140 }) as DOMRect;
+    return el;
+  }
+
+  function gazeX(): string {
+    return (document.querySelector(".penguin") as HTMLElement).style.getPropertyValue(
+      "--gaze-x",
+    );
+  }
+
+  it("실루엣_밖에서_움직여도_눈동자가_따라온다", async () => {
+    // 실루엣만 포인터를 받게 되면서(base.css) SVG에 리스너를 두면 눈동자가
+    // 펭귄 몸 위에서만 움직인다. 창 전역이어야 한다. client 80은 무대 안이지만
+    // 레터박스라 그림이 시작하지도 않은 자리다.
+    mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 80, clientY: 150 });
+    await flush();
+
+    expect(gazeX()).not.toBe("0px");
+  });
+
+  it("드래그_중에는_눈동자가_안_움직인다", async () => {
+    mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+    const el = penguin();
+
+    pointer("pointerdown", el, { screenX: 100, screenY: 100 });
+    await flush();
+    const before = gazeX();
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+
+    expect(gazeX()).toBe(before);
+  });
+
+  it("통과가_걸리면_눈동자가_가운데로_돌아온다", async () => {
+    // 통과가 걸리는 순간 이 창은 포인터 이벤트를 아예 못 받는다 —
+    // `pointerleave`조차 안 온다. 그때 시선을 안 되돌리면 눈동자가 마지막
+    // 표본(대개 ±1.6 최대치)에 얼어붙어 계속 한쪽을 노려본다 (R7).
+    mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 100, clientY: 150 });
+    await flush();
+    expect(gazeX()).not.toBe("0px");
+
+    pointer("pointermove", window as unknown as Element, { clientX: 4, clientY: 150 });
+    await flush();
+
+    expect(gazeX()).toBe("0px");
+  });
+
+  it("창을_벗어나면_눈동자가_가운데로_돌아온다", async () => {
+    mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 100, clientY: 150 });
+    await flush();
+    expect(gazeX()).not.toBe("0px");
+
+    document.documentElement.dispatchEvent(new Event("pointerleave"));
+    await flush();
+
+    expect(gazeX()).toBe("0px");
+  });
+});
+
+describe("클릭 통과 요청", () => {
+  /** 무대의 자리를 고정한다 — 창 244×220 안의 140×140 무대다. */
+  function stage(): void {
+    const el = document.querySelector(".pg-stage") as HTMLElement;
+    el.getBoundingClientRect = () =>
+      ({ left: 52, top: 80, width: 140, height: 140 }) as DOMRect;
+  }
+
+  function 요청들(calls: Call[]): unknown[] {
+    return calls.filter((c) => c.cmd === "pet_set_click_through").map((c) => c.args.on);
+  }
+
+  it("여백으로_나가면_통과를_요청한다", async () => {
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    // 창 왼쪽 끝 — 방망이 여백이다.
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([true]);
+  });
+
+  it("거두는_것은_보내지_않는다", async () => {
+    // 되돌리는 것은 Rust 몫이다 — 웹뷰는 요청만 한다. `false`를 보내면
+    // 되돌리는 주체가 둘이 되고, 통과 중에는 어차피 못 보낸다.
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+    pointer("pointermove", window as unknown as Element, { clientX: 122, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([true]);
+  });
+
+  it("여백을_헤매도_요청이_쌓이지_않는다", async () => {
+    // 창이 아직 안 바뀐 채 커서가 여백에서 움직이면 매 이동마다 IPC가 나간다.
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    for (const x of [10, 12, 14, 16]) {
+      pointer("pointermove", window as unknown as Element, { clientX: x, clientY: 150 });
+      await flush();
+    }
+
+    expect(요청들(calls)).toEqual([true]);
+  });
+
+  it("펭귄_위를_지났다_다시_여백으로_가면_또_요청한다", async () => {
+    // **Rust는 되돌릴 때 요청을 지운다(걸쇠).** 웹뷰가 "이미 보냈다"를 믿으면
+    // 그 뒤로 다시는 통과가 안 걸린다 — 관측으로 다시 판단해야 한다.
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+    pointer("pointermove", window as unknown as Element, { clientX: 122, clientY: 150 });
+    await flush();
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([true, true]);
+  });
+
+  it("펭귄_위에서는_아무것도_안_보낸다", async () => {
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+
+    pointer("pointermove", window as unknown as Element, { clientX: 122, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([]);
+  });
+
+  it("드래그_중에는_통과를_요청하지_않는다", async () => {
+    // 들고 있는 동안 커서는 창 어디로든 간다. 통과가 걸리면 드래그가 끊긴다.
+    const calls = mockPet();
+    render(<PetApp />);
+    await flush();
+    stage();
+    const el = penguin();
+
+    pointer("pointerdown", el, { screenX: 100, screenY: 100 });
+    await flush();
+    pointer("pointermove", window as unknown as Element, { clientX: 10, clientY: 150 });
+    await flush();
+
+    expect(요청들(calls)).toEqual([]);
+  });
+});

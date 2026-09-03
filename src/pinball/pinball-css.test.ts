@@ -36,10 +36,13 @@ describe("핀볼 판", () => {
       expect(css).toContain(`var(${BAT_SWING_VAR}`);
     }
     for (const [name, code] of entries) {
-      // 최상위 호출이어야 한다 — 함수 안에 감싸면 아무도 안 부른다.
-      expect(code, `${name}가 커서를 최상위에서 심지 않는다`).toMatch(
-        /^installBatCursor\(/m,
+      // **최상위에서 배율을 구독해야 한다** — 그 콜백이 커서를 심는다. 셋(펭귄·판·
+      // 코트)이 같은 헬퍼를 쓰므로 부팅 경쟁을 한 곳에서만 처리한다. 함수 안에
+      // 감싸면 아무도 안 부른다.
+      expect(code, `${name}가 최상위에서 배율을 구독하지 않는다`).toMatch(
+        /^void followPetScale\(/m,
       );
+      expect(code, `${name}가 방망이를 안 심는다`).toContain("installBatCursor(");
     }
   });
 

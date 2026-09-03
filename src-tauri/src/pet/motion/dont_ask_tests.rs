@@ -19,7 +19,10 @@ fn 버튼으로_시키면_안물_동작에_들어간다() {
 fn 안물은_정해진_시간_뒤에_끝난다() {
     let (mut p, t0) = 안물하는_펭귄();
     let s = p.step(t0 + DONT_ASK_MS - 1, &world());
-    assert!(matches!(s.behavior, Behavior::DontAsk), "1ms 전에는 아직 한다");
+    assert!(
+        matches!(s.behavior, Behavior::DontAsk),
+        "1ms 전에는 아직 한다"
+    );
     let s = p.step(t0 + DONT_ASK_MS, &world());
     assert!(!matches!(s.behavior, Behavior::DontAsk), "제 시간에 끝난다");
 }

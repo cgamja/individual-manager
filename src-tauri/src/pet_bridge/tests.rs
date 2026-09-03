@@ -11,6 +11,95 @@ fn 경계(right: f64) -> Bounds {
     }
 }
 
+/// 자세 판정만 보는 최소 스냅샷.
+fn 스냅샷(behavior: crate::pet::Behavior, air: bool) -> Snapshot {
+    Snapshot {
+        x: 0.0,
+        y: 0.0,
+        facing: crate::pet::Facing::Right,
+        vertical: crate::pet::Vertical::Level,
+        air,
+        speech: None,
+        whack_seq: 0,
+        pinball: false,
+        punch_seq: 0,
+        punch_down: false,
+        punch_blocked: false,
+        behavior,
+    }
+}
+
+#[test]
+fn 서_있는_국면은_상자_안이다() {
+    use crate::pet::Behavior::*;
+    for b in [Walk, Sleep, Swing, Squawk] {
+        assert!(pose_of(&스냅샷(b, false)).in_box(), "{b:?}");
+    }
+}
+
+#[test]
+fn 그림이_상자를_넘는_국면은_통과를_접는다() {
+    // 이 목록이 비면 슬라이딩·굴러떨어지기 중에 그려진 펭귄을 눌렀는데 클릭이
+    // 아래 앱으로 샌다 — 이 설계가 없애려던 갈래다.
+    //
+    // **판·경기 동작도 여기 든다.** 코어 좌표는 바닥에 두고 CSS로만 그리므로
+    // 스파이크(`translateY(-26px)`)나 핀 자세(`rotate(48deg)`)가 되돌리기
+    // 여유(`PET_SIZE * 0.1`)를 넘는다.
+    use crate::pet::Behavior::*;
+    for b in [
+        Slide,
+        Tumble,
+        Splat,
+        Sprawl,
+        Thrown,
+        Dragged,
+        Land,
+        Falling,
+        Volleyball {
+            volley: crate::pet::VolleyPhase::Bump,
+        },
+        Volleyball {
+            volley: crate::pet::VolleyPhase::Chase,
+        },
+        Bowling {
+            bowling: crate::pet::BowlingPhase::Ready,
+        },
+    ] {
+        assert!(!pose_of(&스냅샷(b, false)).in_box(), "{b:?}");
+    }
+}
+
+#[test]
+fn 모르는_동작은_통과를_접는다() {
+    // 목록을 **뒤집어** 뒀다: 상자 안이 확인된 국면만 통과를 허락한다.
+    // 모션은 일곱 자리에 흩어져 있어서(`behavior.rs`) 새 동작을 얹을 때 이
+    // 목록을 빠뜨리기 쉬운데, 빠뜨린 쪽이 안전한 기본값(= 오늘까지의 동작)이
+    // 되어야 한다. 이 테스트가 그 방향을 못 박는다.
+    use crate::pet::{Behavior::*, FreakoutPhase};
+    assert!(!pose_of(&스냅샷(
+        Freakout {
+            freakout: FreakoutPhase::Dash
+        },
+        false
+    ))
+    .in_box());
+    assert!(!pose_of(&스냅샷(Swim, false)).in_box());
+}
+
+#[test]
+fn 공중에_있으면_동작과_무관하게_통과를_접는다() {
+    // 헤엄은 오르내릴 때 SVG 루트가 통째로 기운다(`air.css`).
+    assert!(!pose_of(&스냅샷(crate::pet::Behavior::Swim, true)).in_box());
+}
+
+#[test]
+fn 시작할_때는_아무도_클릭을_통과시키지_않는다() {
+    // 통과는 근거가 있을 때만 켜지는 상태다. 기본이 "클릭을 먹는다"여야
+    // 어떤 실패에서든 펭귄을 누를 수 있다 (R6).
+    let state = PetState::new(crate::pet::Pets::new());
+    assert!(state.click_through.lock().unwrap().is_empty());
+}
+
 #[test]
 fn 경계를_못_읽으면_주_모니터로_떨어진다() {
     let 주 = World::single(경계(1_440.0));
@@ -37,11 +126,11 @@ fn 둘_다_못_읽으면_캐시를_건드리지_않는다() {
 
 #[test]
 fn 크기가_0인_작업_영역은_모니터로_치지_않는다() {
-    assert!(bounds_of_work_area((0, 0), (0, 0), 1.0).is_none());
-    assert!(bounds_of_work_area((0, 0), (1_440, 0), 2.0).is_none());
-    assert!(bounds_of_work_area((0, 0), (0, 900), 2.0).is_none());
+    assert!(bounds_of_work_area((0, 0), (0, 0), 1.0, 1.0).is_none());
+    assert!(bounds_of_work_area((0, 0), (1_440, 0), 2.0, 1.0).is_none());
+    assert!(bounds_of_work_area((0, 0), (0, 900), 2.0, 1.0).is_none());
     assert!(
-        bounds_of_work_area((0, 0), (2_880, 1_800), 2.0).is_some(),
+        bounds_of_work_area((0, 0), (2_880, 1_800), 2.0, 1.0).is_some(),
         "멀쩡한 모니터는 통과해야 한다"
     );
 }
@@ -107,9 +196,19 @@ fn 공_창_라벨이_capabilities에_등록되어_있다() {
 /// 어긋나 눈으로는 보이지만 히트 판정과 어긋난다.
 #[test]
 fn 공_창은_중심을_기준으로_놓인다() {
-    let (x, y) = ball_window_origin(500.0, 800.0);
+    let (x, y) = ball_window_origin(500.0, 800.0, 1.0);
     assert_eq!(x, 500.0 - BALL_WINDOW_SIZE / 2.0);
     assert_eq!(y, 800.0 - BALL_WINDOW_SIZE / 2.0);
+}
+
+/// 공 창은 크기와 자리가 **함께** 배율을 타야 한다. 한쪽만 타면 공이 손에서
+/// 반 칸 어긋난 채로 굴러간다.
+#[test]
+fn 공_창의_크기와_자리가_함께_배율을_탄다() {
+    assert_eq!(ball_window_size(0.5), BALL_WINDOW_SIZE / 2.0);
+    let (x, y) = ball_window_origin(500.0, 800.0, 0.5);
+    assert_eq!(x, 250.0 - BALL_WINDOW_SIZE / 4.0);
+    assert_eq!(y, 400.0 - BALL_WINDOW_SIZE / 4.0);
 }
 
 /// 위치는 `BallLook`에 안 들어간다 — 넣으면 굴러가는 내내 20Hz로 리렌더한다.
@@ -136,7 +235,10 @@ fn 공은_구르기_시작할_때만_웹뷰에_알린다() {
 /// 모르고 "볼링 한 판" 버튼이 비활성인 채로 남는다.
 #[test]
 fn 공이_나오기_전에_끝난_판도_끝났다고_알린다() {
-    assert!(bowling_over(true, false), "모으는 중에 끝난 판도 알려야 한다");
+    assert!(
+        bowling_over(true, false),
+        "모으는 중에 끝난 판도 알려야 한다"
+    );
     assert!(!bowling_over(false, false), "없던 판은 끝날 것도 없다");
     assert!(!bowling_over(true, true), "도는 중에는 알리지 않는다");
     assert!(!bowling_over(false, true), "막 열린 판은 끝난 게 아니다");
@@ -204,6 +306,35 @@ fn 모든_펫_커맨드가_invoke_handler에_등록되어_있다() {
             "`{name}`이 lib.rs의 invoke_handler 목록에 없다"
         );
     }
+}
+
+/// 배율이 바뀐 틱은 시간이 남아 있어도 경계를 다시 재야 한다. 안 그러면 최대
+/// 2초 동안 옛 경계로 clamp되어 작아진 펭귄이 벽에서 떨어져 선다.
+#[test]
+fn 배율이_바뀌면_세계_캐시를_다시_잰다() {
+    // 방금 잰 캐시는 배율이 같으면 그대로 쓴다.
+    assert!(!world_is_stale(Some((10_000, 1.0)), 10_100, 1.0));
+    // 배율만 달라도 다시 잰다.
+    assert!(world_is_stale(Some((10_000, 1.0)), 10_100, 0.6));
+    // 시간이 지나면 배율이 같아도 다시 잰다.
+    assert!(world_is_stale(
+        Some((10_000, 1.0)),
+        10_000 + BOUNDS_REFRESH_MS,
+        1.0
+    ));
+    // 캐시가 없으면 당연히 잰다.
+    assert!(world_is_stale(None, 0, 1.0));
+}
+
+/// 배율이 바뀐 틱에는 **자는 마리도** 옮겨야 한다. 안 그러면 새 경계로 다시
+/// clamp된 좌표가 창에 안 걸려 최대 25초 동안 허공에 뜨거나 화면 밖에 남는다.
+#[test]
+fn 배율이_바뀌면_자는_마리도_옮긴다() {
+    // 평소에는 안 옮긴다.
+    assert!(!should_move(false, false));
+    // 구조됐거나 배율이 바뀌면 동작과 무관하게 옮긴다.
+    assert!(should_move(false, true));
+    assert!(should_move(true, false));
 }
 
 #[test]
@@ -335,6 +466,7 @@ fn 겉모습이_그대로면_다시_알리지_않는다() {
         None,
         0,
         false,
+        0,
     );
     assert!(!should_notify(Some(look), look));
     assert!(should_notify(None, look), "처음에는 알려야 한다");
@@ -350,6 +482,7 @@ fn 겉모습_비교에_핀볼이_들어간다() {
         None,
         0,
         false,
+        0,
     );
     let 켜짐 = (
         Behavior::Walk,
@@ -359,8 +492,30 @@ fn 겉모습_비교에_핀볼이_들어간다() {
         None,
         0,
         true,
+        0,
     );
     assert!(should_notify(Some(꺼짐), 켜짐));
+}
+
+/// **`punch_seq`가 빠지면 야차의 연타가 통째로 유실된다** — 국면도 시선도 안
+/// 바뀌는 전이라 이 번호 말고는 달라지는 것이 없다.
+#[test]
+fn 겉모습_비교에_주먹_번호가_들어간다() {
+    let 앞 = (
+        Behavior::Yacha {
+            yacha: crate::pet::YachaPhase::Punch,
+        },
+        Facing::Right,
+        Vertical::Level,
+        true,
+        None,
+        0,
+        false,
+        3,
+    );
+    let mut 뒤 = 앞;
+    뒤.7 = 4;
+    assert!(should_notify(Some(앞), 뒤));
 }
 
 #[test]
@@ -421,6 +576,7 @@ fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     let down = (
         Behavior::Swim,
@@ -430,6 +586,7 @@ fn 세로_방향만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     assert!(should_notify(Some(up), down));
 }
@@ -444,6 +601,7 @@ fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     let left = (
         Behavior::Walk,
@@ -453,6 +611,7 @@ fn 좌우_방향만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     assert!(should_notify(Some(right), left));
 }
@@ -469,6 +628,7 @@ fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     let air = (
         Behavior::Sassy {
@@ -480,6 +640,7 @@ fn 공중_여부만_바뀌어도_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     assert!(should_notify(Some(ground), air));
 }
@@ -496,6 +657,7 @@ fn 유휴_종류가_바뀌면_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     let b = (
         Behavior::Idle {
@@ -507,6 +669,7 @@ fn 유휴_종류가_바뀌면_웹뷰에_알린다() {
         None,
         0,
         false,
+        0,
     );
     assert!(should_notify(Some(a), b));
 }
@@ -526,26 +689,47 @@ fn 경계는_창_여백까지_화면_안에_들어오게_잡는다() {
 
 #[test]
 fn 어느_경계에_서도_창_전체가_화면_안이다() {
+    // **어느 배율에서도** 성립해야 한다 — 경계는 코어 단위로 넓어지고 창은
+    // 화면 단위로 줄어드는데, 둘이 어긋나면 작은 펭귄이 화면 밖에 선다.
     let area = (0.0, 25.0, 1440.0, 875.0);
-    let b = bounds_from_work_area((0, 25), (1440, 875), 1.0, PET_SIZE);
-    for (px, py) in [
-        (b.left, b.top),
-        (b.right, b.top),
-        (b.left, b.floor_y),
-        (b.right, b.floor_y),
-    ] {
-        let (wx, wy) = window_origin(px, py);
-        assert!(wx >= area.0 - 0.001, "창이 왼쪽으로 벗어남: {wx}");
-        assert!(
-            wx + PET_WINDOW_W <= area.0 + area.2 + 0.001,
-            "오른쪽으로 벗어남"
-        );
-        assert!(wy >= area.1 - 0.001, "창이 위로 벗어남: {wy}");
-        assert!(
-            wy + PET_WINDOW_H <= area.1 + area.3 + 0.001,
-            "아래로 벗어남"
-        );
+    for percent in (SIZE_MIN..=SIZE_MAX).step_by(SIZE_STEP as usize) {
+        let s = scale_of(percent);
+        let b = bounds_of_work_area((0, 25), (1440, 875), 1.0, s).expect("멀쩡한 작업 영역");
+        let (ww, wh) = pet_window_size(s);
+        for (px, py) in [
+            (b.left, b.top),
+            (b.right, b.top),
+            (b.left, b.floor_y),
+            (b.right, b.floor_y),
+        ] {
+            let (wx, wy) = window_origin(px, py, s);
+            assert!(
+                wx >= area.0 - 0.001,
+                "{percent}%: 창이 왼쪽으로 벗어남: {wx}"
+            );
+            assert!(
+                wx + ww <= area.0 + area.2 + 0.001,
+                "{percent}%: 오른쪽으로 벗어남"
+            );
+            assert!(wy >= area.1 - 0.001, "{percent}%: 창이 위로 벗어남: {wy}");
+            assert!(
+                wy + wh <= area.1 + area.3 + 0.001,
+                "{percent}%: 아래로 벗어남"
+            );
+        }
     }
+}
+
+/// 배율이 작으면 코어가 보는 세계가 넓어진다 — 작은 펭귄은 더 오른쪽까지 간다.
+#[test]
+fn 배율이_작으면_세계가_넓어진다() {
+    let 크게 = bounds_of_work_area((0, 25), (1440, 875), 1.0, 1.0).unwrap();
+    let 작게 = bounds_of_work_area((0, 25), (1440, 875), 1.0, 0.5).unwrap();
+    assert!(작게.right > 크게.right, "세계가 안 넓어졌다");
+    assert!(작게.floor_y > 크게.floor_y, "바닥이 안 내려갔다");
+    // 화면으로 되돌리면 같은 자리다 — 오른쪽 끝의 창 오른쪽 변이 일치한다.
+    let 오른쪽 = |b: Bounds, s: f64| window_origin(b.right, b.floor_y, s).0 + pet_window_size(s).0;
+    assert!((오른쪽(크게, 1.0) - 오른쪽(작게, 0.5)).abs() < 1e-9);
 }
 
 #[test]
@@ -595,12 +779,19 @@ fn 움직이는_동작은_구조가_아니어도_창을_옮긴다() {
 
 #[test]
 fn 한_마리라도_움직이면_틱이_빨라진다() {
-    assert_eq!(tick_interval(true), TICK_MS);
+    assert_eq!(tick_interval(true, false), TICK_MS);
 }
 
 #[test]
 fn 전부_멈춰_있으면_틱이_느려진다() {
-    assert_eq!(tick_interval(false), SLEEP_TICK_MS);
+    assert_eq!(tick_interval(false, false), SLEEP_TICK_MS);
+}
+
+#[test]
+fn 클릭을_통과_중이면_자는_펭귄도_빠르게_돈다() {
+    // 통과를 되돌리는 유일한 눈이 이 틱이다. 500ms로 늘어지면 커서를 펭귄
+    // 위로 옮기고 그 안에 누른 클릭이 아래 앱으로 샌다.
+    assert_eq!(tick_interval(false, true), TICK_MS);
 }
 
 // ── 여럿 만들기: 전부 아니면 하나도 ────────────────────────────
@@ -691,4 +882,58 @@ fn 만들_것이_없으면_아무것도_안_한다() {
     );
     assert!(r.is_ok());
     assert_eq!(되돌린, None);
+}
+
+// ── 창을 놓는 순서 (플랜 026, 자체 리뷰 1·2번) ──────────────────────────
+
+/// macOS에서 `set_position`은 좌상단 기준이고 `set_size`는 좌하단 기준이라,
+/// **자리를 먼저 걸면 뒤따르는 크기 변경이 위 모서리를 높이 차이만큼 민다.**
+/// 그래서 창을 놓는 문은 하나여야 하고, 그 문이 순서를 쥔다.
+#[test]
+fn 창을_놓는_문이_하나다() {
+    // 브릿지 어디서도 `set_position`을 직접 부르지 않는다 — `place_window`만 부른다.
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/pet_bridge");
+    let mut 어긴_파일 = Vec::new();
+    for entry in std::fs::read_dir(&dir).expect("pet_bridge 디렉터리를 못 읽었다") {
+        let path = entry.expect("항목을 못 읽었다").path();
+        if path.extension().is_none_or(|e| e != "rs") {
+            continue;
+        }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        // 문 자신과 검사 파일은 예외다.
+        if name == "mod.rs" || name.ends_with("_tests.rs") || name == "tests.rs" {
+            continue;
+        }
+        let src = std::fs::read_to_string(&path).expect("소스를 못 읽었다");
+        // 주석을 걷어낸다 — 안 그러면 설명에 적힌 이름이 위반으로 잡힌다.
+        let 코드만 = src
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if 코드만.contains(".set_position(") {
+            어긴_파일.push(name);
+        }
+    }
+    assert!(
+        어긴_파일.is_empty(),
+        "`place_window`를 안 거치고 자리를 옮긴다: {어긴_파일:?}"
+    );
+}
+
+/// 크기 변경 판정은 **마리별**이어야 한다. 전역 "직전 배율" 하나로 굴리면,
+/// 배율이 바뀐 그 틱에 창을 못 찾아 빠진 마리는 다음 틱에 "안 바뀜"으로 읽혀
+/// 크기만 맞고 자리가 안 맞은 채로 남는다.
+#[test]
+fn 창_크기_판정은_마리별로_기억한다() {
+    let 백 = pet_window_size(1.0);
+    let 육십 = pet_window_size(0.6);
+    // 처음 보는 마리는 재야 한다.
+    assert!(window_resized(None, 백));
+    // 같은 크기를 이미 걸었으면 안 잰다.
+    assert!(!window_resized(Some(백), 백));
+    // 배율이 달라졌으면 잰다.
+    assert!(window_resized(Some(백), 육십));
+    // **이 마리가 그 틱을 놓쳤어도** 기억이 옛 크기이므로 다음 틱에 잡힌다.
+    assert!(window_resized(Some(백), 육십), "빠진 마리가 영영 안 맞는다");
 }

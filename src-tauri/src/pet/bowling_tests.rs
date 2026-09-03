@@ -26,14 +26,21 @@ fn 줄마다_한_마리씩_늘어난다() {
     assert_eq!(triangle_rows(1), vec![1]);
     assert_eq!(triangle_rows(3), vec![1, 2]);
     assert_eq!(triangle_rows(6), vec![1, 2, 3]);
-    assert_eq!(triangle_rows(MAX_PETS), vec![1, 2, 3, 2], "남은 줄은 모자란 채로 둔다");
+    assert_eq!(
+        triangle_rows(MAX_PETS),
+        vec![1, 2, 3, 2],
+        "남은 줄은 모자란 채로 둔다"
+    );
     assert!(triangle_rows(0).is_empty());
 }
 
 #[test]
 fn 핀은_삼각형으로_선다() {
     // 여섯 마리면 1·2·3의 완전한 삼각형이다.
-    let xs: Vec<f64> = pin_positions(6, 레인()).into_iter().map(|(x, _)| x).collect();
+    let xs: Vec<f64> = pin_positions(6, 레인())
+        .into_iter()
+        .map(|(x, _)| x)
+        .collect();
     assert_eq!(xs.len(), 6);
     // 줄마다 x가 같고, 줄이 뒤로 갈수록 x가 커진다.
     assert!(xs[0] < xs[1], "꼭짓점이 둘째 줄보다 앞이다");
@@ -75,7 +82,9 @@ fn 판은_화면_세로_중앙에_선다() {
     assert!(중앙 > lane.top && 중앙 < lane.floor_y);
     assert_eq!(중앙, (lane.top + lane.floor_y) / 2.0);
     assert!(
-        pin_positions(6, lane).iter().all(|(_, y)| *y != lane.floor_y),
+        pin_positions(6, lane)
+            .iter()
+            .all(|(_, y)| *y != lane.floor_y),
         "핀이 바닥에 서면 안 된다"
     );
 }
@@ -145,7 +154,11 @@ fn 같은_마릿수는_항상_같은_자리_배정을_낳는다() {
 fn 공은_레인_왼쪽_판과_같은_높이에_놓인다() {
     let lane = 레인();
     let (x, y) = ball_home(lane);
-    assert_eq!(x, lane.left + BOWLING_BALL_SIZE / 2.0, "공 왼쪽이 레인 왼쪽에 닿는다");
+    assert_eq!(
+        x,
+        lane.left + BOWLING_BALL_SIZE / 2.0,
+        "공 왼쪽이 레인 왼쪽에 닿는다"
+    );
     assert_eq!(
         y,
         lane_center_y(lane) + PET_SIZE / 2.0,
@@ -160,7 +173,11 @@ fn 볼링을_시작하면_전_마리가_참여한다() {
     let mut pets = 펭귄들(3);
     assert!(pets.start_bowling(1_000, 레인()));
     let board = pets.bowling().expect("판이 생긴다");
-    assert_eq!(board.participants().len(), 3, "우클릭한 한 마리가 아니라 전부다");
+    assert_eq!(
+        board.participants().len(),
+        3,
+        "우클릭한 한 마리가 아니라 전부다"
+    );
     assert_eq!(board.phase(), BoardPhase::Gathering);
 }
 
@@ -231,7 +248,10 @@ fn 다_선_판(n: usize) -> (Pets, World, u64) {
     while t < 60_000 {
         t += 50;
         pets.step_all(t, |_| Some(&w));
-        if pets.bowling().is_some_and(|b| b.phase() == BoardPhase::Ready) {
+        if pets
+            .bowling()
+            .is_some_and(|b| b.phase() == BoardPhase::Ready)
+        {
             return (pets, w, t);
         }
     }
@@ -327,7 +347,11 @@ fn 속도_상한은_세계_폭에_비례한다() {
     let 좁게 = clamp_roll(1_000_000.0, 1_000.0);
     assert!(넓게 > 좁게, "화면이 넓으면 같은 손짓이 더 멀리 간다");
     assert_eq!(넓게, 3_000.0 * BOWLING_MAX_WORLDS_PER_SEC);
-    assert_eq!(clamp_roll(-1_000_000.0, 3_000.0), -넓게, "방향은 유지한 채 자른다");
+    assert_eq!(
+        clamp_roll(-1_000_000.0, 3_000.0),
+        -넓게,
+        "방향은 유지한 채 자른다"
+    );
 }
 
 #[test]
@@ -379,7 +403,10 @@ fn 맞은_핀은_튕겨_나간다() {
             pets.get(id).unwrap().snapshot().x
         })
         .fold(f64::MIN, f64::max);
-    assert!(가장_멀리 > 자리, "공이 온 쪽 반대로 밀린다 — {가장_멀리} <= {자리}");
+    assert!(
+        가장_멀리 > 자리,
+        "공이 온 쪽 반대로 밀린다 — {가장_멀리} <= {자리}"
+    );
 }
 
 #[test]
@@ -393,7 +420,12 @@ fn 연쇄로_옆_핀도_쓰러진다() {
     let 남은 = pets
         .ids()
         .into_iter()
-        .filter(|id| matches!(pets.get(*id).map(Pet::behavior), Some(Behavior::Bowling { .. })))
+        .filter(|id| {
+            matches!(
+                pets.get(*id).map(Pet::behavior),
+                Some(Behavior::Bowling { .. })
+            )
+        })
         .count();
     assert!(
         남은 < 5,
@@ -409,7 +441,9 @@ fn 공이_지나는_줄에서_먼_핀은_직접_안_맞는다() {
     board.open_ball();
     let 공 = board.ball().unwrap();
     assert!(
-        board.ball_hit(공.x, 공.y + BOWLING_HIT_RADIUS + 1.0).is_none(),
+        board
+            .ball_hit(공.x, 공.y + BOWLING_HIT_RADIUS + 1.0)
+            .is_none(),
         "세로로 멀면 공이 그냥 지나간다"
     );
     assert!(board.ball_hit(공.x, 공.y).is_some(), "같은 줄이면 맞는다");
@@ -490,7 +524,10 @@ fn 살살_놓으면_공이_그_자리에_남는다() {
     pets.ball_drag_start();
     pets.ball_drag_end(t, BOWLING_MIN_ROLL_SPEED - 1.0);
     pets.step_all(t + 50, |_| Some(&w));
-    let ball = pets.bowling().and_then(|b| b.ball()).expect("공이 남아 있다");
+    let ball = pets
+        .bowling()
+        .and_then(|b| b.ball())
+        .expect("공이 남아 있다");
     assert_eq!(ball.x, 시작);
     assert!(!ball.rolling, "굴러가지 않는다 — 다시 집을 수 있다");
     assert_eq!(pets.bowling().unwrap().phase(), BoardPhase::Ready);
@@ -505,7 +542,11 @@ fn 집지_않은_공은_놓아도_굴러가지_않는다() {
     pets.ball_drag_end(t, 100_000.0); // 집지 않고 놓기만
     pets.step_all(t + 50, |_| Some(&w));
     let board = pets.bowling().expect("판이 살아 있어야 한다");
-    assert_eq!(board.phase(), BoardPhase::Ready, "굴러가기 시작하면 안 된다");
+    assert_eq!(
+        board.phase(),
+        BoardPhase::Ready,
+        "굴러가기 시작하면 안 된다"
+    );
     assert_eq!(board.ball().unwrap().x, 시작);
 }
 
@@ -562,7 +603,10 @@ fn 판이_끝나면_아무도_볼링_중이_아니다() {
     }
     for id in pets.ids() {
         assert!(
-            !matches!(pets.get(id).map(Pet::behavior), Some(Behavior::Bowling { .. })),
+            !matches!(
+                pets.get(id).map(Pet::behavior),
+                Some(Behavior::Bowling { .. })
+            ),
             "{id}번이 판이 끝났는데도 볼링 중이다"
         );
     }
@@ -675,7 +719,10 @@ fn 넓은_화면에서도_연쇄가_걸린다() {
     while t < 60_000 {
         t += 50;
         pets.step_all(t, |_| Some(&w));
-        if pets.bowling().is_some_and(|b| b.phase() == BoardPhase::Ready) {
+        if pets
+            .bowling()
+            .is_some_and(|b| b.phase() == BoardPhase::Ready)
+        {
             break;
         }
     }
@@ -721,7 +768,10 @@ fn 틱이_밀려도_연쇄가_이웃을_뛰어넘지_않는다() {
     while t < 60_000 {
         t += MAX_STEP_MS;
         pets.step_all(t, |_| Some(&w));
-        if pets.bowling().is_some_and(|b| b.phase() == BoardPhase::Ready) {
+        if pets
+            .bowling()
+            .is_some_and(|b| b.phase() == BoardPhase::Ready)
+        {
             break;
         }
     }
@@ -765,7 +815,10 @@ fn 한_판(count: usize, lane: Bounds, dt: u64, vx: f64) -> (u64, usize) {
     while t < 60_000 {
         t += dt;
         pets.step_all(t, |_| Some(&w));
-        if pets.bowling().is_some_and(|b| b.phase() == BoardPhase::Ready) {
+        if pets
+            .bowling()
+            .is_some_and(|b| b.phase() == BoardPhase::Ready)
+        {
             다_선_때 = Some(t);
             break;
         }
@@ -867,4 +920,3 @@ fn 한_마리부터_여덟_마리까지_금방_모인다() {
         }
     }
 }
-

@@ -26,9 +26,11 @@ export type SoundName =
   | "catch"
   | "strike"
   | "roll"
+  | "punch"
+  | "punch-down"
   | "dont_ask";
 
-/** 합성으로 만드는 일곱. `dont_ask`만 음원 파일이라 여기 없다. */
+/** 합성으로 만드는 아홉. `dont_ask`만 음원 파일이라 여기 없다. */
 export type SynthName = Exclude<SoundName, "dont_ask">;
 
 /** 직전 스냅샷과 비교해 이번에 낼 소리를 판정한다. 순수 함수 — Web Audio가 */
@@ -39,6 +41,14 @@ export const soundsFor = (
   if (!prev) return [];
   const out: SoundName[] = [];
   if (next.whack_seq > prev.whack_seq) out.push("whack");
+  // **야차의 "퍽".** 라운드마다 **딱 한 마리**의 `punch_seq`만 오른다 — 맞는
+  // 마리마다 내면 여덟 마리에서 라운드당 네 발이 겹쳐 기관총이 된다. 대표를
+  // 고르는 것은 코어의 판이라, 여기서는 "내 것이 늘었나"만 본다.
+  // 쓰러뜨린 한 방은 반음을 낮춰 더 낮고 길게 낸다 — 마흔 발이 다 똑같으면
+  // 그게 소음이다.
+  if (next.punch_seq > prev.punch_seq) {
+    out.push(next.punch_down ? "punch-down" : "punch");
+  }
   if (prev.behavior.kind !== "thrown" && next.behavior.kind === "thrown") {
     // 볼링 핀이 맞아 날아가는 것은 **맞은 소리**가 나야 한다. 휙 소리만 나면
     // 스스로 날아간 것처럼 들려 공에 맞았다는 사실이 사라진다.
@@ -72,8 +82,15 @@ export const SOUND_COOLDOWN_MS: Record<SoundName, number> = {
   // 한 마리 안에서만 걸리므로 짧게 둔다 — 길면 두 번 맞은 것이 한 번으로 들린다.
   strike: 60,
   roll: 900,
-  // 동작 길이와 같다. 코어가 이미 중복 시작을 거부하지만 소리 쪽에도 벽을 둔다.
-  dont_ask: 5_700,
+  // 라운드가 340ms마다 도는데 대표는 한 마리뿐이라, 한 마리 안에서 겹칠 일은
+  // 거의 없다. 그래도 틱이 밀려 두 라운드가 붙는 경우를 거른다.
+  punch: 200,
+  // 쓰러뜨린 한 방은 그 라운드의 퍽과 **겹쳐서** 난다 — 서로를 안 거르게
+  // 이름을 나눴고, 그래서 쿨다운도 따로다.
+  "punch-down": 200,
+  // 겹침만 막는 짧은 벽이다. 판의 중복 시작은 코어가 거부하므로 여기서
+  // 동작 길이만큼 잠그면, 빠따로 끊긴 뒤 다시 시킨 판이 무음으로 돈다.
+  dont_ask: 200,
 };
 
 /** 시각을 인자로 받아 시계 없이 테스트한다 (`pet.rs`가 `now_ms`를 받는 이유와 같다). */
@@ -108,6 +125,10 @@ const SYNTH: Record<
   (ctx: BaseAudioContext, out: AudioNode, semitones: number) => void
 > = {
   whack: playWhack,
+  // **새 합성 함수를 안 만든다** — `playWhack`("퍽 — 노이즈 버스트 + 저역 툭")이
+  // 이미 정확히 그 소리다. 야차의 퍽은 반음만 다르게 준다.
+  punch: (ctx, out, semis) => playWhack(ctx, out, semis + 2),
+  "punch-down": (ctx, out, semis) => playWhack(ctx, out, semis - 7),
   whoosh: playWhoosh,
   squawk: playSquawk,
   freakout: playFreakout,

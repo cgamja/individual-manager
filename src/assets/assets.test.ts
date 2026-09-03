@@ -6,7 +6,16 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Penguin } from "./penguin";
 import { BEACH_BALL_SVG } from "./props/beach-ball";
-import { batCursorUrl } from "./props/bat";
+import {
+  BAT_BASE_PX,
+  BAT_CURSOR_VAR,
+  BAT_SWING_VAR,
+  batCursorUrl,
+  batCursorValue,
+  CURSOR_MAX_PX,
+  installBatCursor,
+} from "./props/bat";
+import { SIZE_MAX } from "../lib/settings";
 import { BOWLING_BALL_SVG } from "./props/bowling-ball";
 import { NET_SVG, SAND_SVG } from "./props/court";
 
@@ -38,6 +47,19 @@ describe("펭귄 그림", () => {
 
   it("암컷_펭귄_그림이_그대로다", () => {
     expect(그린다(true)).toMatchSnapshot();
+  });
+
+  it("화장한_미녀_펭귄_그림이_그대로다", () => {
+    const { container } = render(createElement(Penguin, { female: true, glam: true }));
+    expect(태그마다_줄바꿈(container.innerHTML)).toMatchSnapshot();
+  });
+
+  it("화장은_켠_펭귄만_다르다", () => {
+    expect(그린다(true)).not.toBe(
+      태그마다_줄바꿈(
+        render(createElement(Penguin, { female: true, glam: true })).container.innerHTML,
+      ),
+    );
   });
 
   it("암수가_서로_다른_그림이다", () => {
@@ -94,6 +116,57 @@ describe("커서 방망이", () => {
     // 커서는 jsdom이 렌더하지 않아 다른 그물이 없다.
     expect(batCursorUrl(55)).toMatchSnapshot();
     expect(batCursorUrl(-40)).toMatchSnapshot();
+  });
+
+  it("배율이_그림과_핫스팟에_함께_걸린다", () => {
+    // 한쪽만 걸리면 방망이 끝이 포인터에서 어긋나 때리는 자리가 틀어진다.
+    const 큰 = batCursorUrl(55, 1.5);
+    expect(큰, "그림이 안 커졌다").toContain(`width='${BAT_BASE_PX * 1.5}'`);
+    expect(큰, "핫스팟이 안 따라왔다").toMatch(/\)\s15 45$/);
+    const 작은 = batCursorUrl(55, 0.5);
+    expect(작은).toContain(`width='${BAT_BASE_PX * 0.5}'`);
+    expect(작은).toMatch(/\)\s5 15$/);
+  });
+
+  it("viewBox는_배율과_무관하게_그대로다", () => {
+    // `viewBox`까지 늘리면 그림이 안 커지고 여백만 붙는다.
+    for (const scale of [0.5, 1, 1.5]) {
+      expect(batCursorUrl(55, scale)).toContain(
+        `viewBox='0 0 ${BAT_BASE_PX} ${BAT_BASE_PX}'`,
+      );
+    }
+  });
+
+  it("배율이_1이면_예전과_같은_문자열이다", () => {
+    expect(batCursorUrl(55, 1)).toBe(batCursorUrl(55));
+  });
+
+  it("커서_이미지가_128px를_넘지_않는다", () => {
+    // WebKit은 상한을 넘는 커서 그림을 **버리고** 대체 키워드로 떨어진다 —
+    // 증상은 "커서가 갑자기 화살표로 돌아간다" 하나뿐이라 원인이 안 보인다.
+    // 상한(SIZE_MAX)을 올리려면 이 검사가 먼저 빨개진다.
+    const 최대 = Math.round(BAT_BASE_PX * (SIZE_MAX / 100));
+    expect(최대, `가장 큰 커서가 ${최대}px이다`).toBeLessThanOrEqual(CURSOR_MAX_PX);
+  });
+
+  it("맨_키워드는_값의_끝에만_온다", () => {
+    // `cursor`는 키워드를 목록 맨 끝에만 허용한다. 그림 뒤가 아니면 선언이
+    // 통째로 버려진다 (CLAUDE.md 함정).
+    const 값 = batCursorValue(55, "grab", 0.6);
+    expect(값.endsWith(", grab")).toBe(true);
+    expect(값.indexOf("grab")).toBe(값.length - "grab".length);
+  });
+
+  it("설치는_두_프레임을_모두_배율로_심는다", () => {
+    const doc = document.implementation.createHTMLDocument("t");
+    installBatCursor("grab", doc, 1.5);
+    const 든 = doc.documentElement.style.getPropertyValue(BAT_CURSOR_VAR);
+    const 휘두른 = doc.documentElement.style.getPropertyValue(BAT_SWING_VAR);
+    for (const 값 of [든, 휘두른]) {
+      expect(값, "프레임 하나가 배율을 안 탔다").toContain(`width='${BAT_BASE_PX * 1.5}'`);
+      expect(값.endsWith(", grab")).toBe(true);
+    }
+    expect(든).not.toBe(휘두른);
   });
 });
 

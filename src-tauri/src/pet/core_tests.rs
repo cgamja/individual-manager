@@ -360,7 +360,12 @@ fn 여러_마리를_한_번에_돌려도_따로_돌린_것과_같다() {
         pets.add(7, 0, &w, BOUNDS.left + 200.0).unwrap();
         pets.add(7, 0, &w, BOUNDS.left + 400.0).unwrap();
     }
-    한_번에_돌린_것과_따로_돌린_것을_매_틱_대조한다(&mut together, &mut apart, &w, 1_800_000);
+    한_번에_돌린_것과_따로_돌린_것을_매_틱_대조한다(
+        &mut together,
+        &mut apart,
+        &w,
+        1_800_000,
+    );
 }
 
 /// 위 테스트는 확률에 기대므로 **국면이 있는 동작이 창 안에 안 나타날 수 있다**
@@ -381,7 +386,12 @@ fn 국면이_있는_동작이_섞여도_한_번에_돌린_결과가_같다() {
         pets.get_mut(들림).unwrap().drag_start(0);
     }
     // 얼음낚시 한 판이 30~60초라 90초면 정리까지 다 지나간다.
-    한_번에_돌린_것과_따로_돌린_것을_매_틱_대조한다(&mut together, &mut apart, &w, 90_000);
+    한_번에_돌린_것과_따로_돌린_것을_매_틱_대조한다(
+        &mut together,
+        &mut apart,
+        &w,
+        90_000,
+    );
 }
 
 #[test]
@@ -398,7 +408,11 @@ fn step_all은_id_오름차순으로_돈다() {
         .map(|(id, _)| *id)
         .collect();
 
-    assert_eq!(order, vec![a, b, c], "창 이동 순서가 매 틱 달라지면 안 된다");
+    assert_eq!(
+        order,
+        vec![a, b, c],
+        "창 이동 순서가 매 틱 달라지면 안 된다"
+    );
 }
 
 #[test]
@@ -467,7 +481,11 @@ fn 한_마리면_판을_열지_않는다() {
         Err(VolleyRefusal::TooFew)
     );
     assert!(pets.volleyball().is_none());
-    assert_eq!(pets.get(1).unwrap().snapshot().behavior, 전, "동작이 바뀌었다");
+    assert_eq!(
+        pets.get(1).unwrap().snapshot().behavior,
+        전,
+        "동작이 바뀌었다"
+    );
     let _ = w;
 }
 
@@ -661,7 +679,15 @@ fn 한_판이_스스로_돌고_끝난다() {
         for id in pets.ids() {
             let b = pets.get(id).unwrap().snapshot().behavior;
             assert!(
-                !matches!(b, Behavior::Volleyball { volley: VolleyPhase::Gather | VolleyPhase::Ready | VolleyPhase::Chase | VolleyPhase::Bump }),
+                !matches!(
+                    b,
+                    Behavior::Volleyball {
+                        volley: VolleyPhase::Gather
+                            | VolleyPhase::Ready
+                            | VolleyPhase::Chase
+                            | VolleyPhase::Bump
+                    }
+                ),
                 "{id}번이 랠리 국면에 남았다: {b:?}"
             );
         }
@@ -718,7 +744,10 @@ fn 득점하면_이긴_쪽과_진_쪽이_갈린다() {
             }
         }
     }
-    assert!(좋아함 && 약오름, "이긴 쪽({좋아함})과 진 쪽({약오름})이 안 갈렸다");
+    assert!(
+        좋아함 && 약오름,
+        "이긴 쪽({좋아함})과 진 쪽({약오름})이 안 갈렸다"
+    );
 }
 
 #[test]
@@ -752,7 +781,10 @@ fn 판을_못_열면_마리의_동작이_한_틱도_안_바뀐다() {
     let w = World::single(좁은);
     let mut 누른 = 여러_마리(2);
     let mut 안_누른 = 여러_마리(2);
-    assert_eq!(누른.start_volleyball(0, 좁은, 7), Err(VolleyRefusal::NoRoom));
+    assert_eq!(
+        누른.start_volleyball(0, 좁은, 7),
+        Err(VolleyRefusal::NoRoom)
+    );
     for t in 1..=200u64 {
         let now = t * 50;
         assert_eq!(

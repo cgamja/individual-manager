@@ -4,6 +4,12 @@ import { cleanup, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Penguin } from "../assets/penguin";
+import {
+  PENGUIN_HIT_ARM_RATIO,
+  PENGUIN_HIT_BOX,
+  PENGUIN_HIT_HYSTERESIS_RATIO,
+  PENGUIN_VIEWBOX,
+} from "../assets/penguin/hit";
 import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../lib/pet";
 
 /** 동작이 CSS에 실제로 그려져 있는지 확인한다. */
@@ -42,13 +48,17 @@ const cssFiles = [
 const css = 코드만_css(
   cssFiles.map((n) => readFileSync(resolve(`${CSS_DIR}/${n}.css`), "utf8")).join("\n"),
 );
-const petRs =
-  readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
-  readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
-  readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8");
 /** 주석을 걷어낸다 — 지운 클래스가 주석에 남아 "아직 쓰인다"로 집계된다.
  * `docs/solutions/best-practices/source-text-tests-pass-on-comments.md` */
 const 코드만 = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/.*/g, " ");
+/** 대조 대상이 되는 Rust 소스 전부. **주석을 걷어내고 본다** — 안 그러면 주석에
+ * 적힌 옛 값이 상수로 읽혀 갈라진 것을 못 잡는다. */
+const petRs = 코드만(
+  readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
+    readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
+    readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8") +
+    readFileSync(resolve("src-tauri/src/pet_bridge/hit.rs"), "utf8"),
+);
 const petApp = 코드만(
   readFileSync(resolve("src/pet/PetApp.tsx"), "utf8") +
     PENGUIN_ALL.map((p) => readFileSync(resolve(p), "utf8")).join("\n"),
@@ -92,6 +102,16 @@ const ALL_BEHAVIORS: Behavior[] = [
   { kind: "volleyball", volley: "bump" },
   { kind: "volleyball", volley: "cheer" },
   { kind: "volleyball", volley: "sulk" },
+  { kind: "yacha", yacha: "gather" },
+  { kind: "yacha", yacha: "hunt" },
+  { kind: "yacha", yacha: "circle" },
+  { kind: "yacha", yacha: "back" },
+  { kind: "yacha", yacha: "guard" },
+  { kind: "yacha", yacha: "punch" },
+  { kind: "yacha", yacha: "hurt" },
+  { kind: "yacha", yacha: "down" },
+  { kind: "yacha", yacha: "win" },
+  { kind: "yacha", yacha: "champ" },
   { kind: "ice_fishing", fishing: "dig" },
   { kind: "ice_fishing", fishing: "wait" },
   { kind: "ice_fishing", fishing: "bite" },
@@ -174,6 +194,36 @@ describe("pet.css 커버리지", () => {
   });
 });
 
+describe("크기 배율", () => {
+  it("무대를_통째로_줄이는_변환이_있다", () => {
+    // 이게 없으면 창만 작아지고 그림은 원래 크기로 남아 창 밖으로 넘친다.
+    expect(css, "#pet-root 규칙이 없다").toMatch(/#pet-root\s*\{/);
+    expect(css, "--pg-scale로 스케일하지 않는다").toMatch(
+      /#pet-root\s*\{[^}]*transform:\s*scale\(var\(--pg-scale/,
+    );
+    expect(css, "transform-origin이 좌상단이 아니면 창 밖으로 밀린다").toMatch(
+      /#pet-root\s*\{[^}]*transform-origin:\s*0 0/,
+    );
+  });
+
+  it("배율의_기본값이_1이다", () => {
+    // 없으면 `calc(100% / var(--pg-scale))`가 무효가 되어 레이아웃이 통째로 죽는다.
+    expect(css).toMatch(/--pg-scale:\s*1\s*;/);
+  });
+
+  it("시선은_SVG_안에서만_쓰인다", () => {
+    // `--gaze-*`는 **SVG user unit**이다. 창 px 공간(바깥 요소)에서 쓰는 순간
+    // 배율만큼 어긋난다 — 그래서 쓰는 자리를 `.pg-gaze`로 못 박는다.
+    const 쓰는_규칙 = [...css.matchAll(/([^{}]+)\{([^}]*--gaze-[^}]*)\}/g)].map((m) =>
+      m[1].trim(),
+    );
+    expect(쓰는_규칙.length, "--gaze-를 쓰는 규칙이 없다").toBeGreaterThan(0);
+    for (const 선택자 of 쓰는_규칙) {
+      expect(선택자, `${선택자} 가 .pg-gaze 밖에서 시선을 쓴다`).toContain("pg-gaze");
+    }
+  });
+});
+
 describe("창 여백 상수 동기화", () => {
   it.each([
     ["pg-size", "PET_SIZE"],
@@ -185,6 +235,59 @@ describe("창 여백 상수 동기화", () => {
     expect(a, `CSS에서 --${cssName}를 못 찾았다`).not.toBeNull();
     expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
     expect(a).toBe(b);
+  });
+});
+
+describe("히트 박스 상수 동기화", () => {
+  // 판정이 두 곳에 있다 — Rust가 창의 클릭 통과를, 웹뷰가 통과 요청을 정한다.
+  // 갈라지면 "웹뷰는 통과를 요청했는데 Rust는 그 자리를 펭귄으로 아는" 진동이
+  // 생기고, 두 러너도 타입 검사도 아무 말을 안 한다.
+  it.each([
+    ["l", "PET_HIT_L"],
+    ["t", "PET_HIT_T"],
+    ["r", "PET_HIT_R"],
+    ["b", "PET_HIT_B"],
+  ])("PENGUIN_HIT_BOX.%s 가 Rust의 %s 와 같다", (key, rustName) => {
+    const b = rustConst(rustName);
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(PENGUIN_HIT_BOX[key as keyof typeof PENGUIN_HIT_BOX]).toBe(b);
+  });
+
+  it.each([
+    ["w", "PET_VIEWBOX_W"],
+    ["h", "PET_VIEWBOX_H"],
+  ])("PENGUIN_VIEWBOX.%s 가 Rust의 %s 와 같다", (key, rustName) => {
+    const b = rustConst(rustName);
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(PENGUIN_VIEWBOX[key as keyof typeof PENGUIN_VIEWBOX]).toBe(b);
+  });
+
+  // **비율도 빠짐없이 본다.** 셋 중 하나만 갈라져도 `요청 ⊃ 되돌리기 ⊃ 히트`가
+  // 깨지는데, 그러면 그 띠에서 통과가 50ms마다 켜졌다 꺼진다 — 두 러너도 타입
+  // 검사도 아무 말을 안 한다.
+  it.each([
+    [PENGUIN_HIT_ARM_RATIO, "PET_HIT_ARM_RATIO"],
+    [PENGUIN_HIT_HYSTERESIS_RATIO, "PET_HIT_HYSTERESIS_RATIO"],
+  ])("비율 %s 가 Rust의 %s 와 같다", (ts, rustName) => {
+    const b = rustConst(rustName);
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(ts).toBe(b);
+  });
+
+  it("히트_박스가_그림과_같은_좌표계다", () => {
+    // 상자는 viewBox 단위다. viewBox가 바뀌면 상자가 통째로 어긋나는데,
+    // 상수만 대조하면 둘이 사이좋게 틀린 채로 통과한다.
+    const { container } = render(createElement(Penguin));
+    expect(container.querySelector("svg")?.getAttribute("viewBox")).toBe(
+      `0 0 ${PENGUIN_VIEWBOX.w} ${PENGUIN_VIEWBOX.h}`,
+    );
+  });
+
+  it("히트_박스가_viewBox_안에_들어간다", () => {
+    expect(PENGUIN_HIT_BOX.l).toBeGreaterThanOrEqual(0);
+    expect(PENGUIN_HIT_BOX.t).toBeGreaterThanOrEqual(0);
+    expect(PENGUIN_HIT_BOX.r).toBeLessThanOrEqual(PENGUIN_VIEWBOX.w);
+    expect(PENGUIN_HIT_BOX.b).toBeLessThanOrEqual(PENGUIN_VIEWBOX.h);
   });
 });
 
@@ -240,6 +343,8 @@ describe("동작 길이 동기화", () => {
     ["pg--freakout-pant", "FREAKOUT_PANT_MS"],
     ["pg--bowling-scatter", "BOWLING_SCATTER_MS"],
     ["pg--volley-bump", "VOLLEY_BUMP_MS"],
+    ["pg--yacha-punch", "YACHA_SWING_MS"],
+    ["pg--yacha-hurt", "YACHA_HURT_MS"],
   ])("%s 가 Rust의 %s 와 같다", (cls, konst) => {
     const a = cssDurationMs(cls);
     const b = rustMs(konst);
@@ -483,6 +588,69 @@ describe("비치발리볼", () => {
   });
 });
 
+describe("클릭은 칠해진 자리에서만 받는다", () => {
+  /** 선택자 목록에서 `pointer-events` 값을 꺼낸다. */
+  function 포인터규칙(): { sel: string; value: string }[] {
+    const found: { sel: string; value: string }[] = [];
+    for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (m[1].includes("@")) continue;
+      const v = m[2].match(/pointer-events:\s*([\w-]+)/);
+      if (v) found.push({ sel: m[1].trim(), value: v[1] });
+    }
+    return found;
+  }
+
+  it("펭귄_루트가_클릭을_안_받는다", () => {
+    // 루트는 한 변 --pg-size인 사각형이라 그대로 두면 무대 안 빈 자리가
+    // 전부 펭귄이 된다. 사용자가 겪은 "안 눌렀는데 눌린다"가 이것이다.
+    const rule = 포인터규칙().find((r) => /^\.penguin$/m.test(r.sel));
+    expect(rule, ".penguin 에 pointer-events 규칙이 없다").toBeDefined();
+    expect(rule?.value).toBe("none");
+  });
+
+  it("도형이_클릭을_되살린다", () => {
+    // 루트에서만 끄면 펭귄을 아예 못 누른다.
+    const rule = 포인터규칙().find(
+      (r) => r.sel.startsWith(".penguin ") && /\bpath\b/.test(r.sel),
+    );
+    expect(rule, "도형에 pointer-events를 되살리는 규칙이 없다").toBeDefined();
+    expect(rule?.value).not.toBe("none");
+  });
+
+  /** 네이티브 히트 상자(`pet_bridge/hit.rs`) 밖으로 나가거나 안 보이는 채로
+   * 클릭을 먹는 것들. 한쪽 층만 빼면 "웹뷰는 반응하는데 창은 통과시키는"
+   * 갈래가 생긴다. */
+  const 클릭_없는_부위 = ["pg-bat", "pg-rod", "pg-line", "pg-float", "pg-fish", "pg-hole"];
+
+  it("바닥_그림자는_클릭을_받는다", () => {
+    // 그림자는 히트 상자 **안**이다. 빼면 창은 클릭을 먹는데 아무도 반응하지
+    // 않는 띠가 발밑에 생긴다 — 사용자가 겪은 것과 같은 증상이다.
+    const 뺀_규칙 = 포인터규칙().filter(
+      (r) => /\.pg-shadow(?![\w-])/.test(r.sel) && r.value === "none",
+    );
+    expect(뺀_규칙, ".pg-shadow 가 클릭에서 빠져 있다").toHaveLength(0);
+  });
+
+  it.each(클릭_없는_부위.map((c) => [c] as const))("%s 는 클릭을 안 받는다", (cls) => {
+    const 규칙 = 포인터규칙().filter(
+      (r) => new RegExp(`\\.${cls}(?![\\w-])`).test(r.sel) && r.value === "none",
+    );
+    expect(
+      규칙.length,
+      `.${cls} 를 클릭에서 빼는 pointer-events: none 규칙이 없다`,
+    ).toBeGreaterThan(0);
+  });
+
+  it("방망이는_opacity가_아니라_pointer_events로_뺀다", () => {
+    // `.pg-bat`은 `opacity: 0`으로 감춰지는데 **opacity는 히트 테스트를 안 막는다**
+    // (`visiblePainted`가 보는 것은 visibility다). 이 검사가 그 착각을 막는다.
+    const 규칙 = 포인터규칙().filter(
+      (r) => /\.pg-bat(?![\w-])/.test(r.sel) && r.value === "none",
+    );
+    expect(규칙.length).toBeGreaterThan(0);
+  });
+});
+
 describe("평소 숨기는 도형", () => {
   const 숨기는_도형 = [
     "pg-hole",
@@ -492,6 +660,14 @@ describe("평소 숨기는 도형", () => {
     "pg-fish",
     "pg-beak-lower",
     "pg-luau",
+    // 야차의 새 도형들. **후광(`pg-halo`)이 같은 도형을 한 번 더 그리므로**
+    // `opacity: 0`으로 감추면 후광에만 잔상이 남는다 — 어두운 바탕에서 검은
+    // 몸이 묻히는 것을 후광이 막고 있어서, 한쪽만 숨으면 그 방어가 깨진다.
+    "pg-gloves",
+    "pg-belt",
+    "pg-anger",
+    "pg-eye-x",
+    "pg-glam",
   ];
 
   /** 선택자에 이 클래스가 정확히 등장하는 모든 규칙 블록의 본문. */
@@ -573,5 +749,23 @@ describe("안물 부위 애니메이션 길이", () => {
     const m = css.match(/\.pg--dont-ask\s+\.pg-beak-lower\s*\{([^}]*)\}/);
     expect(m, ".pg--dont-ask .pg-beak-lower 규칙이 없다").not.toBeNull();
     expect(m?.[1]).toMatch(/display:\s*inline/);
+  });
+});
+
+describe("야차의 막힘 표시", () => {
+  /** 주석을 걷어낸 CSS — 설명에 적힌 선택자에 걸리지 않게 한다. */
+  const 코드만 = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+
+  it("국면이_아니라_신호에_걸린다", () => {
+    // `.pg--yacha-guard .pg-anger`에 걸면 **정반대가 된다**: 가드 자세는 링에
+    // 도착할 때도, 12%로 고를 때도, 혼자 남은 챔피언도 밟으므로 주먹과 무관하게
+    // 번쩍이고, 정작 막았을 때는 맞은 쪽이 `Guard` 그대로라 아무것도 안 뜬다.
+    expect(코드만).not.toMatch(/\.pg--yacha-guard\s+\.pg-anger/);
+    expect(코드만).toMatch(/\.pg--punch-blocked\s+\.pg-anger/);
+  });
+
+  it("화남_표시는_후광에서_빠진다", () => {
+    // 후광이 같은 도형을 밝게 한 벌 더 그려 붉은 표시를 회색 X로 덮는다.
+    expect(코드만).toMatch(/\.pg-halo\s+\.pg-anger/);
   });
 });

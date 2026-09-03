@@ -1,11 +1,18 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_TAUNTS } from "./pet";
 import {
+  DEFAULT_PET_SETTINGS,
   loadPetSettings,
   savePetSettings,
   loadTaunts,
   saveTaunts,
+  SIZE_MAX,
+  SIZE_MIN,
+  SIZE_STEP,
+  snapToStep,
 } from "./settings";
 
 afterEach(() => {
@@ -43,6 +50,7 @@ describe("펭귄 설정", () => {
       pinball: false,
       volume: 2,
       theme: "system",
+      size: 100,
     });
   });
 
@@ -54,6 +62,7 @@ describe("펭귄 설정", () => {
       pinball: false,
       volume: 2,
       theme: "system",
+      size: 100,
     });
   });
 
@@ -65,6 +74,7 @@ describe("펭귄 설정", () => {
       pinball: false,
       volume: 2,
       theme: "system",
+      size: 100,
     });
   });
 
@@ -115,6 +125,54 @@ describe("펭귄 설정", () => {
     }
   });
 
+  it("크기는_저장된_적이_없으면_100퍼센트다", async () => {
+    mockStore({ pet: { enabled: true, sound: true } });
+    expect((await loadPetSettings()).size).toBe(100);
+  });
+
+  it("저장된_크기를_그대로_읽는다", async () => {
+    mockStore({ pet: { size: 60 } });
+    expect((await loadPetSettings()).size).toBe(60);
+  });
+
+  it("범위를_벗어나거나_깨진_크기는_100으로_수렴한다", async () => {
+    // 손으로 고친 저장 파일이 화면을 덮는 펭귄을 만들면 안 된다.
+    for (const bad of ["크게", 5000, 49, 151, 0, -30, 60.5, null]) {
+      mockStore({ pet: { size: bad } });
+      expect((await loadPetSettings()).size, String(bad)).toBe(100);
+    }
+  });
+
+  it("눈금_밖_크기는_가까운_눈금으로_붙는다", async () => {
+    // 55를 그냥 두면 배율과 라벨은 55%인데 슬라이더 thumb는 `step`에 맞춰 60%에
+    // 서서 셋이 갈린다. **Rust의 `snap_to_step`과 같은 결과여야 한다.**
+    for (const [저장, 기대] of [
+      [55, 60],
+      [54, 50],
+      [56, 60],
+      [61, 60],
+      [149, 150],
+    ] as const) {
+      mockStore({ pet: { size: 저장 } });
+      expect((await loadPetSettings()).size, String(저장)).toBe(기대);
+    }
+  });
+
+  it("눈금_위의_크기는_그대로다", async () => {
+    for (let p = SIZE_MIN; p <= SIZE_MAX; p += SIZE_STEP) {
+      expect(snapToStep(p), String(p)).toBe(p);
+    }
+  });
+
+  it("붙인_뒤에도_범위를_안_벗어난다", () => {
+    for (let p = 0; p <= 300; p += 1) {
+      const s = snapToStep(p);
+      expect(s, String(p)).toBeGreaterThanOrEqual(SIZE_MIN);
+      expect(s, String(p)).toBeLessThanOrEqual(SIZE_MAX);
+      expect((s - SIZE_MIN) % SIZE_STEP, String(p)).toBe(0);
+    }
+  });
+
   it("테마가_없으면_시스템이다", async () => {
     mockStore({ pet: { enabled: true } });
     expect((await loadPetSettings()).theme).toBe("system");
@@ -142,7 +200,32 @@ describe("펭귄 설정", () => {
       pinball: false,
       volume: 2,
       theme: "system",
+      size: 100,
     });
+  });
+});
+
+describe("크기 상수가 Rust와 같다", () => {
+  // 한쪽만 고치면 슬라이더가 낼 수 있는 값과 Rust가 받아 주는 값이 갈린다 —
+  // 두 러너·타입 검사가 전부 통과하면서. `pet-css.test.ts`의 여백 상수 대조와 같은 장치다.
+  const scaleRs = readFileSync(resolve("src-tauri/src/pet_bridge/scale.rs"), "utf8");
+  const rustConst = (name: string): number | null => {
+    const m = scaleRs.match(new RegExp(`pub const ${name}: u32 = (\\d+)`));
+    return m ? Number(m[1]) : null;
+  };
+
+  it.each([
+    ["SIZE_MIN", SIZE_MIN],
+    ["SIZE_MAX", SIZE_MAX],
+    ["SIZE_STEP", SIZE_STEP],
+  ])("%s 가 Rust와 같다", (name, ts) => {
+    const rs = rustConst(name);
+    expect(rs, `Rust에서 ${name}을 못 찾았다`).not.toBeNull();
+    expect(ts).toBe(rs);
+  });
+
+  it("기본_크기가_Rust의_SIZE_DEFAULT와_같다", () => {
+    expect(DEFAULT_PET_SETTINGS.size).toBe(rustConst("SIZE_DEFAULT"));
   });
 });
 

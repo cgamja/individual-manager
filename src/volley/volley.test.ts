@@ -20,6 +20,14 @@ vi.mock("../lib/pet", () => ({
     return Promise.resolve(() => {});
   },
   getVolleyState: () => Promise.resolve(첫_상태),
+  onPetScale: () => Promise.resolve(() => {}),
+}));
+
+vi.mock("../lib/settings", () => ({
+  followPetScale: (apply: (s: number) => void) => {
+    apply(1);
+    return Promise.resolve(() => {});
+  },
 }));
 
 const courtCss = readFileSync(resolve("src/volley/court.css"), "utf8");
@@ -125,6 +133,18 @@ describe("클릭을 통과시킨다", () => {
     // 사용자가 만지는 물건이 아니다 — 볼링 공(`cursor: grab`)과 정반대다.
     expect(courtCss).not.toMatch(/cursor:/);
     expect(ballCss).not.toMatch(/cursor:/);
+  });
+});
+
+describe("코트 크기 배율", () => {
+  it("코트도_무대처럼_통째로_줄인다", () => {
+    // 네트·모래가 고정 px라 창만 줄이면 코트 안에서 넘친다.
+    expect(courtCss, "--pg-scale로 스케일하지 않는다").toMatch(
+      /#court-root\s*\{[^}]*transform:\s*scale\(var\(--pg-scale/,
+    );
+    expect(courtCss, "transform-origin이 좌상단이 아니다").toMatch(
+      /#court-root\s*\{[^}]*transform-origin:\s*0 0/,
+    );
   });
 });
 

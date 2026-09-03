@@ -143,7 +143,10 @@ fn 뛰라고_다시_시켜도_국면을_되감지_않는다() {
     let 처음 = pet.behavior_until_ms;
     pet.volley_chase(now + 100, 450.0);
     assert_eq!(pet.behavior_until_ms, 처음, "국면을 다시 밟았다");
-    assert!((pet.target.0 - 450.0).abs() < 1e-9, "목적지는 갈아 끼워야 한다");
+    assert!(
+        (pet.target.0 - 450.0).abs() < 1e-9,
+        "목적지는 갈아 끼워야 한다"
+    );
 }
 
 #[test]

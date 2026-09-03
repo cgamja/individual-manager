@@ -12,6 +12,8 @@ const props = {
   onSoundEnabledChange: () => {},
   volume: 2,
   onVolumeChange: () => {},
+  size: 100,
+  onSizeChange: () => {},
   theme: "system" as const,
   onThemeChange: () => {},
   pinballEnabled: false,
@@ -20,9 +22,32 @@ const props = {
   onBowling: () => {},
   volleyballRunning: false,
   onVolleyball: () => {},
+  yachaRunning: false,
+  onYacha: () => {},
 };
 
 describe("SettingsCard", () => {
+  it("크기를_움직이면_퍼센트로_알린다", () => {
+    const onSizeChange = vi.fn();
+    render(<SettingsCard {...props} onSizeChange={onSizeChange} />);
+    fireEvent.change(screen.getByLabelText("크기"), { target: { value: "60" } });
+    expect(onSizeChange).toHaveBeenCalledWith(60);
+  });
+
+  it("현재_크기가_퍼센트로_보인다", () => {
+    render(<SettingsCard {...props} size={60} />);
+    expect(screen.getByText("60%")).toBeInTheDocument();
+  });
+
+  it("크기_슬라이더는_50에서_150까지_10단위다", () => {
+    // 범위가 어긋나면 저장 쪽 정화가 조용히 되돌려 슬라이더가 안 움직이는 것처럼 보인다.
+    render(<SettingsCard {...props} />);
+    const slider = screen.getByLabelText("크기");
+    expect(slider).toHaveAttribute("min", "50");
+    expect(slider).toHaveAttribute("max", "150");
+    expect(slider).toHaveAttribute("step", "10");
+  });
+
   it("펭귄_토글의_현재_상태를_보여준다", () => {
     render(<SettingsCard {...props} />);
     expect(screen.getByLabelText("바탕화면 펭귄")).toBeChecked();
@@ -140,5 +165,50 @@ describe("SettingsCard", () => {
     render(<SettingsCard {...props} />);
     expect(screen.getByText(/구경만 하면 돼요/)).toBeInTheDocument();
     expect(screen.getByText(/두 마리부터/)).toBeInTheDocument();
+  });
+});
+
+describe("판 셋은 서로를 배제한다", () => {
+  const 판_버튼 = () =>
+    screen
+      .getAllByRole("button")
+      .filter((b) =>
+        ["볼링 한 판", "비치발리볼 한 판", "단체 야차 한 판"].some((t) =>
+          (b.textContent ?? "").includes(t),
+        ),
+      );
+
+  it("야차가_도는_동안_버튼_셋이_모두_비활성이다", () => {
+    render(<SettingsCard {...props} yachaRunning />);
+    const 버튼 = screen.getAllByRole("button");
+    const 볼링 = 버튼.find((b) => b.textContent?.includes("볼링 한 판"));
+    const 발리볼 = 버튼.find((b) => b.textContent?.includes("비치발리볼 한 판"));
+    const 야차 = 버튼.find((b) => b.textContent?.includes("치고받는 중"));
+    expect(볼링).toBeDisabled();
+    expect(발리볼).toBeDisabled();
+    expect(야차).toBeDisabled();
+  });
+
+  it("볼링이_도는_동안_야차도_비활성이다", () => {
+    render(<SettingsCard {...props} bowlingRunning />);
+    const 야차 = screen
+      .getAllByRole("button")
+      .find((b) => b.textContent?.includes("단체 야차 한 판"));
+    expect(야차).toBeDisabled();
+  });
+
+  it("아무_판도_안_돌면_셋_다_눌린다", () => {
+    render(<SettingsCard {...props} />);
+    for (const b of 판_버튼()) expect(b).not.toBeDisabled();
+  });
+
+  it("야차_버튼이_핸들러를_부른다", () => {
+    const onYacha = vi.fn();
+    render(<SettingsCard {...props} onYacha={onYacha} />);
+    const 야차 = screen
+      .getAllByRole("button")
+      .find((b) => b.textContent?.includes("단체 야차 한 판"));
+    fireEvent.click(야차!);
+    expect(onYacha).toHaveBeenCalledOnce();
   });
 });

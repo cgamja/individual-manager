@@ -1,4 +1,4 @@
-import type { AppTheme } from "../lib/settings";
+import { SIZE_MAX, SIZE_MIN, SIZE_STEP, type AppTheme } from "../lib/settings";
 
 interface SettingsCardProps {
   /** 바탕화면 펭귄 표시 여부 (R8). */
@@ -10,6 +10,9 @@ interface SettingsCardProps {
   /** 음량 단계 0~4. 가운데(2)가 기본 크기, 단계마다 두 배(6dB)씩. */
   volume: number;
   onVolumeChange: (volume: number) => void;
+  /** 펭귄 크기 퍼센트 (50~150). 소품과 물리가 함께 따라온다. */
+  size: number;
+  onSizeChange: (size: number) => void;
   /** 겉모습 테마 — 이 창의 겉모습을 정한다. 트레이는 항상 자동(템플릿)이다. */
   theme: AppTheme;
   onThemeChange: (theme: AppTheme) => void;
@@ -23,6 +26,8 @@ interface SettingsCardProps {
    * 도는 동안 버튼 둘이 함께 비활성된다. */
   volleyballRunning: boolean;
   onVolleyball: () => void;
+  yachaRunning: boolean;
+  onYacha: () => void;
 }
 
 /** 설정 카드. */
@@ -33,6 +38,8 @@ export function SettingsCard({
   onSoundEnabledChange,
   volume,
   onVolumeChange,
+  size,
+  onSizeChange,
   theme,
   onThemeChange,
   pinballEnabled,
@@ -41,7 +48,12 @@ export function SettingsCard({
   onBowling,
   volleyballRunning,
   onVolleyball,
+  yachaRunning,
+  onYacha,
 }: SettingsCardProps) {
+  // **판 셋은 서로를 배제한다.** 조건을 버튼마다 따로 쓰면 넷째를 더할 때 반드시
+  // 하나를 빠뜨린다 — 여기서 한 번 계산해 셋이 같은 값을 본다.
+  const 판이_돈다 = bowlingRunning || volleyballRunning || yachaRunning;
   return (
     <section className="card settings-card">
       <div className="settings-row">
@@ -82,6 +94,26 @@ export function SettingsCard({
         />
       </div>
 
+      {/* 음량과 같은 형태의 슬라이더다. 다만 값이 퍼센트라 옆에 숫자를 보인다 —
+          "몇 %인지"가 이 설정의 요점이다. */}
+      <div className="settings-row">
+        <label htmlFor="pet-size">크기</label>
+        <input
+          id="pet-size"
+          type="range"
+          min={SIZE_MIN}
+          max={SIZE_MAX}
+          step={SIZE_STEP}
+          value={size}
+          onChange={(e) => onSizeChange(Number(e.target.value))}
+        />
+        <span className="settings-value">{size}%</span>
+      </div>
+      <p className="settings-hint">
+        화면이 좁으면 줄이세요. 방망이·공·코트 같은 소품과 물리도 같이 줄어서 발이
+        바닥에 붙어 있어요.
+      </p>
+
       <div className="settings-row">
         <label htmlFor="app-theme">테마</label>
         <select
@@ -104,7 +136,7 @@ export function SettingsCard({
         <button
           type="button"
           onClick={onBowling}
-          disabled={bowlingRunning || volleyballRunning}
+          disabled={판이_돈다}
         >
           {bowlingRunning ? "굴리는 중…" : "볼링 한 판"}
         </button>
@@ -122,7 +154,7 @@ export function SettingsCard({
         <button
           type="button"
           onClick={onVolleyball}
-          disabled={bowlingRunning || volleyballRunning}
+          disabled={판이_돈다}
         >
           {volleyballRunning ? "치는 중…" : "비치발리볼 한 판"}
         </button>
@@ -131,6 +163,21 @@ export function SettingsCard({
         펭귄들이 화면 가운데에 모래톱을 깔고 네트를 사이에 두고 서요. 지푸라기 비키니를 입고
         20초쯤 한 판 쳐요. 구경만 하면 돼요 — 공이 모래에 닿으면 끝나고, 이긴 쪽은
         좋아하고 진 쪽은 약 올라요. 두 마리부터 할 수 있고 점수는 안 세요.
+      </p>
+
+      {/* **판 셋이 서로를 배제한다.** 조건을 버튼마다 따로 쓰면 넷째를 더할 때
+          반드시 하나를 빠뜨린다 — 한 곳에서 계산해 셋이 같은 값을 본다. */}
+      <div className="settings-row">
+        <span>단체 야차</span>
+        <button type="button" onClick={onYacha} disabled={판이_돈다}>
+          {yachaRunning ? "치고받는 중…" : "단체 야차 한 판"}
+        </button>
+      </div>
+      <p className="settings-hint">
+        펭귄들이 화면 한가운데로 뭉쳐서 복싱 장갑을 끼고 서로 때려요. 많이 맞은
+        놈부터 눈이 X자가 되면서 쓰러지고, 마지막 한 마리가 남으면 오른쪽에서
+        화장한 미녀 펭귄이 챔피언 벨트를 들고 나와 채워 줘요. 둘 이상이어야
+        붙고, 전적은 안 남아요.
       </p>
 
       <div className="settings-row">

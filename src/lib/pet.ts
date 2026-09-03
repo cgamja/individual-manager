@@ -27,6 +27,19 @@ export type BowlingPhase = "gather" | "ready" | "scatter";
  *
  * `cheer`/`sulk`는 **싸가지 반응의 그림을 CSS에서 재사용한다.** 국면을
  * `Volleyball` 안에 남긴 이유는 그래야 축하하는 동안에도 옷이 남기 때문이다. */
+/** 단체 야차의 마리 국면. 판 국면은 Rust가 갖고 웹뷰는 이것만 본다. */
+export type YachaPhase =
+  | "gather"
+  | "hunt"
+  | "circle"
+  | "back"
+  | "guard"
+  | "punch"
+  | "hurt"
+  | "down"
+  | "win"
+  | "champ";
+
 export type VolleyPhase =
   | "gather"
   | "ready"
@@ -64,7 +77,8 @@ export type Behavior =
   | { kind: "slide" }
   | { kind: "ice_fishing"; fishing: FishingPhase }
   | { kind: "bowling"; bowling: BowlingPhase }
-  | { kind: "volleyball"; volley: VolleyPhase };
+  | { kind: "volleyball"; volley: VolleyPhase }
+  | { kind: "yacha"; yacha: YachaPhase };
 
 /** 지금 떠 있는 말풍선. 문구는 코어가 아니라 여기가 갖는다 — 대사는 표현이다. */
 export interface Speech {
@@ -86,6 +100,15 @@ export interface PetSnapshot {
   whack_seq: number;
   /** 핀볼 모드인가. 커서를 채로 바꾸는 데 쓴다. */
   pinball: boolean;
+  /** 야차에서 **이 마리가 이번 라운드의 대표 타격**으로 뽑힌 누적 횟수.
+   * 늘어날 때마다 "퍽"이 한 발 난다 — 라운드마다 딱 한 마리만 오른다. */
+  punch_seq: number;
+  /** 그 한 발이 쓰러뜨린 한 방인가. 반음을 낮춰 더 낮고 길게 낸다. */
+  punch_down: boolean;
+  /** 그 한 발이 막혔는가. 화남 표시가 회색으로 뜨고 소리도 둔탁하다.
+   *
+   * **국면으로는 알 수 없다** — 막히면 맞은 쪽이 `Guard` 그대로다. */
+  punch_blocked: boolean;
   behavior: Behavior;
 }
 
@@ -144,6 +167,8 @@ export const EVENT_BALL_STATE = "bowling://ball";
 export const EVENT_BOWLING_OVER = "bowling://over";
 
 /** 비치볼 창이 구독하는 상태 이벤트. 공 창이 따로라 이벤트도 따로다. */
+export const EVENT_YACHA_QUEEN = "yacha://queen";
+export const EVENT_YACHA_OVER = "yacha://over";
 export const EVENT_VOLLEY_STATE = "volley://ball";
 
 /** 비치발리볼 판이 **끝났을 때** 온다. 판을 끝내는 것은 예산이지 사용자가
@@ -156,8 +181,42 @@ export const EVENT_PET_SETTINGS = "pet://settings";
 /** 효과음 설정의 방송. `pet://settings`에 얹지 않는 이유: 그쪽은 **Rust가 */
 export const EVENT_PET_SOUND = "pet://sound";
 
+/** 크기 배율의 방송. 창 크기는 Rust가 정하지만 **그림을 줄이는 것은 웹뷰**라
+ * (`--pg-scale`), 살아 있는 창들이 새 배율을 알아야 한다. */
+export const EVENT_PET_SCALE = "pet://scale";
+
 /** 클릭과 드래그를 가르는 이동량(px). 이보다 덜 움직였으면 클릭으로 본다. */
 export const DRAG_THRESHOLD_PX = 4;
+
+/** 창 px → 펭귄 기준 정규화 좌표(-0.5~0.5).
+ *
+ * **웹뷰의 px가 그림 좌표로 넘어가는 유일한 문이다.** 빠따 히트(`nx`/`ny`)와
+ * 시선이 둘 다 여기를 지난다. 크기 배율이 들어와도 식이 안 바뀌는 이유는
+ * 나누는 값이 **그때그때의 요소 크기**라서다 — 배율이 이미 그 안에 들어 있다. */
+export function normalizedIn(
+  rect: { left: number; top: number; width: number; height: number },
+  clientX: number,
+  clientY: number,
+): { nx: number; ny: number } {
+  return {
+    nx: rect.width > 0 ? (clientX - rect.left) / rect.width - 0.5 : 0,
+    ny: rect.height > 0 ? (clientY - rect.top) / rect.height - 0.5 : 0,
+  };
+}
+
+/** 눈동자가 흰자를 벗어나지 않을 만큼만 움직인다 (**SVG user unit**). */
+export const GAZE_LIMIT = 1.6;
+
+/** 정규화 좌표 → 눈동자 이동량(SVG user unit).
+ *
+ * **배율 항이 없는 것이 맞다.** 들어오는 값은 이미 정규화됐고, 나가는 값은
+ * SVG user unit이다 — `.pg-gaze`의 `translate()`가 그 공간에서 해석하므로
+ * 그림 전체를 얼마로 줄이든 눈동자는 같은 자리를 가리킨다. 창 px를 그대로
+ * 넣으면 그 순간 배율만큼 어긋난다. */
+export function gazeFor(nx: number, ny: number): { x: number; y: number } {
+  const clamp = (v: number) => Math.max(-GAZE_LIMIT, Math.min(GAZE_LIMIT, v));
+  return { x: clamp(nx * 4), y: clamp(ny * 4) };
+}
 
 /** 이 펭귄이 암컷인가 — **창 라벨(`pet-<id>`)에서 결정적으로 뽑는다.**
  *
@@ -196,6 +255,7 @@ export const behaviorClass = (behavior: Behavior): string => {
   if (behavior.kind === "freakout") return `pg--freakout-${kebab(behavior.freakout)}`;
   if (behavior.kind === "bowling") return `pg--bowling-${kebab(behavior.bowling)}`;
   if (behavior.kind === "volleyball") return `pg--volley-${kebab(behavior.volley)}`;
+  if (behavior.kind === "yacha") return `pg--yacha-${kebab(behavior.yacha)}`;
   return `pg--${kebab(behavior.kind)}`;
 };
 
@@ -214,6 +274,9 @@ export const isOneShot = (cls: string): boolean =>
   cls === "pg--volley-bump" ||
   cls === "pg--volley-cheer" ||
   cls === "pg--volley-sulk" ||
+  cls === "pg--yacha-punch" ||
+  cls === "pg--yacha-hurt" ||
+  cls === "pg--yacha-win" ||
   cls === "pg--swing" ||
   cls.startsWith("pg--sassy-") ||
   (cls.startsWith("pg--fishing-") && cls !== "pg--fishing-wait");
@@ -222,6 +285,8 @@ export const isOneShot = (cls: string): boolean =>
 export interface RestartKey {
   cls: string;
   whackSeq: number;
+  /** 야차의 대표 타격 번호. **연타를 구분하는 유일한 값이다.** */
+  punchSeq: number;
 }
 
 /** 한 번짜리 애니메이션을 처음부터 다시 재생해야 하는가.
@@ -240,13 +305,27 @@ export interface RestartKey {
  * 100ms만 반복하며 **영원히 부풀기만 한다.** 그건 이 항목이 고치려는 것과
  * 정확히 반대다. */
 export const shouldRestart = (prev: RestartKey | null, next: RestartKey): boolean => {
+  if (prev === null) return isOneShot(next.cls);
+  // **야차의 연타는 클래스가 안 바뀐다.** 스윙 뒤 또 스윙이 64%라 국면이
+  // `Punch` 그대로고, 막힌 주먹은 맞은 쪽을 `Guard` 그대로 둔다. 그래서
+  // 번호로만 구분된다 — `pg--swing`이 `whackSeq`로 구분되는 것과 같은 자리다.
+  // **일회성 클래스인지 안 따진다**: 막힌 주먹은 `Guard`(반복 자세)인 채로
+  // 화남 표시만 다시 떠야 하기 때문이다.
+  if (next.punchSeq > prev.punchSeq) return true;
   if (!isOneShot(next.cls)) return false;
-  if (prev === null || prev.cls !== next.cls) return true;
+  if (prev.cls !== next.cls) return true;
   return next.cls === "pg--swing" && next.whackSeq > prev.whackSeq;
 };
 
 /** 자기 창의 펭귄 상태. 펫 창이 아닌 곳에서 부르면 `null`이다. */
 export const getPetState = (): Promise<PetSnapshot | null> => invoke("pet_get_state");
+
+/** 포인터가 펭귄 밖이니 창을 통과시켜 달라고 알린다 (`on = false`면 거둔다).
+ *
+ * **요청일 뿐이다** — 실제로 플래그를 걸고 되돌리는 것은 Rust 틱이다. 통과
+ * 중에는 이 창에 포인터 이벤트가 안 오므로 웹뷰는 스스로 되돌릴 수 없다. */
+export const setPetClickThrough = (on: boolean): Promise<void> =>
+  invoke("pet_set_click_through", { on });
 
 /** 팝오버가 버튼 상태를 정하는 데 쓰는 요약. */
 export interface PetSummary {
@@ -259,6 +338,7 @@ export interface PetSummary {
   /** 비치발리볼 판이 도는 중인가. **두 판은 서로를 배제하므로** 어느 쪽이든
    * 도는 동안 버튼 둘이 함께 비활성된다. */
   volleyball: boolean;
+  yacha: boolean;
 }
 
 /** 볼링 공의 상태. **위치는 여기 없다** — 창이 옮기므로, 넣으면 굴러가는
@@ -310,6 +390,33 @@ export const startBowling = (): Promise<void> => invoke("bowling_start");
  * 누르면 20초쯤 알아서 놀고 끝난다. 볼링과 마찬가지로 화면의 펭귄 전부가
  * 참여하므로 대상을 안 고른다. 두 마리부터 열린다. */
 export const startVolleyball = (): Promise<void> => invoke("volleyball_start");
+
+/** 단체 야차 한 판. 볼링·발리볼과 셋이 서로를 배제한다. */
+export const startYacha = (): Promise<void> => invoke("yacha_start");
+
+/** 미녀 펭귄의 자세. 자리는 Rust가 창을 옮겨 정한다. */
+export type QueenPose = "walk_in" | "belting" | "clap" | "walk_out";
+
+export interface QueenSnapshot {
+  x: number;
+  y: number;
+  facing: Facing;
+  pose: QueenPose;
+}
+
+/** 미녀 창이 **처음 뜰 때** 한 번 받아 간다 — 구독만으로는 첫 국면을 놓친다. */
+export const getQueenState = (): Promise<QueenSnapshot | null> =>
+  invoke("yacha_get_queen");
+
+export const onQueenState = (
+  cb: (queen: QueenSnapshot) => void,
+): Promise<UnlistenFn> =>
+  getCurrentWebviewWindow().listen<QueenSnapshot>(EVENT_YACHA_QUEEN, (event) =>
+    cb(event.payload),
+  );
+
+export const onYachaOver = (cb: () => void): Promise<UnlistenFn> =>
+  getCurrentWebviewWindow().listen(EVENT_YACHA_OVER, () => cb());
 
 /** 공을 집는다. 굴러가는 중이면 `false` — 한 판에 한 번 굴린다. */
 export const startBallDrag = (): Promise<boolean> => invoke("ball_drag_start");
@@ -374,6 +481,10 @@ export const setPetEnabled = (enabled: boolean): Promise<void> =>
 export const setPetPinball = (on: boolean): Promise<void> =>
   invoke("pet_set_pinball", { on });
 
+/** **저장된** 크기를 지금 떠 있는 창에 건다. 값을 안 넘기는 이유는 크기도 자리도
+ * 진실 원천이 저장소 하나여야 해서다 — 반드시 저장한 **뒤에** 부른다. */
+export const applyPetSize = (): Promise<void> => invoke("pet_apply_size");
+
 /** 자기 창의 펭귄 상태만 구독한다. */
 export const onPetState = (cb: (snapshot: PetSnapshot) => void): Promise<UnlistenFn> =>
   getCurrentWebviewWindow().listen<PetSnapshot>(EVENT_PET_STATE, (event) => cb(event.payload));
@@ -423,3 +534,11 @@ export const onPetSound = (
 /** 효과음 설정을 방송한다 — 프론트가 직접 emit한다. Rust를 거치지 않는다 (KTD2). */
 export const emitPetSound = (on: boolean, volume: number): Promise<void> =>
   emit(EVENT_PET_SOUND, { sound: on, volume });
+
+/** 크기가 바뀌면 알려 준다 — 커서 방망이를 다시 그리는 창들이 듣는다. */
+export const onPetScale = (cb: (settings: { size: number }) => void): Promise<UnlistenFn> =>
+  listen<{ size: number }>(EVENT_PET_SCALE, (event) => cb(event.payload));
+
+/** 크기(퍼센트)를 방송한다. 효과음과 같은 경로다. */
+export const emitPetScale = (size: number): Promise<void> =>
+  emit(EVENT_PET_SCALE, { size });

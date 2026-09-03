@@ -23,6 +23,9 @@ const snap = (over: Partial<PetSnapshot> = {}): PetSnapshot => ({
   speech: null,
   whack_seq: 0,
   pinball: false,
+  punch_seq: 0,
+  punch_down: false,
+  punch_blocked: false,
   behavior: { kind: "walk" },
   ...over,
 });
@@ -368,8 +371,16 @@ describe("안물 — 유일한 음원 파일", () => {
     expect(soundsFor(s, s)).toEqual([]);
   });
 
-  it("안물_쿨다운은_동작_길이와_같다", () => {
-    expect(SOUND_COOLDOWN_MS.dont_ask).toBe(5_700);
+  it("안물_쿨다운은_동작_길이보다_훨씬_짧다", () => {
+    // 동작 길이만큼 잠그면 빠따로 끊긴 뒤 다시 시킨 판이 무음으로 돈다 —
+    // 판의 중복 시작을 막는 것은 코어이고 여기는 겹침만 막는다.
+    expect(SOUND_COOLDOWN_MS.dont_ask).toBeGreaterThan(0);
+    expect(SOUND_COOLDOWN_MS.dont_ask).toBeLessThan(1_000);
+  });
+
+  it("끊긴_뒤_다시_시켜도_소리가_난다", () => {
+    // 빠따로 1초 만에 끊기고 2초에 다시 누른 경우 (코어는 받아들인다).
+    expect(passesCooldown("dont_ask", 0, 2_000)).toBe(true);
   });
 
   /** 음원을 즉시 내주는 fetch·decode 스텁을 심는다. */
@@ -439,5 +450,44 @@ describe("안물 — 유일한 음원 파일", () => {
     player.setEnabled(false);
     player.play("dont_ask", 0);
     expect(ctx.created.filter((k) => k === "source")).toHaveLength(0);
+  });
+});
+
+describe("야차의 퍽", () => {
+  it("punch_seq가_늘면_퍽이_난다", () => {
+    const prev = snap({ punch_seq: 3 });
+    const next = snap({ punch_seq: 4 });
+    expect(soundsFor(prev, next)).toContain("punch");
+  });
+
+  it("대표가_아니면_소리를_안_낸다", () => {
+    // 맞기만 한 마리는 `punch_seq`가 안 오른다 — 라운드마다 딱 한 마리다.
+    const prev = snap({ punch_seq: 3, behavior: { kind: "yacha", yacha: "guard" } });
+    const next = snap({ punch_seq: 3, behavior: { kind: "yacha", yacha: "hurt" } });
+    expect(soundsFor(prev, next)).toEqual([]);
+  });
+
+  it("같은_seq가_두_번_오면_한_번만_난다", () => {
+    const a = snap({ punch_seq: 5 });
+    expect(soundsFor(a, snap({ punch_seq: 5 }))).toEqual([]);
+  });
+
+  it("쓰러뜨린_한_방은_다른_소리다", () => {
+    const prev = snap({ punch_seq: 1 });
+    const next = snap({ punch_seq: 2, punch_down: true });
+    expect(soundsFor(prev, next)).toContain("punch-down");
+    expect(soundsFor(prev, next)).not.toContain("punch");
+  });
+
+  it("퍽과_쓰러뜨린_한_방은_서로를_안_거른다", () => {
+    // 쿨다운은 **이름별**로 걸린다. 둘이 다른 이름이라 쓰러뜨린 라운드에
+    // 평소 퍽이 방금 났어도 마무리 한 방이 안 걸러진다.
+    expect(passesCooldown("punch", 0, 10)).toBe(false);
+    expect(passesCooldown("punch-down", undefined, 10)).toBe(true);
+  });
+
+  it("퍽에도_쿨다운이_있다", () => {
+    expect(SOUND_COOLDOWN_MS.punch).toBeGreaterThan(0);
+    expect(SOUND_COOLDOWN_MS["punch-down"]).toBeGreaterThan(0);
   });
 });

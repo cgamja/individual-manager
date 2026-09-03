@@ -25,7 +25,10 @@ vi.mock("../lib/pet", () => ({
 const courtCss = readFileSync(resolve("src/volley/court.css"), "utf8");
 const ballCss = readFileSync(resolve("src/volley/ball.css"), "utf8");
 const ballTs = readFileSync(resolve("src/volley/ball.ts"), "utf8");
+/** **마운트 파일**. 그림은 여기 없다 — 구독하지 않는다는 것만 여기서 본다. */
 const courtTs = readFileSync(resolve("src/volley/court.ts"), "utf8");
+/** **그림 파일**. 치수·경로를 대조하는 검사들이 읽는다. */
+const courtSvg = readFileSync(resolve("src/assets/props/court.ts"), "utf8");
 
 describe("코트", () => {
   beforeEach(() => {
@@ -53,7 +56,7 @@ describe("코트", () => {
 
   it("모래는_가로로만_늘어난다", () => {
     // 세로까지 늘면 넓은 화면에서 모래가 두꺼워진다.
-    expect(courtTs).toContain('preserveAspectRatio="none"');
+    expect(courtSvg).toContain('preserveAspectRatio="none"');
     expect(courtCss).toMatch(/--vb-sand-depth/);
   });
 
@@ -160,7 +163,7 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
   });
 
   it("네트_viewBox가_요소_크기와_같다", () => {
-    const m = courtTs.match(/class="vb-net" viewBox="0 0 (\d+) (\d+)"/);
+    const m = courtSvg.match(/class="vb-net" viewBox="0 0 (\d+) (\d+)"/);
     expect(m, "네트 viewBox를 못 찾았다").not.toBeNull();
     expect(Number(m![1])).toBe(cssVar("vb-net-w"));
     expect(Number(m![2])).toBe(cssVar("vb-net-h"));
@@ -169,7 +172,7 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
   it("모래_viewBox가_요소_높이와_같다", () => {
     // 세로로 안 늘이므로(높이가 CSS로 고정이다) viewBox 세로와 CSS 높이가 같아야
     // 물결선이 정확히 모래 표면에 온다.
-    const m = courtTs.match(/class="vb-sand" viewBox="0 0 \d+ (\d+)"/);
+    const m = courtSvg.match(/class="vb-sand" viewBox="0 0 \d+ (\d+)"/);
     expect(m, "모래 viewBox를 못 찾았다").not.toBeNull();
     expect(Number(m![1])).toBe(cssVar("vb-sand-wave")! + cssVar("vb-sand-depth")!);
   });
@@ -179,7 +182,7 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
     // 그렇게 된다 — 실제로 1~18px 떠 있었다. 착지면(viewBox y = wave)이
     // 물결의 위아래 사이에 있어야 한다.
     const 착지면 = cssVar("vb-sand-wave")!;
-    const d = courtTs.match(/d="(M0 [^"]*?)"/);
+    const d = courtSvg.match(/d="(M0 [^"]*?)"/);
     expect(d, "모래 경로를 못 찾았다").not.toBeNull();
 
     // `Q` 구간마다 **실제 곡선**의 y 범위를 구한다 — 앵커만 보면 제어점이 만드는
@@ -205,7 +208,7 @@ describe("코트 CSS가 Rust 상수와 같다", () => {
   it("모래_경로에_T_명령이_없다", () => {
     // `T`는 제어점이 반사돼 누적되면서 실제 곡선이 앵커가 말하는 범위를 넘는다 —
     // 3~12로 적어 두고 1~18로 그려졌다. 구간마다 `Q`로 제어점을 직접 준다.
-    const d = courtTs.match(/d="(M0 [^"]*?)"/);
+    const d = courtSvg.match(/d="(M0 [^"]*?)"/);
     expect(d![1]).not.toMatch(/\bT\b/);
   });
 });

@@ -1,10 +1,12 @@
-import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { cleanup, render } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { Penguin } from "./penguin";
-import { BALL_SVG as VOLLEY_BALL_SVG } from "../volley/ball";
-import { NET_SVG, SAND_SVG } from "../volley/court";
+import { BEACH_BALL_SVG } from "./props/beach-ball";
+import { BOWLING_BALL_SVG } from "./props/bowling-ball";
+import { NET_SVG, SAND_SVG } from "./props/court";
 
 /**
  * **그림의 정답지.** 에셋을 `src/assets/`로 옮기는 동안 그림이 한 픽셀도 안 바뀌었음을
@@ -20,11 +22,7 @@ import { NET_SVG, SAND_SVG } from "../volley/court";
  * 스냅샷을 `--update`로 덮는 것은 "그림을 바꾸겠다"는 선언이지 통과시키는 방법이 아니다.
  */
 
-afterEach(() => {
-  cleanup();
-  clearMocks();
-  document.body.innerHTML = "";
-});
+afterEach(cleanup);
 
 describe("펭귄 그림", () => {
   /** 렌더된 펭귄의 마크업. `female`이 훌라 상의를 켠다. */
@@ -51,7 +49,7 @@ describe("펭귄 그림", () => {
 
 describe("소품 그림", () => {
   it("비치볼_그림이_그대로다", () => {
-    expect(VOLLEY_BALL_SVG).toMatchSnapshot();
+    expect(BEACH_BALL_SVG).toMatchSnapshot();
   });
 
   it("모래사장_그림이_그대로다", () => {
@@ -64,27 +62,21 @@ describe("소품 그림", () => {
 });
 
 describe("볼링공 그림", () => {
-  // **볼링공만 접근이 다르다.** `ball/main.ts`는 그림을 export하지 않고, import
-  // 시점에 `#ball-root`를 잡아 리스너를 걸고 Tauri를 부른다. 부작용을 피하는 대신
-  // **통과시켜 실제 렌더 결과를 본다** — 그림이 옮겨진 뒤에도 지켜야 하는 것이
-  // 바로 그 결과다. 막는 방식은 `ball.test.ts`와 같다.
-  beforeEach(async () => {
-    vi.resetModules();
-    document.body.innerHTML = '<div id="ball-root"></div>';
-    mockWindows("bowling-ball");
-    (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
-      unregisterListener: () => {},
-    };
-    mockIPC((cmd) => {
-      if (cmd === "plugin:event|listen") return 1;
-      return undefined;
-    });
-    await import("../ball/main");
-  });
-
   it("볼링공_그림이_그대로다", () => {
-    const ball = document.querySelector(".bw-ball");
-    expect(ball, "#ball-root 안에 공이 안 그려졌다").not.toBeNull();
-    expect(ball!.outerHTML).toMatchSnapshot();
+    expect(BOWLING_BALL_SVG).toMatchSnapshot();
+  });
+});
+
+describe("소품은 React를 쓰지 않는다", () => {
+  it("소품에는_React가_없다", () => {
+    // **바닐라 창(핀볼·볼링공·코트·비치볼)이 실수로 React를 끌어오면 그 번들에
+    // React가 통째로 들어간다** (KTD7·KTD8). 아무도 안 알려 주므로 여기서 막는다.
+    const dir = resolve("src/assets/props");
+    const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+    expect(files.length, "src/assets/props 가 비었다").toBeGreaterThan(0);
+    for (const f of files) {
+      const 코드 = readFileSync(join(dir, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+      expect(코드, `${f} 가 React를 끌어온다`).not.toMatch(/from "react/);
+    }
   });
 });

@@ -63,3 +63,42 @@ export const CURSOR_BAT_WOOD = "#d59a55";
 export const CURSOR_BAT_EDGE = "#6b4520";
 /** 커서 방망이의 손잡이. `BAT_GRIP`보다 갈색이 돈다. */
 export const CURSOR_BAT_GRIP = "#3a2a1a";
+
+// ── 볼링 공 ───────────────────────────────────────────────────────
+// **처음으로 이름을 얻은 색들이다** — 옮기기 전에는 SVG 문자열 안의 리터럴이었다.
+
+/** 공 몸통 — 짙은 남색. */
+export const BOWL_BALL = "#2b2f4a";
+/** 공 테두리. */
+export const BOWL_RIM = "#12142a";
+/** 윗면에 비치는 빛. */
+export const BOWL_SHEEN = "#6f76a8";
+/** 손가락 구멍 셋. */
+export const BOWL_HOLE = "#0d0f1e";
+
+// ── 비치볼 ────────────────────────────────────────────────────────
+
+/** 흰 바탕. */
+export const BEACH_WHITE = "#fdfcf7";
+/** 조각 셋 — 펭귄만큼 공들이지 않는다. */
+export const BEACH_PINK = "#ff6f9c";
+export const BEACH_BLUE = "#3fb8d8";
+export const BEACH_YELLOW = "#ffd35c";
+/** 안쪽 이음선. */
+export const BEACH_SEAM = "#c9c2b0";
+/** 바깥 테두리 — 이음선보다 살짝 어둡다. */
+export const BEACH_RIM = "#b9b1a0";
+/** 위쪽 하이라이트. */
+export const BEACH_SHEEN = "#ffffff";
+
+// ── 비치발리볼 코트 ───────────────────────────────────────────────
+
+/** 모래 — 볕에 마른 윗면에서 축축한 아랫면으로. */
+export const SAND_TOP = "#f4dfae";
+export const SAND_BOTTOM = "#d9b878";
+/** 물결선 — 모래 표면을 긋는 밝은 선. 여기가 펭귄의 발밑이다. */
+export const SAND_FOAM = "#fff3d4";
+/** 네트 기둥 — 볕에 바랜 나무. */
+export const NET_POST = "#a9743c";
+/** 그물. */
+export const NET_MESH = "#f4f1e8";

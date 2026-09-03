@@ -1,5 +1,5 @@
 ---
-title: 단체 야차 — 링에서 치고받고 벨트를 받는다 - Plan
+title: 단체 야차 — 한가운데에서 치고받고 벨트를 받는다 - Plan
 type: feat
 date: 2026-09-03
 artifact_contract: ce-unified-plan/v1
@@ -8,12 +8,12 @@ product_contract_source: ce-plan-bootstrap
 execution: code
 ---
 
-# 단체 야차 — 링에서 치고받고 벨트를 받는다
+# 단체 야차 — 한가운데에서 치고받고 벨트를 받는다
 
 ## Goal Capsule
 
 - **목표** — 설정 창에서 "단체 야차 한 판"을 누르면 화면의 펭귄들이 **화면 세로 중앙**으로
-  모여 링이 깔리고, **복싱 장갑을 끼고 제자리에서 서로를 친다.** "퍽 퍽" 소리가 나고
+  뭉쳐, **복싱 장갑을 끼고 제자리에서 서로를 친다.** "퍽 퍽" 소리가 나고
   많이 맞은 마리부터 **눈이 X자가 되며 쓰러진다.** 최후의 1인이 남으면 오른쪽에서
   **화장한 미녀 펭귄**이 **챔피언 벨트**를 들고 걸어 나와 벨트를 채우고 세레모니를 한 뒤
   둘 다 정리된다. **25~30초쯤 걸리고 알아서 끝난다.** 근거: PRD에 **§5.11로 새로
@@ -33,7 +33,7 @@ execution: code
     사용자가 명시적으로 요구한 요소다.
   - **미녀 펭귄 창(React 엔트리 하나 추가)이 번들이나 창 레벨에서 예상 밖으로 걸린다** →
     KTD9의 갈래를 다시 고른다.
-  - **링·미녀 창이 클릭을 통과시키지 못한다** — 그림뿐인 창이 화면을 먹으면 PRINCIPLE 5를
+  - **미녀 창이 클릭을 통과시키지 못한다** — 그림뿐인 창이 화면을 먹으면 PRINCIPLE 5를
     근거 없이 어긴다 (발리볼 KTD5와 같은 자리).
   - **한 판이 40초를 넘거나 15초 아래로 떨어진다** — 상수로 못 푸는 구조 문제다.
   - PRD·PRINCIPLE과 어긋나야만 구현이 가능해진다 (특히 §4 게임화 비목표).
@@ -72,8 +72,8 @@ execution: code
 | 요소 | 왜 남기나 |
 |---|---|
 | **복싱 장갑** | 이 판이 무엇인지 말하는 **단 하나의 신호**다. 장갑이 없으면 그냥 몸싸움이다 |
-| **링** (매트 + 로프 + 코너 포스트) | "중앙에 모인다"를 눈에 보이게 만든다. 볼링의 판·발리볼의 코트와 같은 자리 |
 | **KO — X자 눈** | 만화적 관습이라 설명이 필요 없다. 사용자가 직접 지정했다 |
+| **화남 표시(💢)** | 타격의 순간을 만화 문법으로 찍는다. 때린 놈과 맞은 놈 **사이**에 떠서 짝을 말해 준다 |
 | **최후의 1인 → 결과 확정 → 벨트 수여** | 실제 세계 타이틀전 규정이 못 박은 **순서**다: *심판이 벨트를 미리 맡아 두고, 경기가 끝나 링 아나운서가 결과를 발표한 뒤에 단체 관계자가 승자에게 벨트를 채운다.* 이 앱은 글자를 못 쓰므로 "발표"를 **승자가 양 날개를 들어 올리는 것**으로 대체한다 — 순서는 그대로 남는다 |
 
 버리는 것 — **전부 넣으면 안 된다**(기준은 "보고 있으면 웃긴가"이지 시뮬레이션 충실도가
@@ -86,6 +86,7 @@ execution: code
 | **판정승·채점표·심판 셋** | 위와 같다. 야차의 정체성(격식 없음)과도 어긋난다 |
 | **링 아나운서** | 글자가 필요하다. 승자의 "양 날개 들기"가 그 자리를 대신한다 |
 | **체급·계체·코너맨·수건 투입·반칙 경고** | 전부 링 밖 이야기라 화면에 안 나온다 |
+| **링·경기장** | *"경기장 없이 그냥 완전 중앙에서 대형도 없이 서로 얽히고 섥히는 느낌"* (2026-09-03 사용자, 미리보기 피드백). 판을 그리면 **줄 세운 대형**이 따라오고 그게 정확히 아니라고 한 그림이다. 창 하나와 `ns_window()` 함정 하나가 함께 사라진다 |
 | **TKO/KO 구분** | 구분해 봐야 화면이 똑같다 |
 
 ---
@@ -95,8 +96,8 @@ execution: code
 ### Summary
 
 작업이 끝나면 사용자는 설정 창에서 **"단체 야차 한 판"**을 눌러 이렇게 할 수 있다. 화면에
-흩어져 걷던 펭귄들이 하던 짓을 멈추고 화면 한가운데로 날아와, 아래에서 사각 링이 밀려
-올라온다. 펭귄들은 어느새 **빨간 복싱 장갑**을 끼고 링 위에 한 줄로 마주 서서 가드를
+흩어져 걷던 펭귄들이 하던 짓을 멈추고 화면 한가운데로 날아와, 아래에서 사각 판이 밀려
+올라온다. 펭귄들은 어느새 **빨간 복싱 장갑**을 끼고 한가운데에 한 줄로 마주 서서 가드를
 올린다. 그리고 **퍽, 퍽, 퍽** — 옆에 있는 놈을 친다. 맞은 놈은 튕겨 나가지 않고 **그
 자리에서 휘청**한다. 많이 맞은 놈부터 눈이 **X자**가 되며 뒤로 넘어가고, 별 세 개가
 머리 위를 돈다. 하나씩 줄어 **마지막 한 마리**가 남으면 그놈은 양 날개를 번쩍 든다.
@@ -104,7 +105,7 @@ execution: code
 그때 오른쪽에서 **속눈썹이 길고 입술이 빨간 미녀 펭귄**이 **금빛 챔피언 벨트**를 들고
 걸어 나온다. 챔피언 옆에 서서 벨트를 허리에 채워 주면, 챔피언은 벨트를 찬 채로 양 날개를
 들고 좌우로 흔들고 미녀는 옆에서 박수를 친다. 세레모니가 끝나면 미녀는 오른쪽으로
-걸어 나가고, 링이 사라지고, 쓰러져 있던 놈들이 일어나 **선 그 자리에서** 다시 걷는다.
+걸어 나가고, 판이 사라지고, 쓰러져 있던 놈들이 일어나 **선 그 자리에서** 다시 걷는다.
 
 **전적은 남지 않는다.** 누가 챔피언이었는지도, 몇 대 맞았는지도 어디에도 안 적힌다.
 
@@ -120,7 +121,7 @@ execution: code
 누군가 나와서 그걸 축하해 준다. 20초짜리 물리 시연이 아니라 **30초짜리 짧은 이야기**다.
 
 그래서 이 기능의 위험도 다른 데 있다. 발리볼의 위험이 "20초가 지루한가"였다면 여기는
-**"30초 동안 같은 그림이 반복되는가"**다. 링 위의 펭귄 여덟이 340ms마다 똑같이 팔을
+**"30초 동안 같은 그림이 반복되는가"**다. 한가운데의 펭귄 여덟이 340ms마다 똑같이 팔을
 뻗기만 하면 그건 애니메이션이 아니라 GIF다. 답은 KTD5(다운이 만드는 리듬)에 있다.
 
 ### Requirements
@@ -130,11 +131,12 @@ execution: code
 | R1 | 설정 창의 버튼으로만 시작한다. 저절로 나오지 않고 확률 사다리(`pick_next`)에 끼지 않는다 |
 | R2 | **화면의 펭귄 전부**가 참여한다. 우클릭한 한 마리가 아니다 (볼링·발리볼과 같은 규칙) |
 | R3 | **최소 두 마리다.** 한 마리면 때릴 상대가 없으므로 판을 열지 않고 "두 마리부터 할 수 있어요"가 뜬다. **홀수 제약은 없다** — 팀이 없는 난투라 3마리도 정상이다 |
-| R4 | 펭귄들은 순간이동하지 않고 **날아서** 화면 세로 중앙의 자기 자리로 간다 |
-| R5 | 링이 화면 세로 중앙에 깔린다. **클릭을 통과시키고**, 창 레벨은 펭귄보다 낮다 |
+| R4 | 펭귄들은 순간이동하지 않고 **날아서** 화면 한가운데로 간다 |
+| R5 | **대형이 없다.** 좁은 범위에 **불규칙하게 뭉치고 서로 겹친다.** 경기장·바닥·판을 하나도 그리지 않는다 |
 | R6 | 판이 도는 동안 펭귄은 **복싱 장갑**을 낀다. 그림은 웹뷰가 그리고 Rust는 국면만 준다 |
 | R7 | **때려도 서로 튕겨 나가지 않는다.** 맞은 마리는 **자기 자리에서** 휘청인다 — 코어가 x를 바꾸지 않는다 |
 | R8 | **많이 맞은 마리부터 쓰러진다.** 쓰러진 마리는 눈이 X자가 되고 판이 끝날 때까지 누워 있는다 |
+| R8b | 타격의 순간 **화남 표시(💢)**가 때린 놈과 맞은 놈 **사이**에 뜬다 — 그것만으로 누가 누구를 쳤는지 읽힌다 |
 | R9 | **사용자 입력이 없다.** 누가 누구를 치고 언제 쓰러지는지는 전부 시드 난수로 만든다 — 같은 시드는 같은 판을 낳는다 |
 | R10 | **최후의 1인**이 남으면 난투가 끝난다. 판이 몇 마리로 시작했든 끝은 하나다 |
 | R11 | 오른쪽에서 **화장한 미녀 펭귄**이 **챔피언 벨트**를 들고 걸어 나와 채워 주고, 세레모니 뒤 오른쪽으로 걸어 나간다 |
@@ -152,19 +154,19 @@ execution: code
 **AE1 — 다섯 마리로 한 판 (표준 시나리오)**
 Given 펭귄 5마리가 화면에 흩어져 있고 아무 판도 안 돌고 있다
 When 설정 창에서 "단체 야차 한 판"을 누른다
-Then 다섯이 화면 세로 중앙으로 날아오고(2초 안팎) 그 사이 링이 밀려 올라온다. 다섯 다
+Then 다섯이 화면 세로 중앙으로 날아오고(2초 안팎) 그 사이 판이 밀려 올라온다. 다섯 다
 빨간 장갑을 끼고 한 줄로 서서 가드를 올린다. 0.34초쯤마다 몇 마리가 팔을 뻗고 맞은 쪽이
 휘청이며 **퍽 소리가 한 발** 난다(소리를 켰을 때). **아무도 옆으로 밀려나지 않는다.**
 15초 안팎 동안 넷이 차례로 눈이 X자가 되며 넘어간다. 마지막 하나가 양 날개를 들면
 오른쪽에서 미녀 펭귄이 벨트를 들고 걸어 나와 채워 주고, 챔피언이 벨트를 찬 채 세레모니를
-한다. 미녀가 오른쪽으로 나가고 링이 사라지면 다섯 다 **서 있던 자리에서** 걷기 시작한다.
+한다. 미녀가 오른쪽으로 나가고 판이 사라지면 다섯 다 **서 있던 자리에서** 걷기 시작한다.
 **전체 25~30초.** 점수는 어디에도 안 나온다.
 
 **AE2 — 한 마리면 안 연다**
 Given 펭귄이 1마리다
 When "단체 야차 한 판"을 누른다
 Then 판이 열리지 않고 "두 마리부터 할 수 있어요"가 설정 창에 뜬다. 그 한 마리는 하던
-짓을 그대로 한다. 링·미녀 창은 하나도 안 생긴다.
+짓을 그대로 한다. 미녀 창은 하나도 안 생긴다.
 
 **AE3 — 두 마리 (원조 야차룰, 1대1)**
 Given 펭귄이 2마리다
@@ -179,14 +181,14 @@ Then 여덟이 한 줄로 서고 이웃끼리 친다. 일곱이 차례로 쓰러
 균등**하다 — 앞에서 몰아서 쓰러지고 뒤가 비지 않는다. 전체 길이는 두 마리 때와 같은
 범위(25~30초)다.
 
-**AE5 — 링 위에서 다른 앱 클릭**
-Given 판이 돌고 있고 링이 화면 가운데를 덮고 있다
-When 링이 깔린 자리 위에서 다른 앱의 창을 클릭한다
-Then 그 앱이 정상으로 반응한다. 링 창도 미녀 창도 클릭을 통과시킨다.
+**AE5 — 한가운데에서 다른 앱 클릭**
+Given 판이 돌고 있고 판이 화면 가운데를 덮고 있다
+When 미녀 펭귄이 지나가는 자리 위에서 다른 앱의 창을 클릭한다
+Then 그 앱이 정상으로 반응한다. 경기장 창도 미녀 창도 클릭을 통과시킨다.
 
 **AE6 — 판 도중 펭귄을 집어 든다**
 Given 다섯이 치고받는 중이다
-When 그중 하나를 드래그해 링 밖으로 끌어낸다
+When 그중 하나를 드래그해 뭉친 자리 밖으로 끌어낸다
 Then 그 마리는 판에서 빠지고(놓으면 평소로 돌아간다) 장갑도 벗는다. 남은 넷은 계속
 친다. 다운 일정은 남은 마릿수에 맞춰 이어진다. 크래시가 없다.
 
@@ -205,8 +207,8 @@ Then 소리는 한 발도 안 나지만 팔을 뻗는 자세·맞고 휘청이�
 **AE9 — 핀볼 모드를 켜 둔 채로**
 Given 핀볼 모드가 켜져 있다
 When 판을 연다
-Then 판은 정상으로 돌아가고 **판이 도는 동안 마리 간 충돌이 쉰다** — 링 위에서 서로를
-튕기지 않는다 (발리볼과 같은 규칙, PRD §5.10). 커서 방망이로 링 위의 펭귄을 후려치면
+Then 판은 정상으로 돌아가고 **판이 도는 동안 마리 간 충돌이 쉰다** — 한가운데에서 서로를
+튕기지 않는다 (발리볼과 같은 규칙, PRD §5.10). 커서 방망이로 한가운데의 펭귄을 후려치면
 그 마리는 **판에서 빠져** 날아간다 (AE6과 같은 규칙).
 
 ### Scope Boundaries
@@ -219,8 +221,11 @@ Then 판은 정상으로 돌아가고 **판이 도는 동안 마리 간 충돌�
   버튼을 다시 누른다.
 - **심판·카운트·라운드·판정** — 위 리서치 표의 "버리는 것" 그대로.
 - **체력 바·데미지 숫자·이펙트 수치** — 화면에 숫자가 뜨지 않는다.
-- **화면을 덮는 판 창** — 링 창은 링 사각형만 덮고, 그 위에서도 클릭이 통과한다
-  (R5/AE5). 핀볼 판(§5.8)이 클릭을 **먹는** 근거("커서가 어디서나 채가 된다")가 여기엔 없다.
+- **경기장·링·바닥** — 2026-09-03 사용자 피드백으로 뺐다. 판을 그리면 줄 세운 대형이
+  따라오고 그게 정확히 아니라고 한 그림이다. **창이 하나 줄고**, 창 레벨을 내리려고
+  `ns_window()`를 만지는 자리가 통째로 사라진다 (앱이 흔적 없이 죽는 그 함정).
+- **누가 누구를 치는지 알려 주는 선·화살표·이름표** — 위치와 화남 표시로 읽힌다
+  (*"서로 펭귄 위치 아니까 누가 누구랑 싸우는 지도 알잖아"*).
 - **야차 중 볼링/발리볼, 볼링/발리볼 중 야차** — 셋은 서로를 배제한다 (KTD11).
 - **미녀 펭귄이 마릿수에 드는 것** — 그 마리는 `Pets`가 아니라 판이 갖는 배우다.
   설정 창의 마릿수도, 삭제 대상도, 시드도 없다.
@@ -231,9 +236,9 @@ Then 판은 정상으로 돌아가고 **판이 도는 동안 마리 간 충돌�
   별 셋으로 충분한지 스모크에서 본 뒤에 정한다.
 - **세레모니 효과음("짠")** — 이번에 넣는 소리는 **퍽 하나**다. 소리를 여덟에서 아홉으로
   늘리는 판단은 퍽이 실제로 어떻게 들리는지 보고 따로 한다.
-- **코너 없이 한 줄로 서는 것을 원형 배치로** — 여덟 마리가 한 줄이면 링이 옆으로 길다.
-  링을 정사각형으로 하고 두 줄로 세우는 안은 "누가 누구를 치는지"가 안 읽릴 위험이 있어
-  이번에는 한 줄로 간다.
+- **뭉친 자리의 겹침 순서를 실제로 제어하기** — 지금은 y로만 말하고 창 z 순서와
+    다투지 않는다 (KTD9c). 스모크에서 어색하면 먼저 `HUDDLE` 상수를 손보고,
+    그래도 안 되면 그때 창 순서를 다시 본다.
 - **야차 국면에 클릭 통과 주기** — `TODO.md`의 열린 항목 *"크게 도는 국면에도 통과를
   주기"*에 야차를 한 줄 더한다 (KTD12).
 
@@ -273,13 +278,13 @@ Then 판은 정상으로 돌아가고 **판이 도는 동안 마리 간 충돌�
    발리볼에서 이 가드 없이는 랠리가 **0.4초 만에 찢어졌다**는 실측이 있다 (AE9).
 3. **방망이 넉백이 이웃을 안 건드린다.** `Pets::whack`은 넉백 대상에서 `Dragged ||
    is_bowling() || is_volleying()`인 이웃을 **이미 건너뛴다.** 여기에 `is_yachaing()`을
-   더한다. **야차가 셋 중 가장 위험하다** — `SWING_REACH`(200px)가 야차의 이웃 간격
-   (`YACHA_STANCE_GAP` 96px)의 두 배라 한 번 휘두르면 링의 절반이 날아간다.
+   더한다. **야차가 셋 중 압도적으로 위험하다** — 뭉쳐 서므로 이웃이 `SWING_REACH`(200px)
+   안에 **거의 전부** 들어온다. 빠지면 한 번 휘두를 때 판이 통째로 날아간다.
    **직접 클릭한 마리는 그대로 빠진다** — 그건 사용자가 노린 것이다 (PRD §5.10과 같은 규칙).
 4. **사용자만이 튕겨 낼 수 있다.** 방망이·핀볼 채·드래그로 맞은 그 마리는
    **판에서 빠지고**(`leave_yacha`) 평소 물리를 탄다 (발리볼 A6).
 
-**KTD4 — 국면을 마리 국면(`YachaPhase`)과 판 국면(`RingPhase`)으로 나눈다.**
+**KTD4 — 국면을 마리 국면(`YachaPhase`)과 판 국면(`BoutPhase`)으로 나눈다.**
 발리볼의 `VolleyPhase` / `CourtPhase` 분할을 그대로 따른다. 마리 국면은 웹뷰가 CSS
 클래스로 받아야 하는 것(`Behavior`에 실려 나간다)이고, 판 국면은 창을 언제 만들고 언제
 닫는지를 정하는 것(스냅샷으로 나간다)이라 주기와 소비자가 다르다.
@@ -287,7 +292,7 @@ Then 판은 정상으로 돌아가고 **판이 도는 동안 마리 간 충돌�
 ```rust
 // behavior.rs — 마리 국면 (웹뷰가 `pg--yacha-*`로 받는다)
 pub enum YachaPhase {
-    Gather,   // 링으로 날아온다 — **유일한 공중 국면**
+    Gather,   // 한가운데로 날아온다 — **유일한 공중 국면**
     Guard,    // 가드를 올리고 스텝 (기본 자세)
     Punch,    // 팔을 뻗는다 (0.26초)
     Hurt,     // 맞고 휘청 — **자리는 안 변한다** (0.22초)
@@ -309,9 +314,9 @@ enum RingPhase {
 ```
 
 **`Behavior::is_airborne()`은 `Yacha { .. }` 전 국면에 `true`를 준다.** 볼링·발리볼이
-둘 다 그렇다 — **판이 화면 세로 중앙에 있으면 전 국면이 공중이어야 한다.** 하나라도
+둘 다 그렇다 — **자리가 화면 세로 중앙이면 전 국면이 공중이어야 한다.** 하나라도
 `false`면 `clamp`가 매 틱 `y = floor_y`로 눌러 그 마리만 바닥으로 끌려 내려간다.
-(A1이 뒤집혀 링이 바닥으로 가면 이 결정도 함께 뒤집힌다 — 그때는 `Gather`만 공중이다.)
+(A1이 뒤집혀 자리가 바닥으로 가면 이 결정도 함께 뒤집힌다 — 그때는 `Gather`만 공중이다.)
 
 **KTD5 — 다운 시각은 예산이 정하고, 누가 쓰러지는지는 피격 수가 정한다. (이 플랜의 핵심)**
 
@@ -413,13 +418,13 @@ enum RingPhase {
 | `QueenIn` | ~2초 | 오른쪽 화면 밖에서 미녀 펭귄이 벨트를 들고 **걸어** 들어와 챔피언 옆에 선다 |
 | `Belting` | 1.2초 | 미녀가 벨트를 챔피언 허리에 채운다. 채워지는 순간 챔피언의 `pg-belt`가 켜진다 |
 | `Ceremony` | 2.5초 | 챔피언이 벨트를 차고 양 날개를 들어 좌우로 흔들고, 미녀는 옆에서 박수 |
-| `Exiting` | 1.2초 | 미녀가 오른쪽으로 걸어 나간다. 동시에 링이 내려가고 쓰러진 놈들이 일어난다 |
+| `Exiting` | 1.2초 | 미녀가 오른쪽으로 걸어 나간다. 동시에 쓰러진 놈들이 일어난다 |
 
 합계 약 7.8초. 여기에 모이기(1.5~3초) + 난투(14~18초)를 더해 **총 23~29초**다. 볼링·
 발리볼(20~25초)과 같은 결이다.
 
 **`QueenIn` 이후로는 참여 마리가 0이 되어도 판을 접지 않는다** — 발리볼의 `Point`가
-같은 자리다. 접었다가는 세레모니 그림이 나오기 전에 링이 사라진다. 챔피언이 사라지면
+같은 자리다. 접었다가는 세레모니 그림이 나오기 전에 판이 사라진다. 챔피언이 사라지면
 미녀는 챔피언이 서 있던 자리까지 걸어와 혼자 벨트를 들고 세레모니를 하고 나간다.
 
 **KTD9 — 미녀 펭귄은 자기 창이고 `<Penguin>` 그림을 재사용한다. 새 React 엔트리 하나.**
@@ -437,20 +442,71 @@ enum RingPhase {
 `capabilities/default.json`의 `windows`에 `yacha-queen`, 그리고 `followPetScale`
 구독(창 안에서 고정 px를 쓰므로 배율을 받아야 한다 — #57).
 
-**창 레벨은 펭귄과 같은 3이다** — 비치볼이 코트처럼 내리지 않은 것과 같은 이유(*"날아다니는
-공이 펭귄 뒤로 숨으면 랠리가 안 보인다"*): 미녀가 챔피언 뒤로 숨으면 벨트 수여가 안
-보인다. **클릭은 통과시킨다** (`set_ignore_cursor_events(true)`) — 그림뿐인 창이라
-클릭을 먹을 근거가 없다 (R15/AE5).
+**창 레벨은 펭귄과 같은 3이다.** **클릭은 통과시킨다**
+(`set_ignore_cursor_events(true)`) — 그림뿐인 창이라 클릭을 먹을 근거가 없다 (R15).
+
+**이 판에서 새로 만드는 창은 이것 하나뿐이다** (2026-09-03 사용자 피드백으로 경기장 창을
+뺐다). 그래서 `ns_window()`를 만지는 자리가 **하나도 없다** — 창 레벨을 내리려던
+그 자리가 앱이 흔적 없이 죽는 함정이었는데, 통째로 사라졌다.
+
+**KTD9b — 대형을 만들지 않는다. 좁은 범위에 불규칙하게 뭉치고 겹친다. (사용자 지시)**
+
+*"경기장 없이 그냥 완전 중앙에서 대형도 없이 서로 얽히고 섥히는 느낌"*
+(2026-09-03, 미리보기를 보고 준 피드백). 처음 만든 것은 이웃 간격 96px로 한 줄로
+세우는 모양이었고, **그게 정확히 "아니다"라고 한 그림**이다.
+
+- **자리는 판이 열릴 때 시드로 뽑는다.** 중앙에서 가로 `±YACHA_HUDDLE_HALF`,
+  세로 `±YACHA_HUDDLE_DEPTH` 안에 흩뿌린다. 균등 배치가 아니므로 같은 마릿수라도
+  매번 다른 그림이 나오고, 같은 시드는 같은 그림을 낳는다 (PRINCIPLE 3).
+- **겹치는 것이 목적이다.** `PET_SIZE`(140)보다 좁은 범위에 여럿을 넣으므로 실루엣이
+  서로 물린다 — 그게 "얽히고설킨다"이다.
+- **최소 간격 하나만 지킨다** (`YACHA_HUDDLE_MIN_GAP`). 완전히 포개지면 두 마리가
+  한 마리로 보인다. 뽑을 때 이미 놓인 자리와 너무 가까우면 다시 뽑고, 몇 번 실패하면
+  가장 먼 후보를 쓴다 — 여덟 마리가 좁은 데 들어가야 하므로 실패를 정상으로 본다.
+- **사정거리는 이제 문제가 아니다.** 뭉쳐 있으니 이웃이 늘 `YACHA_REACH_X` 안이다 —
+  종료 증명 ②가 오히려 더 튼튼해진다. 반대로 **`whack` 이웃 제외(KTD3-3)는 더
+  중요해진다**: 스윙 사거리 안에 판이 통째로 들어온다.
+
+**KTD9c — 앞뒤는 y로만 말한다. 창 z 순서와 다투지 않는다.**
+
+겹치면 "누가 앞이냐"가 생기는데, **펭귄은 마리마다 독립된 네이티브 창이라 그리는
+순서를 CSS로 정할 수 없다.** macOS의 창 순서는 클릭할 때마다 바뀌고, 순서를 강제하는
+길은 `ns_window()`뿐인데 그건 틱에서 만지면 앱이 죽는 자리다
+(`docs/solutions/best-practices/appkit-from-tick-thread-kills-the-app.md`).
+
+그래서 **z 순서를 제어하지 않고, 깊이를 y로만 표현한다**:
+
+- 아래에 있는 마리가 앞이다 — 사람 눈은 세로 위치를 깊이로 읽는다.
+- 자리를 뽑을 때 **y가 서로 충분히 다르게** 잡는다(`YACHA_HUDDLE_MIN_DY`). 그러면
+  겹치는 부분이 몸통의 일부라, 창 순서가 어느 쪽으로 나든 "둘이 붙어 있다"로 읽히고
+  "한 마리가 다른 마리를 뚫고 나왔다"로는 안 읽힌다.
+- **이건 절충이지 해결이 아니다.** 스모크에서 겹침이 어색하면 손댈 곳은 창 순서가
+  아니라 `HUDDLE` 상수 셋(가로 폭·세로 폭·최소 세로 간격)이다.
+
+**KTD9d — 타격은 화남 표시(💢)로 찍고, 때린 놈 쪽에 띄운다.**
+
+처음에는 임팩트 별표였는데 *"별 대신 '화남' 표시로 해줘"*(2026-09-03 사용자).
+별표는 "번쩍"이라 타격이 아니라 반짝임으로 읽힌다. 만화의 분노 핏줄(💢) —
+십자로 모인 갈매기꼴 넷 — 이 이 앱의 다른 그림들과 같은 문법이다.
+
+**어디에 뜨나가 설계다.** 사용자가 *"서로 펭귄 위치 아니까 누가 누구랑 싸우는 지도
+알잖아"*라고 했으므로 **선도 화살표도 이름표도 더하지 않는다.** 대신:
+
+- 맞은 마리가 **때린 쪽을 본다** (`yacha_hurt`가 `facing`을 함께 받는다).
+- 💢는 맞은 마리의 **보는 쪽 가장자리**에 뜬다. 뭉쳐 있으므로 그 자리가 곧 **둘
+  사이**이고, 별도 표식 없이 짝이 보인다.
+- 그림은 맞은 마리의 창이 그린다 (창 여백이 `PET_SIZE`보다 넓어 밖으로 나갈 자리가
+  있다). 새 창도, 새 좌표 계산도 필요 없다.
 
 **KTD10 — 미녀 펭귄과 기존 `hula`(훌라 차림)는 재사용이 아니라 별개다.**
 
 `hula.tsx`가 그리는 것은 **비치발리볼 판의 옷**(지푸라기 치마·레이·암컷 상의)이다.
-링에 훌라 치마가 나오면 두 판이 섞인다. 그래서:
+한가운데에 훌라 치마가 나오면 두 판이 섞인다. 그래서:
 
 - **재사용하는 것**: `<Penguin female />`의 **암컷 실루엣**. 미녀 창은 `female`을
   무조건 켠다(창 라벨에서 파생하지 않는다 — 이 배우는 항상 암컷이다).
 - **새로 그리는 것**: `src/assets/penguin/glam.tsx` — **속눈썹·립스틱·볼터치**.
-  링걸의 정체성은 옷이 아니라 **화장**이라는 것이 사용자 표현("화장한 미녀 펭귄")이다.
+  링 걸의 정체성은 옷이 아니라 **화장**이라는 것이 사용자 표현("화장한 미녀 펭귄")이다.
 - **패턴은 `hula.tsx`를 그대로 따른다**: `.pg-glam` 레이어 하나, 기본 `display: none`,
   특정 클래스 아래에서만 켠다, `pet-css.test.ts`의 `숨기는_도형` 목록에 등록.
 
@@ -465,8 +521,8 @@ enum RingPhase {
 `pet_bridge/tick.rs`의 `pose_of`는 **허락 목록**이고 `Walk·Turn·Sleep·Squawk·Swing·
 Idle·Sassy·IceFishing`만 클릭 통과(`InBox`)를 허락한다. 야차 국면은 목록 밖이라
 **자동으로 안전한 쪽**(창이 클릭을 먹는 쪽)에 떨어진다. 그 방향을 뒤집지 않는다 —
-판이 도는 30초 동안 링 위의 펭귄을 클릭·드래그할 수 있어야 하고(R15), 그건 창이 클릭을
-먹어야 되는 일이다. 링 창과 미녀 창이 클릭을 통과시키므로 사용자가 막히는 자리는 없다.
+판이 도는 30초 동안 한가운데의 펭귄을 클릭·드래그할 수 있어야 하고(R15), 그건 창이 클릭을
+먹어야 되는 일이다. 경기장 창과 미녀 창이 클릭을 통과시키므로 사용자가 막히는 자리는 없다.
 `Guard`·`Down`은 제자리에 있어 `InBox`를 줘도 될 것 같지만, 그 판단은 `TODO.md`의 열린
 항목 *"크게 도는 국면에도 통과를 주기"*에 한 줄 얹어 미룬다.
 
@@ -474,7 +530,7 @@ Idle·Sassy·IceFishing`만 클릭 통과(`InBox`)를 허락한다. 야차 국�
 30초짜리 한 판이라 `savePetSettings`를 부르지 않는다 (R19, PRD §7).
 
 **KTD14 — 판이 끝나면 자유낙하로 내려보내지 않는다. 헤엄 하강을 재사용한다.**
-링이 화면 세로 중앙이라(A1) 판이 끝날 때 마리들이 공중에 떠 있다. 여기서 그냥
+판이 화면 세로 중앙이라(A1) 판이 끝날 때 마리들이 공중에 떠 있다. 여기서 그냥
 `Behavior::Falling`으로 떨어뜨리면 **낙하 속도가 767px/s로 `SPLAT_MIN_IMPACT`(700)를
 넘어 판이 끝날 때마다 여덟 마리가 동시에 철푸덕한다.** 발리볼이 이 함정을 이미
 밟았고(`leave_court`), 답은 **헤엄의 하강 경로를 그대로 타는 것**이다:
@@ -489,7 +545,7 @@ Idle·Sassy·IceFishing`만 클릭 통과(`InBox`)를 허락한다. 야차 국�
 (`BoardBusy` · `NoRoom` · `TooFew`). 발리볼이 `VolleyRefusal`로 그렇게 했고 근거는
 *"버튼이 눌리는데 아무 일도 없으면 고장으로 읽힌다"*다 — 설정 창이 이유별로 다른 문구를
 띄운다. **발리볼과 달리 `Odd`가 없다** (R3: 팀이 없는 난투라 홀수가 정상이다).
-**거절 순서가 의미를 갖는다**: `BoardBusy` → `NoRoom` → `TooFew`. 한 마리인데 링도
+**거절 순서가 의미를 갖는다**: `BoardBusy` → `NoRoom` → `TooFew`. 한 마리인데 자리도
 안 들어가는 화면이면 "두 마리부터"가 아니라 "화면이 좁다"가 먼저 나와야 정직하다.
 
 ### Assumptions
@@ -499,8 +555,9 @@ Idle·Sassy·IceFishing`만 클릭 통과(`InBox`)를 허락한다. 야차 국�
 - **A1 — 링은 화면 세로 중앙에 뜬다** (바닥이 아니다). 볼링(#45)과 발리볼(#53)이 둘 다
   2026-09-02에 바닥 → 중앙으로 뒤집혔고 근거가 같다: 바닥이면 펭귄·소품·판이 화면 아래
   한 띠에서 겹친다. 쓰러지는 그림(뒤로 넘어가 눕는다)에는 세로 여유가 필요하다.
-- **A2 — 펭귄은 한 줄로 선다.** 8마리 × `YACHA_STANCE_GAP`(96px) + `PET_SIZE`가
-  링 폭 안에 들어간다는 것을 `const assert!`로 못 박는다. 두 줄 배치는 Deferred.
+- **A2 — 펭귄은 대형 없이 뭉친다** (2026-09-03 사용자 지시로 뒤집었다 — 처음에는
+  한 줄이었다). 자리는 시드로 뽑고, 최소 간격 하나만 지켜 완전히 포개지는 것을 막는다.
+  겹치는 것이 목적이므로 `PET_SIZE`보다 좁은 범위에 넣는다 (KTD9b).
 - **A3 — 서는 순서는 시드로 섞는다.** id 순으로 세우면 항상 같은 이웃끼리 싸운다.
   섞으면 같은 마릿수라도 매번 다른 대진이 나온다.
 - **A4 — 판이 도는 동안 클릭·드래그·방망이로 맞은 펭귄은 판에서 빠진다** (발리볼 A6과
@@ -512,7 +569,7 @@ Idle·Sassy·IceFishing`만 클릭 통과(`InBox`)를 허락한다. 야차 국�
   변경이므로 `-u`로 갱신하고 PR 본문에 "그림을 바꿨다"고 적는다 (U2 참조).
 - **A7 — 미녀 펭귄은 걸어서 등장한다** (날아오지 않는다). 다른 펭귄들이 날아오는 것과
   대비되어 "다른 자리에서 온 배우"로 읽힌다.
-- **A8 — 링 창 하나가 매트·로프·코너 포스트를 다 그린다.** 화면이 하나뿐이라 배율
+- **A8 — 경기장 창 하나가 매트·로프·코너 포스트를 다 그린다.** 화면이 하나뿐이라 배율
   문제가 없고, 둘로 나누면 창 둘의 z 순서를 또 다퉈야 한다 (발리볼 A2와 같다).
 - **A9 — `apply_yacha`는 `apply_volley`의 꼴을 그대로 베낀다** — 창 생성 실패 예산
   (`YACHA_WINDOW_MAX_FAILS`), 반쯤 만든 창을 반드시 닫는 것, `run_on_main_thread`로
@@ -525,7 +582,7 @@ Idle·Sassy·IceFishing`만 클릭 통과(`InBox`)를 허락한다. 야차 국�
 ```mermaid
 flowchart TB
     subgraph webview["웹뷰 (어떻게 보이는지)"]
-        RING["링 창 (yacha-ring)<br/>매트·로프·포스트 SVG<br/>바닐라 · 클릭 통과 · 레벨 2"]
+        RING["경기장 창 (yacha-ring)<br/>매트·로프·포스트 SVG<br/>바닐라 · 클릭 통과 · 레벨 2"]
         QUEEN["미녀 창 (yacha-queen)<br/>React · &lt;Penguin female /&gt; + pg-glam<br/>클릭 통과 · 레벨 3"]
         PET["펭귄 창 (pet-N)<br/>pg--yacha-* CSS<br/>+ pg-gloves · pg-belt · pg-eye-x"]
         SET["설정 창<br/>단체 야차 한 판 버튼"]
@@ -533,11 +590,11 @@ flowchart TB
     subgraph bridge["pet_bridge (Tauri 연결)"]
         TICK["tick.rs 20Hz<br/>step_all · 창 이동 · emit_to"]
         CMD["commands.rs<br/>yacha_start"]
-        YW["yacha.rs<br/>링·미녀 창 생성·파괴·레벨·클릭 통과"]
+        YW["yacha.rs<br/>미녀 창 생성·파괴·레벨·클릭 통과"]
     end
     subgraph core["pet/ 코어 (무슨 동작 · 어디에)"]
         PETS["Pets<br/>+ yacha: Option&lt;Yacha&gt;<br/>+ step_yacha()"]
-        YA["yacha.rs<br/>링 기하 · 스탠스 · 라운드 · 다운 일정<br/>미녀 좌표 · 자체 난수"]
+        YA["yacha.rs<br/>난투 자리 기하 · 뭉침 배치 · 라운드 · 다운 일정<br/>미녀 좌표 · 자체 난수"]
         MOT["motion/yacha.rs<br/>Gather · Guard · Punch · Hurt · Down · Win · Champ"]
     end
     SET -->|invoke| CMD
@@ -556,7 +613,7 @@ flowchart TB
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Gathering: yacha_start (2마리 이상 · 링이 들어감)
+    [*] --> Gathering: yacha_start (2마리 이상 · 자리가 들어감)
     Gathering --> Brawl: 전 마리 도착 → 다운 일정 확정
     Brawl --> Victory: 서 있는 마리가 1
     Victory --> QueenIn: WIN_MS 경과
@@ -608,7 +665,7 @@ sequenceDiagram
 
 | 파일 | 무엇을 | 규모 |
 |---|---|---|
-| `src-tauri/src/pet/yacha.rs` (신규) | 링 기하 · 스탠스 배치 · 라운드 · 다운 일정 · 미녀 좌표 · 자체 xorshift | ~340줄 |
+| `src-tauri/src/pet/yacha.rs` (신규) | 난투 자리 기하 · 뭉침 배치 배치 · 라운드 · 다운 일정 · 미녀 좌표 · 자체 xorshift | ~340줄 |
 | `src-tauri/src/pet/yacha_tests.rs` (신규) | 판 로직 테스트 | ~260줄 |
 | `src-tauri/src/pet/motion/yacha.rs` (신규) | 마리 국면 매 틱 · `start_yacha` · `leave_ring` | ~180줄 |
 | `src-tauri/src/pet/motion/yacha_tests.rs` (신규) | 국면 전이 테스트 | ~160줄 |
@@ -616,35 +673,33 @@ sequenceDiagram
 | `src-tauri/src/pet/mod.rs` | ① `mod yacha;` + `pub use` ② `Pets`에 `yacha: Option<Yacha>` **1줄** ③ `Pet`에 `punch_seq`·`punch_down` **2줄** ④ `step_all` 맨 앞 `self.step_yacha(now_ms);` **1줄** ⑤ `collide_pinball` 가드에 `\|\| self.yacha.is_some()` **1줄** (KTD3-2) ⑥ **`whack`의 이웃 제외 목록에 `is_yachaing()` 1줄** (KTD3-3) ⑦ `start_yacha`/`end_yacha`/`leave_yacha`/`yacha()` ⑧ `remove`·`forget`·`clear`에 각 1줄 ⑨ `start_bowling`·`start_volleyball`의 배타 조건에 각 1줄 ⑩ `YachaRefusal` enum (KTD15) | 새 메서드 ~120줄 + 삽입 11줄 |
 | `src-tauri/src/pet/motion/mod.rs` | `mod yacha;` **1줄** | 1줄 |
 | `src-tauri/src/pet/tuning.rs` | **파일 끝에 `// ── 단체 야차 ──` 새 절.** 기존 절은 한 줄도 안 건드린다 | ~90줄 |
-| `src-tauri/src/pet_bridge/yacha.rs` (신규) | 링·미녀 창 생성/파괴/레벨/클릭 통과 · `apply_yacha` | ~250줄 |
+| `src-tauri/src/pet_bridge/yacha.rs` (신규) | **미녀 창** 생성/파괴/클릭 통과 · `apply_yacha`. 경기장 창이 빠져 `ns_window()`를 만지는 자리가 없다 | ~170줄 |
 | `src-tauri/src/pet_bridge/yacha_tests.rs` (신규) | 창 좌표 환산 테스트 | ~60줄 |
 | `src-tauri/src/pet_bridge/mod.rs` | `mod yacha; pub use`, `EVENT_YACHA_QUEEN`·`EVENT_YACHA_OVER`, `PetSummary`에 `yacha: bool` | ~20줄 |
 | `src-tauri/src/pet_bridge/commands.rs` | `yacha_start`(~20줄, `volleyball_start`의 꼴 그대로 — **`let ids = ...`로 먼저 받고 순회**해 자기 데드락을 피한다) + `yacha_get_queen`(첫 상태용, `volley_get_state`의 꼴). `pet_summary`에 필드 1줄 | ~35줄 |
 | `src-tauri/src/pet_bridge/tick.rs` | `apply_yacha(...)` 호출 1줄 + 스냅샷 지역 변수 1줄 + `ids.is_empty()` 갈래에 고아 창 정리 1줄 + **`Look`/`look_of`/`should_notify`에 `punch_seq`** (KTD7). **`pose_of`는 안 건드린다** (KTD12) | 삽입 ~8줄 |
 | `src-tauri/src/lib.rs` | `generate_handler!`에 `yacha_start`·`yacha_get_queen` **2줄** | 2줄 |
-| `src-tauri/capabilities/default.json` | `windows`에 `"yacha-ring"`, `"yacha-queen"` 2줄 + `description` 갱신 | 3줄 |
+| `src-tauri/capabilities/default.json` | `windows`에 `"yacha-queen"` 1줄 + `description` 갱신 | 2줄 |
 
 ### 프론트
 
 | 파일 | 무엇을 | 규모 |
 |---|---|---|
-| `src/assets/palette.ts` | `GLOVE`·`GLOVE_DARK`·`GLOVE_LACE`·`BELT_LEATHER`·`BELT_GOLD`·`BELT_GOLD_DARK`·`LIP`·`BLUSH`·`RING_MAT`·`RING_MAT_DARK`·`RING_ROPE`·`RING_POST`·`RING_APRON`·`STAR` | ~14줄 |
-| `src/assets/penguin/gear.tsx` | `<BoxingGloves/>`(`.pg-gloves`) · `<ChampionBelt/>`(`.pg-belt`) | ~55줄 |
+| `src/assets/palette.ts` | `GLOVE`·`GLOVE_DARK`·`GLOVE_LACE`·`BELT_LEATHER`·`BELT_GOLD`·`BELT_GOLD_DARK`·`LIP`·`BLUSH`·`ANGER` | ~10줄 |
+| `src/assets/penguin/gear.tsx` | `<BoxingGloves/>`(`.pg-gloves`) · `<ChampionBelt/>`(`.pg-belt`) · `<AngryMark/>`(`.pg-anger`) | ~75줄 |
 | `src/assets/penguin/body.tsx` | `.pg-eye-x` 도형 둘 (기본 숨김) | ~14줄 |
 | `src/assets/penguin/glam.tsx` (신규) | `<Glam/>` — 속눈썹·립스틱·볼터치 (`.pg-glam`) | ~55줄 |
 | `src/assets/penguin/index.tsx` | 조립·겹침 순서에 셋 추가 | ~5줄 |
-| `src/assets/props/ring.ts` (신규) | `RING_SVG` — 매트·로프 3줄·코너 포스트 4개. **React 무의존** | ~60줄 |
-| `src/assets/assets.test.ts` + `__snapshots__/` | 펭귄 둘 스냅샷 **갱신**(A6) + `RING_SVG` 스냅샷 **신규** + 미녀 조합 스냅샷 신규 | ~15줄 |
-| `src/pet/css/yacha.css` (신규) | `pg--yacha-*` 7개 + 장갑·벨트·X눈·별·임팩트 별표 | ~220줄 |
+| `src/assets/assets.test.ts` + `__snapshots__/` | 펭귄 둘 스냅샷 **갱신**(A6) + 미녀 조합 스냅샷 신규 | ~12줄 |
+| `src/pet/css/yacha.css` (신규) | `pg--yacha-*` 7개 + 장갑·벨트·X눈·화남 표시 | ~200줄 |
 | `src/pet/css/index.css` | `@import "./yacha.css";` **1줄** | 1줄 |
 | `src/pet/pet-css.test.ts` | `ALL_BEHAVIORS`에 7줄, `숨기는_도형`에 `pg-gloves`·`pg-belt`·`pg-eye-x`·`pg-glam`, 길이 동기화 표에 `pg--yacha-punch`·`-hurt`·`-win`, CSS 파일 목록에 `"yacha"` | ~15줄 |
 | `src/lib/pet.ts` | `YachaPhase` 타입, `Behavior` 유니온 1줄, `behaviorClass` 분기 1줄(`pg--yacha-`), `isOneShot`에 3개, `PetSnapshot`에 `punch_seq`·`punch_down`, `startYacha()`, `QueenSnapshot`, `getQueenState()`, `onQueenState`, `onYachaOver`, `PetSummary.yacha` | ~55줄 |
 | `src/pet/sound.ts` | `SoundName`에 `"punch"`, `soundsFor`에 `punch_seq` 전이 검출, `SOUND_COOLDOWN_MS`에 200ms | ~15줄 |
 | `src/pet/synth.ts` | **새 함수 없음** — `playWhack`를 반음만 바꿔 재사용 (KTD7) | 0줄 |
 | `src/queen/main.tsx` · `QueenApp.tsx` · `queen.css` (신규) | `<Penguin female />` + `pg-glam` + 국면 클래스. `followPetScale` 구독 | ~110줄 |
-| `src/yacha/ring.ts` · `ring.css` (신규) | `RING_SVG`를 심고 `followPetScale` 구독 (바닐라, `src/volley/court.ts` 꼴) | ~50줄 |
-| `queen.html` · `yacha-ring.html` (신규) | 엔트리 둘 | ~20줄 |
-| `vite.config.ts` | `input`에 `queen`·`yacha-ring` 2줄 + 주석 갱신 | 3줄 |
+| `queen.html` (신규) | 엔트리 하나 | ~10줄 |
+| `vite.config.ts` | `input`에 `queen` 1줄 + 주석 갱신 | 2줄 |
 | `src/components/SettingsCard.tsx` (+ test) | props 둘(`yachaRunning`·`onYacha`) + 버튼 행 + 힌트 문단 | ~35줄 |
 | `src/App.tsx` | `handleYacha`, `onYachaOver` 구독, props 둘, `petSummary` 초기값 1줄 | ~25줄 |
 
@@ -654,17 +709,16 @@ sequenceDiagram
 
 `docs/solutions/`에 이미 기록된 것들 중 **이 작업에 직접 걸리는** 것만 추린다.
 
-1. **`ns_window()` 아래는 반드시 메인 스레드다** —
-   `docs/solutions/best-practices/appkit-from-tick-thread-kills-the-app.md`.
-   `sink_ring_below_pets`는 **틱에서 불린다**(`apply_yacha` 안). 핀볼 판은 커맨드에서
-   불려 멀쩡했고 그걸 베껴 온 코트는 틱에서 불려 앱이 흔적 없이 죽었다.
-   **`pet_bridge/volleyball.rs`의 `sink_court_below_pets`를 그대로 베낀다** —
-   `run_on_main_thread` 클로저 안에서만 `ns_window()`를 만진다.
+1. **`ns_window()`를 아예 안 만진다 — 경기장을 뺐기 때문이다.** 원래 창 레벨을 펭귄
+   아래로 내리려면 거기 내려가야 했고, 그게 틱에서 불리면 앱이 흔적 없이 죽는
+   자리였다(`docs/solutions/best-practices/appkit-from-tick-thread-kills-the-app.md`).
+   미녀 창은 펭귄과 같은 레벨 3이라 내릴 일이 없다. **이 위험은 범위가 줄면서
+   통째로 사라졌다** — 다시 넣지 않는다.
 2. **`set_ignore_cursor_events`는 비동기다** —
    `docs/solutions/best-practices/tauri-ignore-cursor-events-is-async.md`.
    호출 직후에 읽어 확인하면 `false`가 나와 "안 먹는다"는 오답을 낸다. `그림_창`처럼
    `visible(false)` → 플래그 → `show()` 순서로 만들고 **확인 코드를 두지 않는다.**
-   클릭 통과와 창 레벨은 서로를 대신하지 못하므로 링에는 **둘 다** 건다.
+   클릭 통과와 창 레벨은 서로를 대신하지 못하므로 한가운데에는 **둘 다** 건다.
 3. **창별 이벤트는 `emit_to`만으로 안 된다** —
    `docs/solutions/best-practices/tauri-any-listener-receives-every-event.md`.
    미녀 창은 `getCurrentWebviewWindow().listen()`으로 받는다. `src/lib/pet.ts`의
@@ -673,13 +727,13 @@ sequenceDiagram
    `docs/solutions/best-practices/tauri-command-registration-silent-failure.md`.
    `yacha_start` 한 줄, `yacha-ring`·`yacha-queen` 두 줄. 컴파일·테스트·경고가 전부
    통과하고 런타임에서만 reject된다.
-5. **창 순서는 클릭할 때마다 바뀐다 — 레벨로 잡는다** —
+5. **창 순서는 클릭할 때마다 바뀌고 틱에서는 못 고친다** —
    `docs/solutions/ui-bugs/macos-window-order-is-not-stable-level-is.md`.
-   링은 레벨 2, 미녀는 3.
+   그래서 겹친 펭귄의 앞뒤를 z로 정하려 들지 않는다 — y로만 말한다 (KTD9c).
 6. **같은 이름의 `@keyframes`를 두 번 정의하면 앞의 애니메이션이 통째로 죽는다** —
    `docs/solutions/ui-bugs/duplicate-keyframes-silently-kills-animation.md`.
    새 이름은 **쓰는 클래스에서** 딴다: `pg-yacha-punch-jab`·`pg-yacha-hurt-shake`·
-   `pg-yacha-down-fall`·`pg-yacha-star-spin`·`pg-yacha-impact-pop`·`pg-yacha-win-raise`.
+   `pg-yacha-down-fall`·`pg-yacha-anger-pop`·`pg-yacha-win-raise`.
 7. **`for x in <락>.f()`는 가드를 루프 내내 붙든다** —
    `docs/solutions/best-practices/rust-for-loop-holds-mutex-guard-across-body.md`.
    `yacha_start`에서 락에서 꺼낸 id 목록은 **반드시 `let`으로 먼저 받고** 순회한다.
@@ -692,7 +746,7 @@ sequenceDiagram
    `창을_놓는_문이_하나다`가 `set_position` 직접 호출을 소스 대조로 잡는다. 미녀 창은
    매 틱 움직이므로 반드시 `place_window`를 통과한다 (크기 → 자리 순서가 그 안에 있다).
 10. **배율**(#57) — 코어 좌표는 "펭귄이 늘 140인 세계"이고 브릿지가 `화면 = 코어 ×
-    scale`로 환산한다. 링·미녀 창은 `scale_init_script(scale)`을 심고 웹뷰가
+    scale`로 환산한다. 미녀 창은 `scale_init_script(scale)`을 심고 웹뷰가
     `followPetScale`로 갱신을 받는다 (`src/volley/court.ts`가 그 예다).
 11. **`apply_*`의 캐시 비우기는 `|`이지 `||`가 아니다** — `apply_volley`에 주석으로
     남아 있는 함정이다. 단축 평가가 두 번째 `take()`를 건너뛰면 낡은 값이 다음 판까지
@@ -726,7 +780,7 @@ sequenceDiagram
 기존 절(특히 "던지기"·"착지"·"핀볼 모드"·"비치발리볼")은 한 줄도 안 건드린다.
 
 넣을 상수(값은 첫 제안이고 스모크에서 조정한다):
-`YACHA_MIN_PETS`(2) · `YACHA_RING_HALF`(460) · `YACHA_RING_DEPTH`(120) ·
+`YACHA_MIN_PETS`(2) · `YACHA_HUDDLE_HALF`(460) · `YACHA_HUDDLE_DEPTH`(120) ·
 `YACHA_MIN_WORLD_WIDTH` · `YACHA_MIN_WORLD_HEIGHT`(360) · `YACHA_GATHER_SPEED`(420) ·
 `YACHA_STANCE_GAP`(96) · `YACHA_REACH_X`(150) · `YACHA_ROUND_MS`(340) ·
 `YACHA_PUNCH_MS`(260) · `YACHA_HURT_MS`(220) · `YACHA_BRAWL_MS`((14_000, 18_000)) ·
@@ -737,7 +791,7 @@ sequenceDiagram
 **컴파일 시각으로 못 박을 관계** (발리볼의 `const assert!` 관례 그대로):
 - `YACHA_STANCE_GAP < YACHA_REACH_X` — **이웃이 항상 사정거리 안이다.** KTD5의 종료
   증명 ②가 이 한 줄에 걸려 있다.
-- `YACHA_STANCE_GAP * 7.0 + PET_SIZE <= 2.0 * YACHA_RING_HALF` — 8마리가 링에 들어간다 (A2).
+- `YACHA_STANCE_GAP * 7.0 + PET_SIZE <= 2.0 * YACHA_HUDDLE_HALF` — 8마리가 한가운데에 들어간다 (A2).
 - `YACHA_PUNCH_MS < YACHA_ROUND_MS` · `YACHA_HURT_MS < YACHA_ROUND_MS` — 자세가 다음
   라운드로 새지 않는다.
 - `YACHA_MIN_PETS >= 2` · `YACHA_BRAWL_MS.1 >= YACHA_BRAWL_MS.0`
@@ -764,7 +818,7 @@ sequenceDiagram
 
 ---
 
-### U2. 그림 — 장갑 · 벨트 · X자 눈 · 화장 · 링
+### U2. 그림 — 장갑 · 벨트 · X자 눈 · 화장 · 화남 표시
 
 **Goal** — 야차에 필요한 그림이 전부 `src/assets/`에 들어가고 스냅샷이 못 박는다.
 **Requirements** — R6, R8, R11, KTD10, A6
@@ -775,7 +829,6 @@ sequenceDiagram
 - `src/assets/penguin/body.tsx` (수정 — X자 눈)
 - `src/assets/penguin/glam.tsx` (신규 — 화장)
 - `src/assets/penguin/index.tsx` (수정 — 조립 순서)
-- `src/assets/props/ring.ts` (신규 — `RING_SVG`)
 - `src/assets/assets.test.ts` · `src/assets/__snapshots__/assets.test.ts.snap` (수정)
 
 **Approach**
@@ -793,17 +846,15 @@ sequenceDiagram
   **`-u`는 통과시키는 방법이 아니라 선언이다.**
 - **화장** (`glam.tsx`, `.pg-glam`) — 위로 말린 속눈썹 셋, 빨간 입술, 볼터치 둘.
   `hula.tsx`의 패턴 그대로: 레이어 하나, 기본 숨김, 특정 클래스에서만.
-- **링** (`props/ring.ts`, `RING_SVG`) — **React를 쓰지 않는다** (바닐라 창이 쓴다).
-  매트 사각형(원근을 암시하는 사다리꼴) + 앞뒤 로프 3줄 + 코너 포스트 4개.
-  `viewBox`는 링 기하(`YACHA_RING_HALF`·`YACHA_RING_DEPTH`)의 비율에 맞춘다.
+- **화남 표시** (`gear.tsx`, `.pg-anger`) — 만화의 분노 핏줄(💢): 십자로 모인
+  갈매기꼴 넷. 맞은 마리의 **보는 쪽 가장자리**에 뜨고, 뭉쳐 있으므로 그 자리가
+  곧 때린 놈과 맞은 놈 사이다 (KTD9d). 기본 숨김.
 
 **Patterns to follow** — `src/assets/penguin/hula.tsx`(레이어 + 숨김 패턴),
 `src/assets/props/court.ts`(바닐라 SVG 문자열 + `React` 무의존).
 **Test scenarios**
 - `수컷_펭귄_그림이_그대로다` · `암컷_펭귄_그림이_그대로다` — **스냅샷 갱신**(A6)
-- `링_그림이_그대로다` — `RING_SVG` 스냅샷 신규
 - `화장한_펭귄_그림이_그대로다` — `<Penguin female />` + `Glam` 조합 스냅샷 신규
-- `소품에는_React가_없다` — `ring.ts`가 기존 검사에 자동으로 걸린다 (목록 갱신 필요 여부 확인)
 
 **Verification** — `npm test`, `npm run build`(타입). 갱신된 스냅샷 diff를 눈으로 읽어
 **의도한 도형만 늘었는지** 확인한다.
@@ -812,7 +863,7 @@ sequenceDiagram
 
 ### U3. 판 코어 — `pet/yacha.rs`
 
-**Goal** — 링 기하·스탠스 배치·라운드 판정·다운 일정·미녀 좌표가 순수 로직으로 완성되고,
+**Goal** — 난투 자리 기하·스탠스 배치·라운드 판정·다운 일정·미녀 좌표가 순수 로직으로 완성되고,
 같은 시드가 같은 판을 낳는다.
 **Requirements** — R3, R7, R9, R10, R12, KTD2, KTD5, KTD6, KTD8
 **Dependencies** — U1
@@ -821,10 +872,10 @@ sequenceDiagram
 - `src-tauri/src/pet/yacha_tests.rs` (신규)
 
 **Approach**
-`pet/volleyball.rs`의 구조를 그대로 따른다 — `Ring`(기하) · `Yacha`(판) · 스냅샷 타입 셋.
+`pet/volleyball.rs`의 구조를 그대로 따른다 — `Huddle`(기하) · `Yacha`(판) · 스냅샷 타입 셋.
 
 - `Ring::new(bounds) -> Option<Ring>` — 세계가 `YACHA_MIN_WORLD_*`보다 좁으면 `None`.
-  `rect()`가 링 사각형을, `floor_y()`가 펭귄이 딛는 y를 준다.
+  `rect()`가 난투 자리을, `floor_y()`가 펭귄이 딛는 y를 준다.
 - `Ring::stance_of(k, n) -> f64` — `k`번째가 설 x. 중앙 기준으로 `YACHA_STANCE_GAP`
   간격으로 좌우 대칭 배치.
 - `Yacha::new(now_ms, ring, ids, seed)` — 시드로 **서는 순서를 섞고**(A3), 예산 `B`를
@@ -837,7 +888,7 @@ sequenceDiagram
 - `Yacha::leave(id)` — 참여 마리 제거. 서 있는 목록·다운 일정 인덱스를 정리한다 (AE6).
 - `Yacha::queen_x(now_ms)` — 국면에 따른 미녀의 x. `QueenIn`이면 화면 밖 → 챔피언 옆,
   `Exiting`이면 반대.
-- `Yacha::snapshot()` — 판 국면 · 링 사각형 · 미녀 좌표/국면 · `thud_seq`/`thud_id`/
+- `Yacha::snapshot()` — 판 국면 · 난투 자리 · 미녀 좌표/국면 · `thud_seq`/`thud_id`/
   `thud_down`을 담은 값. 브릿지와 웹뷰가 이걸 본다.
 
 **Execution note** — 다운 일정과 종료 증명은 **실패 테스트를 먼저 쓴다.** 특히
@@ -861,7 +912,7 @@ sequenceDiagram
   마리가 1이 되고, 그 시각이 `YACHA_BRAWL_MS.1` 이내다
 - `참여가_하나로_줄면_그대로_챔피언이다` — `leave`로 하나만 남기면 `Victory`로 (AE7)
 - `참여가_0이면_판을_접는다` — 단, `Victory` 이후에는 안 접는다 (KTD8)
-- `세계가_좁으면_링이_안_열린다` — `Ring::new`가 `None`
+- `세계가_좁으면_판이_안_열린다` — `Huddle::new`가 `None`
 
 **Verification** — `cd src-tauri && cargo test`.
 
@@ -939,7 +990,7 @@ sequenceDiagram
   아니라 **판 유무 검사**라는 것이 중요하다.
 - **`Pets::whack`의 이웃 넉백 제외 목록에 `is_yachaing()` 한 줄** (KTD3-3).
   `SWING_REACH`(200px)가 야차의 이웃 간격(96px)의 두 배라 이게 빠지면 한 번의 스윙이
-  링의 절반을 날린다. **직접 클릭한 마리는 그대로 빠진다.**
+  판의 절반을 날린다. **직접 클릭한 마리는 그대로 빠진다.**
 - `start_yacha(now_ms, bounds, seed) -> Result<(), YachaRefusal>` — 거절 순서는
   `BoardBusy` → `NoRoom` → `TooFew` (KTD15). 성공하면 참여 마리마다
   `Pet::start_yacha`를 직접 부르고, 실제로 붙은 마리가 2 미만이면 붙인 것을 되돌리고
@@ -960,7 +1011,7 @@ sequenceDiagram
   `발리볼이_도는_중에는_야차가_안_열린다` · `야차가_도는_중에는_발리볼이_안_열린다` (R18)
 - **`판이_도는_동안_핀볼_충돌이_쉰다`** — 핀볼을 켜고 두 마리를 겹쳐 두고 `step_all`을
   돌려도 서로를 안 튕긴다 (KTD3-2/AE9)
-- **`방망이_스윙이_링의_이웃을_안_날린다`** — 링 위에서 한 마리를 때려도 이웃의
+- **`방망이_스윙이_뭉친_이웃을_안_날린다`** — 한가운데에서 한 마리를 때려도 이웃의
   `Behavior`가 안 바뀐다. 때린 그 마리만 빠진다 (KTD3-3)
 - `판_도중_마리를_지워도_안_깨진다` — `remove`로 하나씩 줄여도 패닉 없이 진행 (R16/AE6)
 - `참여가_하나가_되면_챔피언이_된다` (AE7)
@@ -970,10 +1021,10 @@ sequenceDiagram
 
 ---
 
-### U6. 브릿지 — 링·미녀 창과 `apply_yacha`
+### U6. 브릿지 — 미녀 창과 `apply_yacha`
 
-**Goal** — 링과 미녀 펭귄이 실제 창으로 뜨고, 클릭을 통과시키고, 레벨이 맞고, 매 틱
-자리가 갱신되고, 판이 끝나면 사라진다.
+**Goal** — 미녀 펭귄이 실제 창으로 떠 걸어 들어오고, 클릭을 통과시키고, 매 틱 자리가
+갱신되고, 판이 끝나면 사라진다.
 **Requirements** — R5, R11, R15, KTD9
 **Dependencies** — U5
 **Files**
@@ -988,12 +1039,10 @@ sequenceDiagram
 만든 창을 반드시 닫는 것, `run_on_main_thread`로 감싼 레벨 내리기, `apply_*`의 실패
 예산(`YACHA_WINDOW_MAX_FAILS = 5`)까지.
 
-- `RING_LABEL = "yacha-ring"` (레벨 2, 클릭 통과) · `QUEEN_LABEL = "yacha-queen"`
-  (레벨 3, 클릭 통과).
-- `ring_rect_on_screen(rect, scale)` · `queen_window_origin(x, y, scale)` — 코어 좌표를
-  화면 좌표로. **모든 이동은 `place_window`를 통과한다** (함정 9).
-- `sink_ring_below_pets(app)` — `sink_court_below_pets`를 그대로 베낀다.
-  **`run_on_main_thread` 클로저 안에서만 `ns_window()`** (함정 1).
+- `QUEEN_LABEL = "yacha-queen"` (펭귄과 같은 레벨 3, 클릭 통과). **창은 이것 하나뿐이다.**
+- `queen_window_origin(x, y, scale)` — 코어 좌표를 화면 좌표로.
+  **모든 이동은 `place_window`를 통과한다** (함정 9).
+- **`ns_window()`를 안 만진다** — 내릴 창이 없다 (함정 1).
 - `apply_yacha(app, snapshot, view, scale)` — 틱이 부른다. 창을 만들고/옮기고/닫고,
   미녀 스냅샷을 `EVENT_YACHA_QUEEN`으로 미녀 창에 `emit_to`, 판이 끝나면
   `EVENT_YACHA_OVER`를 설정 창에 보낸다. **판이 끝났는지는 `bowling_over(was, is)`
@@ -1008,13 +1057,10 @@ sequenceDiagram
 - `capabilities/default.json`의 `windows`에 라벨 둘 + `description` 갱신 (함정 4).
 
 **Test scenarios**
-- `링_사각형이_배율만큼_커진다` — `ring_rect_on_screen`이 코어 × scale
 - `미녀_창_원점이_펭귄_창_규칙을_따른다` — `queen_window_origin`이 `pet_window_size`와
   같은 여백 규칙
-- `링은_펭귄보다_아래_레벨이다` — `RING_WINDOW_LEVEL < 3` (발리볼의
-  `코트는_펭귄보다_아래_레벨이다`와 같은 꼴)
-- **`링과_미녀의_라벨이_capabilities에_등록돼_있다`** — `include_str!`로 JSON을 읽어
-  라벨 둘을 부분문자열 검사. **이 검사가 없으면 라벨 누락이 런타임까지 안 잡힌다**
+- **`미녀의_라벨이_capabilities에_등록돼_있다`** — `include_str!`로 JSON을 읽어
+  라벨을 부분문자열 검사. **이 검사가 없으면 라벨 누락이 런타임까지 안 잡힌다**
   (함정 4). 발리볼의 `코트와_공의_라벨이_capabilities에_등록돼_있다`가 원본이다
 - `창을_놓는_문이_하나다` — **기존 테스트가 새 파일도 자동으로 검사한다** (함정 9)
 - `모든_펫_커맨드가_invoke_handler에_등록되어_있다` — **기존 테스트가 `yacha_start`
@@ -1025,12 +1071,10 @@ sequenceDiagram
   아래 수동 체크리스트로 넘긴다.
 
 **Verification** — `cd src-tauri && cargo test` + `npm run tauri dev` 수동:
-- [ ] 링이 화면 중앙에 뜬다
-- [ ] **링 위에서 다른 앱 창을 클릭하면 그 앱이 반응한다** (AE5)
-- [ ] 펭귄이 링보다 위에 그려진다 (레벨 2 < 3)
-- [ ] 미녀가 펭귄보다 앞에 보인다
-- [ ] 판이 끝나면 창 둘이 다 사라진다
-- [ ] **판을 여닫기를 다섯 번 반복해도 앱이 안 죽는다** (함정 1의 증상은 "흔적 없이 죽음"이다)
+- [ ] 펭귄들이 화면 한가운데로 **뭉쳐** 모이고 서로 겹친다 (줄이 아니다)
+- [ ] **미녀 창 위에서 다른 앱 창을 클릭하면 그 앱이 반응한다** (AE5)
+- [ ] 판이 끝나면 미녀 창이 사라진다
+- [ ] 판을 여닫기를 다섯 번 반복해도 창이 안 남는다
 
 ---
 
@@ -1112,24 +1156,22 @@ reject된다 (함정 4).
   **둘 다** 끈다 (transition만 살아남은 회귀 전례가 있다)
 
 **Verification** — `npm test`, `npm run build`. `npm run tauri dev`로 눈 확인:
-- [ ] 장갑이 보인다 · 맞을 때 별표가 터진다 · 쓰러지면 X자 눈 + 별이 돈다
+- [ ] 장갑이 보인다 · 맞을 때 **화남 표시가 둘 사이에** 뜬다 · 쓰러지면 X자 눈
 - [ ] **맞아도 창이 옆으로 안 밀린다** (R7)
 - [ ] 굴러떨어지기·발작 같은 기존 애니메이션이 여전히 돈다 (중복 keyframes 회귀 확인)
 
 ---
 
-### U9. 미녀 창과 링 창 — 웹뷰
+### U9. 미녀 창 — 웹뷰
 
-**Goal** — 미녀 펭귄이 걸어 들어와 벨트를 채우고 나가고, 링이 그려지고, 둘 다 배율을 따른다.
+**Goal** — 미녀 펭귄이 걸어 들어와 벨트를 채우고 나가고, 배율을 따른다.
 **Requirements** — R5, R11, KTD9, KTD10
 **Dependencies** — U2, U6
 **Files**
-- `queen.html` · `yacha-ring.html` (신규)
+- `queen.html` (신규)
 - `src/queen/main.tsx` · `src/queen/QueenApp.tsx` · `src/queen/queen.css` (신규)
-- `src/yacha/ring.ts` · `src/yacha/ring.css` (신규)
-- `src/volley/volley.test.ts`에 대응하는 `src/queen/queen.test.tsx` ·
-  `src/yacha/ring.test.ts` (신규)
-- `vite.config.ts` (수정 — `input` 2줄 + 주석)
+- `src/queen/queen.test.tsx` (신규)
+- `vite.config.ts` (수정 — `input` 1줄 + 주석)
 - `src/lib/pet.ts` (수정 — `QueenSnapshot` · `onQueenState`)
 
 **Approach**
@@ -1141,8 +1183,6 @@ reject된다 (함정 4).
   이벤트를 쏘므로 리스너가 붙기 전이다 — 그래서 `yacha_get_queen` 커맨드를 하나 두고
   마운트 때 한 번 부른다. `src/volley/ball.ts`가 `getVolleyState()`로 같은 구멍을
   메운다. **이게 없으면 미녀가 첫 국면(걸어 들어오기)을 통째로 놓친다.**
-- **링 창** (바닐라) — `src/volley/court.ts`의 꼴 그대로. `RING_SVG`를 심고
-  `followPetScale` 구독. 로직이 없다.
 - `vite.config.ts`의 주석("펭귄 창 말고는 React를 쓰지 않는다")을 **갱신한다** —
   미녀 창이 두 번째 React 창이고 그 근거(KTD9)를 한 줄로 가리킨다.
 
@@ -1151,14 +1191,13 @@ reject된다 (함정 4).
   (전역 `listen`이면 실패, 함정 3). **돌연변이로 한 번 빨갛게 만들어 본다** (함정 8)
 - `미녀는_항상_암컷이다` — `female`이 창 라벨에서 파생하지 않는다 (KTD10)
 - `국면이_클래스로_바뀐다` — 네 국면 각각에 대응 클래스
-- `링_창은_배율을_따른다` — `followPetScale` 구독
-- `링_창은_React를_쓰지_않는다`
+- `미녀_창이_배율을_따른다` — `followPetScale` 구독
 
 **Verification** — `npm test`, `npm run build`, `npm run tauri dev` 수동:
 - [ ] 미녀가 오른쪽 밖에서 걸어 들어온다 (순간이동 아님)
 - [ ] 벨트가 미녀 손 → 챔피언 허리로 넘어간다
 - [ ] 세레모니 뒤 오른쪽으로 걸어 나간다
-- [ ] 크기 슬라이더를 움직이면 링·미녀가 같이 커지고 작아진다 (#57)
+- [ ] 크기 슬라이더를 움직이면 미녀도 같이 커지고 작아진다 (#57)
 
 ---
 
@@ -1265,13 +1304,13 @@ reject된다 (함정 4).
 - [ ] 2마리 / 3마리 / 5마리 / 8마리로 각각 한 판 — 전부 25~30초 안에 끝난다
 - [ ] 1마리에서 버튼이 비활성이고 안내가 뜬다
 - [ ] **맞아도 창이 옆으로 안 밀린다** (R7)
-- [ ] 링·미녀 창 위에서 다른 앱이 클릭된다 (AE5)
+- [ ] 미녀 창 위에서 다른 앱이 클릭된다 (AE5)
 - [ ] 판 도중 펭귄을 드래그하면 판에서 빠진다 (AE6)
 - [ ] 판 도중 펭귄을 삭제해도 안 깨진다 (AE7)
-- [ ] 핀볼을 켠 채로 한 판 — 링 위에서 서로를 안 튕긴다 (AE9)
+- [ ] 핀볼을 켠 채로 한 판 — 뭉친 자리에서 서로를 안 튕긴다 (AE9)
 - [ ] 볼링·발리볼 버튼이 야차 중에 비활성이고 그 반대도 그렇다 (R18)
-- [ ] 크기 슬라이더 50%·150%에서 링·미녀·펭귄이 같이 조절된다
-- [ ] **판을 다섯 번 여닫아도 앱이 안 죽는다** (함정 1)
+- [ ] 크기 슬라이더 50%·150%에서 미녀·펭귄이 같이 조절된다
+- [ ] 판을 다섯 번 여닫아도 창이 안 남는다
 - [ ] 팝오버를 닫은 뒤에도 트레이 아이콘이 남아 있다 (기존 회귀 항목)
 
 ---
@@ -1300,7 +1339,7 @@ reject된다 (함정 4).
 | # | 질문 | 기본값 |
 |---|---|---|
 | Q1 | **"퍽퍽"을 이대로 넣나** — 15초에 약 44발이다. `MOTIONS.md`의 자격 규칙이 발리볼에서는 같은 모양을 잘랐고(효과음 절), 이번엔 사용자 지시를 근거로 넣는다 (KTD7) | **넣는다.** 라운드마다 한 발, 다운 한 방만 다르게 |
-| Q2 | **링을 넣나** — 창 하나와 에셋 하나가 는다. 없어도 판은 돌지만 "중앙에 모였다"가 덜 읽힌다 | **넣는다** (볼링 판·발리볼 코트와 같은 자리) |
+| ~~Q2~~ | ~~경기장을 넣나~~ — **2026-09-03 사용자 피드백으로 닫혔다: 안 넣는다.** 경기장도 대형도 없이 중앙에서 얽히는 그림이 맞다 | **안 넣는다** |
 | Q3 | **미녀 펭귄이 훌라 옷을 입나** — KTD10은 "화장만, 옷은 안 입힌다"로 갔다. 훌라 옷을 입히면 그림이 화려해지지만 비치발리볼 판과 섞인다 | **화장만** |
 | Q4 | **쓰러진 마리가 판이 끝날 때까지 누워 있나** (A5), 아니면 몇 초 뒤 일어나 앉아 구경하나 | **끝까지 눕는다** |
 

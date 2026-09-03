@@ -113,6 +113,7 @@ pub fn bowling_over(was_alive: bool, is_alive: bool) -> bool {
 mod ball_window;
 mod bounds;
 pub mod commands;
+mod hit;
 mod pinball;
 mod volleyball;
 mod popover;
@@ -123,6 +124,7 @@ mod window;
 pub use ball_window::*;
 pub use bounds::*;
 pub use commands::*;
+pub use hit::*;
 pub use pinball::*;
 pub use volleyball::*;
 pub use popover::*;

@@ -4,6 +4,11 @@ import { cleanup, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Penguin } from "../assets/penguin";
+import {
+  PENGUIN_HIT_BOX,
+  PENGUIN_HIT_HYSTERESIS_RATIO,
+  PENGUIN_VIEWBOX,
+} from "../assets/penguin/hit";
 import { behaviorClass, verticalClass, type Behavior, type Vertical } from "../lib/pet";
 
 /** 동작이 CSS에 실제로 그려져 있는지 확인한다. */
@@ -42,13 +47,17 @@ const cssFiles = [
 const css = 코드만_css(
   cssFiles.map((n) => readFileSync(resolve(`${CSS_DIR}/${n}.css`), "utf8")).join("\n"),
 );
-const petRs =
-  readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
-  readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
-  readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8");
 /** 주석을 걷어낸다 — 지운 클래스가 주석에 남아 "아직 쓰인다"로 집계된다.
  * `docs/solutions/best-practices/source-text-tests-pass-on-comments.md` */
 const 코드만 = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/.*/g, " ");
+/** 대조 대상이 되는 Rust 소스 전부. **주석을 걷어내고 본다** — 안 그러면 주석에
+ * 적힌 옛 값이 상수로 읽혀 갈라진 것을 못 잡는다. */
+const petRs = 코드만(
+  readFileSync(resolve("src-tauri/src/pet/tuning.rs"), "utf8") +
+    readFileSync(resolve("src-tauri/src/pet/mod.rs"), "utf8") +
+    readFileSync(resolve("src-tauri/src/pet_bridge/window.rs"), "utf8") +
+    readFileSync(resolve("src-tauri/src/pet_bridge/hit.rs"), "utf8"),
+);
 const petApp = 코드만(
   readFileSync(resolve("src/pet/PetApp.tsx"), "utf8") +
     PENGUIN_ALL.map((p) => readFileSync(resolve(p), "utf8")).join("\n"),
@@ -184,6 +193,53 @@ describe("창 여백 상수 동기화", () => {
     expect(a, `CSS에서 --${cssName}를 못 찾았다`).not.toBeNull();
     expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
     expect(a).toBe(b);
+  });
+});
+
+describe("히트 박스 상수 동기화", () => {
+  // 판정이 두 곳에 있다 — Rust가 창의 클릭 통과를, 웹뷰가 통과 요청을 정한다.
+  // 갈라지면 "웹뷰는 통과를 요청했는데 Rust는 그 자리를 펭귄으로 아는" 진동이
+  // 생기고, 두 러너도 타입 검사도 아무 말을 안 한다.
+  it.each([
+    ["l", "PET_HIT_L"],
+    ["t", "PET_HIT_T"],
+    ["r", "PET_HIT_R"],
+    ["b", "PET_HIT_B"],
+  ])("PENGUIN_HIT_BOX.%s 가 Rust의 %s 와 같다", (key, rustName) => {
+    const b = rustConst(rustName);
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(PENGUIN_HIT_BOX[key as keyof typeof PENGUIN_HIT_BOX]).toBe(b);
+  });
+
+  it.each([
+    ["w", "PET_VIEWBOX_W"],
+    ["h", "PET_VIEWBOX_H"],
+  ])("PENGUIN_VIEWBOX.%s 가 Rust의 %s 와 같다", (key, rustName) => {
+    const b = rustConst(rustName);
+    expect(b, `Rust에서 ${rustName}를 못 찾았다`).not.toBeNull();
+    expect(PENGUIN_VIEWBOX[key as keyof typeof PENGUIN_VIEWBOX]).toBe(b);
+  });
+
+  it("히스테리시스_비율이_Rust와_같다", () => {
+    const b = rustConst("PET_HIT_HYSTERESIS_RATIO");
+    expect(b, "Rust에서 PET_HIT_HYSTERESIS_RATIO를 못 찾았다").not.toBeNull();
+    expect(PENGUIN_HIT_HYSTERESIS_RATIO).toBe(b);
+  });
+
+  it("히트_박스가_그림과_같은_좌표계다", () => {
+    // 상자는 viewBox 단위다. viewBox가 바뀌면 상자가 통째로 어긋나는데,
+    // 상수만 대조하면 둘이 사이좋게 틀린 채로 통과한다.
+    const { container } = render(createElement(Penguin));
+    expect(container.querySelector("svg")?.getAttribute("viewBox")).toBe(
+      `0 0 ${PENGUIN_VIEWBOX.w} ${PENGUIN_VIEWBOX.h}`,
+    );
+  });
+
+  it("히트_박스가_viewBox_안에_들어간다", () => {
+    expect(PENGUIN_HIT_BOX.l).toBeGreaterThanOrEqual(0);
+    expect(PENGUIN_HIT_BOX.t).toBeGreaterThanOrEqual(0);
+    expect(PENGUIN_HIT_BOX.r).toBeLessThanOrEqual(PENGUIN_VIEWBOX.w);
+    expect(PENGUIN_HIT_BOX.b).toBeLessThanOrEqual(PENGUIN_VIEWBOX.h);
   });
 });
 
